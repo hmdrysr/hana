@@ -829,7 +829,7 @@ UI_CLASSES = set("""active badge bold border bottom brand brand-mark brand-name 
 chip circle dark field fill flush gap-top group-title l label left left-align link list m max medium muted no-border
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
-tertiary-container textarea top-align transparent vertical vertical-padding wrap light""".split())
+tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label""".split())
 
 
 def check_ui(root):

@@ -363,7 +363,16 @@ function sectionTitle(text) { return h("h2", { class: "section-title" }, text); 
 function pageTitle(text) { return h("h1", { class: "page-title" }, text); }
 
 function textField(id, label, input) {
-  return h("div", { class: "field label border round" + (input.tagName === "TEXTAREA" ? " textarea" : "") }, input, h("label", { for: id }, label));
+  return h("div", null,
+    h("label", { for: id, class: "field-label" }, label),
+    h("div", { class: "field border round" + (input.tagName === "TEXTAREA" ? " textarea" : "") }, input));
+}
+
+/* Labels sit above their fields, never inside them, so a long label or large text wraps instead of being cut off. */
+function selectField(id, label, selectEl) {
+  return h("div", null,
+    h("label", { for: id, class: "field-label" }, label),
+    h("div", { class: "field suffix border round" }, selectEl, icon("arrow_drop_down")));
 }
 
 function copy(text) {

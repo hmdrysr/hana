@@ -6,7 +6,7 @@ NOT standard library, so this is not part of tools/check.py or tools/selftest.py
     python3 tools/browser_test.py http://localhost:8765/
 
 Checks, at 320, 360, 768 and 1280 pixels wide, in light and dark mode:
-- no sideways scrolling on any screen, at normal text size and at 200 percent;
+- no sideways scrolling and no text cut off on any screen, at normal text size and at 200 percent;
 - the restaurant list is in alphabetical order, and area filtering and search work;
 - the one-restaurant rule asks before emptying the basket;
 - the order message ends with a check line that tools/order_line.py accepts;
@@ -33,6 +33,40 @@ SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BAS
            BIZ, BIZ + "#/join", BIZ + "#/confirm", BIZ + "#/update"]
 failed = 0
 
+# Finds text that is cut off: any text whose box extends past an ancestor that clips its overflow.
+CLIPPED_TEXT = r"""(() => {
+  const out = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walker.nextNode())) {
+    if (!n.nodeValue.trim()) continue;
+    const el = n.parentElement;
+    if (!el || el.closest("dialog:not([open]), .snackbar:not(.active), script, style, option, select, textarea")) continue;
+    const st = getComputedStyle(el);
+    if (st.visibility === "hidden" || st.display === "none" || el.getClientRects().length === 0) continue;
+    const r = document.createRange();
+    r.selectNodeContents(n);
+    const rects = Array.from(r.getClientRects());
+    if (!rects.length) continue;
+    let a = el;
+    while (a && a !== document.documentElement) {
+      const s = getComputedStyle(a);
+      if (s.overflowX !== "visible" || s.overflowY !== "visible") {
+        const b = a.getBoundingClientRect();
+        for (const t of rects) {
+          if (t.width === 0) continue;
+          if (t.right > b.right + 1 || t.left < b.left - 1 || (s.overflowY !== "visible" && a !== document.body && (t.bottom > b.bottom + 1 || t.top < b.top - 1))) {
+            out.push(el.tagName + "." + el.className + " in " + a.tagName + "." + a.className + ": " + n.nodeValue.trim().slice(0, 40));
+            break;
+          }
+        }
+      }
+      a = a.parentElement;
+    }
+  }
+  return Array.from(new Set(out));
+})()"""
+
 
 def ok(name, cond, detail=""):
     global failed
@@ -51,9 +85,12 @@ with sync_playwright() as p:
                 page.goto(screen)
                 page.wait_for_timeout(500)
                 normal = page.evaluate("document.documentElement.scrollWidth - innerWidth")
+                clipped = page.evaluate(CLIPPED_TEXT)
                 page.evaluate("document.documentElement.style.fontSize = '200%'")
                 page.wait_for_timeout(150)
                 large = page.evaluate("document.documentElement.scrollWidth - innerWidth")
+                clipped += page.evaluate(CLIPPED_TEXT)
+                ok(f"no text cut off, {scheme}, {width}px, {screen.replace(ROOT_URL, '')}", not clipped, clipped[:3])
                 ok(f"no sideways scroll, {scheme}, {width}px, {screen.replace(ROOT_URL, '')}", normal <= 0 and large <= 0, (normal, large))
                 page.close()
 

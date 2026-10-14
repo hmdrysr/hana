@@ -7,7 +7,8 @@ Results of the theme checklist in `SPEC.md`, section 3.1. Each entry gives the d
 | Check | How | Result |
 |---|---|---|
 | No sideways scrolling | `tools/browser_test.py`: the five customer screens and the four business tools screens at 320, 360, 768 and 1280 pixels wide, light and dark | Pass |
-| 200 percent text | Same screens with the root font size set to 200 percent | Pass: no sideways scrolling. On the bottom bar, labels are shortened with an ellipsis and the icons shrink. |
+| No text cut off | `tools/browser_test.py` checks every text box on every screen against any container that clips it, at normal and 200 percent text | Pass |
+| 200 percent text | Same screens with the root font size set to 200 percent | Pass: no sideways scrolling and no clipped text. Bottom bar labels shrink to fit narrow screens and wrap if needed. |
 | Text contrast (WCAG 2.2 AA) | Contrast ratios computed from `theme/theme.css` for every text and background pair the app uses | Pass: lowest text pair is 6.63:1 (light, primary on surface-container-low); the outline colour is 4.28:1 (light), above the 3:1 needed for borders |
 | Tap targets | Measured height of add buttons, navigation items, quantity buttons | Pass: at least 40 pixels |
 | Script errors | Page errors recorded during the browser test | None |

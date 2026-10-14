@@ -268,11 +268,14 @@ nav.bottom > a {
   flex: 1 1 0;
   min-inline-size: 0;
 }
+/* Labels shrink with narrow screens and wrap if they must; they are never cut off. */
 nav.bottom > a > span {
   max-inline-size: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: min(0.75rem, 3.2vw);
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 /* ---------- Large text: controls grow taller instead of pushing the page wider ---------- */
@@ -329,8 +332,7 @@ header nav > .brand {
 }
 header nav > .brand > .brand-name {
   min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: min(1.375rem, 6vw);
   white-space: nowrap;
 }
 header nav > .max {
@@ -339,4 +341,56 @@ header nav > .max {
 }
 #theme-toggle {
   flex-shrink: 0;
+}
+
+/* ---------- No text is ever cut off ----------
+   Beer CSS lists, chips and buttons keep text on one line by default. Here every text
+   container may wrap instead, and tools/browser_test.py fails if any text is clipped. */
+ul.list > li,
+ul.list > li > *,
+.list > li > a:only-child,
+.chip,
+.chip > span,
+button > span,
+.button > span,
+label,
+.field-label {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+ul.list > li {
+  align-items: center;
+}
+.field-label {
+  display: block;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 600;
+  margin: 1rem 0 0.25rem;
+  color: var(--on-surface);
+}
+.field-label + .field {
+  margin-block-start: 0;
+}
+
+/* ---------- Fluid type scale ----------
+   Computed with the Utopia method (utopia.fyi): each size grows smoothly from a 320px
+   screen to a 1280px screen, between the two values shown. rem units keep the phone's
+   own text-size setting in charge. No library is loaded. */
+body {
+  font-size: clamp(0.875rem, 0.8333rem + 0.2083vw, 1rem);
+  line-height: 1.5;
+}
+.page-title {
+  font-size: clamp(1.5rem, 1.3333rem + 0.8333vw, 2rem);
+  line-height: 1.25;
+}
+.section-title,
+.card-title {
+  font-size: clamp(1.125rem, 1.0417rem + 0.4167vw, 1.375rem);
+  line-height: 1.3;
+}
+.group-title {
+  font-size: clamp(1rem, 0.9583rem + 0.2083vw, 1.125rem);
+  line-height: 1.4;
 }

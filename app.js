@@ -143,22 +143,18 @@ function wardsIn(zoneId) { return state.areas.filter((a) => a.kind === "ward" &&
 
 /* Customers choose a zone (thana). The whole city is a delivery area for businesses, not a customer choice. */
 function zoneSelect(id, value, onChange, firstLabel, label) {
-  return h("div", { class: "field label suffix border round" },
+  return selectField(id, label || "Your zone (thana)",
     h("select", { id, on: { change: (e) => onChange(e.target.value) } },
       h("option", { value: "" }, firstLabel),
-      zones().map((a) => h("option", { value: a.id, selected: a.id === value }, a.name))),
-    h("label", { for: id, class: "active" }, label || "Your zone (thana)"),
-    icon("arrow_drop_down"));
+      zones().map((a) => h("option", { value: a.id, selected: a.id === value }, a.name))));
 }
 
 function wardSelect(id, zoneId, value, onChange) {
   const ws = wardsIn(zoneId);
-  return h("div", { class: "field label suffix border round" },
+  return selectField(id, "Ward (optional)",
     h("select", { id, disabled: !ws.length, on: { change: (e) => onChange(e.target.value) } },
       h("option", { value: "" }, ws.length ? "Not specified" : "No wards listed for this zone"),
-      ws.map((a) => h("option", { value: a.id, selected: a.id === value }, a.name))),
-    h("label", { for: id, class: "active" }, "Ward (optional)"),
-    icon("arrow_drop_down"));
+      ws.map((a) => h("option", { value: a.id, selected: a.id === value }, a.name))));
 }
 
 function locatedIn(m) {
@@ -206,11 +202,15 @@ function viewList() {
   show("list", "",
     pageTitle("Restaurants in Chittagong"),
     h("p", { class: "muted" }, "Listed alphabetically. No listing is featured or paid for."),
-    zoneSelect("area", state.area, (v) => { state.area = v; store.set("hana.area", v); renderResults(); }, "Choose your zone to see who delivers"),
+    zoneSelect("area", state.area, (v) => { state.area = v; store.set("hana.area", v); renderResults(); }, "Choose your zone"),
     h("div", { class: "field prefix round fill" }, icon("search"), search),
     h("div", { class: "row" }, h("label", { class: "switch" }, showAll, h("span")), h("label", { for: "showall", class: "max" }, "Include restaurants that do not deliver to my zone")),
     h("div", { class: "space" }),
-    results);
+    results,
+    h("article", { class: "round no-elevate surface-container-high gap-top" },
+      h("h2", { class: "card-title" }, "Own a restaurant or a delivery-only kitchen?"),
+      h("p", null, "Listing is free and Hana takes no commission."),
+      h("nav", null, h("a", { href: "business.html#/join", class: "button" }, icon("add_business"), h("span", null, "Add or claim your business")))));
   renderResults();
 }
 
@@ -735,7 +735,10 @@ function viewAbout() {
       "Claimed listings are checked by community members when claimed and reviewed regularly after that.",
     ].map((x) => h("li", null, icon("check_circle"), h("div", { class: "max" }, x)))),
     sectionTitle("For businesses"),
-    h("p", null, "List or claim your business, confirm orders and publish price changes with the ", h("a", { class: "link", href: "business.html" }, "business tools"), ". Listing is free."),
+    h("p", null, "Listing is free. Use the business tools to add or claim your business, confirm orders and publish price changes. Two community members verify each claim."),
+    h("nav", { class: "wrap" },
+      h("a", { href: "business.html#/join", class: "button" }, icon("add_business"), h("span", null, "Add or claim your business")),
+      h("a", { href: "business.html", class: "button border" }, icon("storefront"), h("span", null, "All business tools"))),
     sectionTitle("Why Hana exists"),
     h("p", null, "Large delivery platforms sit between restaurants and their customers. With that much market power, they set the fees and the terms, and neither side has much say. Hana is an alternative: it takes no commission and leaves the choices with customers and businesses. This is the reason the project exists; it is not an assessment of any particular company."),
     sectionTitle("Commitments"),
@@ -755,7 +758,7 @@ function viewAbout() {
     sectionTitle("Privacy"),
     h("p", null, "Your area, basket, name, address and orders stay on this phone. Hana has no server and sends no information about you. You can download or delete all of it from the Orders page."),
     sectionTitle("Get involved"),
-    h("p", null, repo ? link(repo, "View the code, report a problem or add a restaurant on the project page.") : "The project page is not linked on this host."));
+    h("p", null, repo ? ["The code, the directory and every decision are public on the ", link(repo, "project page"), ". Report a problem or suggest a change there."] : "The project page is not linked on this host."));
 }
 
 /* ---------------------------------------------------------------- routing and start-up */

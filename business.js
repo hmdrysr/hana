@@ -51,9 +51,7 @@ function show(nav, title, ...nodes) {
 function hint(text) { return h("p", { class: "small-text muted" }, text); }
 function input(id, attrs) { return h("input", Object.assign({ id, placeholder: " ", autocomplete: "off" }, attrs || {})); }
 function select(id, label, options, value) {
-  return h("div", { class: "field label suffix border round" },
-    h("select", { id }, options.map(([v, t]) => h("option", { value: v, selected: v === value }, t))),
-    h("label", { for: id, class: "active" }, label), icon("arrow_drop_down"));
+  return selectField(id, label, h("select", { id }, options.map(([v, t]) => h("option", { value: v, selected: v === value }, t))));
 }
 function check(id, label, checked) { return h("label", { class: "checkbox" }, h("input", { type: "checkbox", id, checked: !!checked }), h("span", null, label)); }
 function val(id) { const e = document.getElementById(id); return e ? e.value.trim() : ""; }
@@ -182,7 +180,7 @@ function keyBox(onReady) {
           if (onReady) onReady();
         } catch (e) { status.textContent = "This browser cannot create Ed25519 keys. Use an up-to-date Chrome, Firefox or Safari."; }
       } } }, icon("key"), h("span", null, "Create a new key"))),
-    h("div", { class: "field border round" }, file),
+    textField("keyfile", "Key file", file),
     h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: async () => {
       try {
         B.key = await loadKey(await readFile(file));
@@ -389,7 +387,7 @@ function viewJoin() {
 
     sectionTitle("5. Menu"),
     h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description (optional). Add a category after the section with a slash, like Indian / Starters. For sizes, write the prices like 8 inch: 529; 12 inch: 749. Prices are whole taka and include VAT and every other charge."),
-    h("div", { class: "field border round textarea" }, h("textarea", { id: "items", rows: 10, "aria-label": "Menu items" })),
+    textField("items", "Menu items", h("textarea", { id: "items", rows: 10 })),
 
     sectionTitle("6. Where your menu file will live"),
     h("p", { class: "small-text muted" }, "A claimed listing is edited from the business's own account on GitHub, Codeberg, GitLab or another open forge, so that only the business can change it. Create a free account and a public repository first."),
@@ -700,7 +698,7 @@ function viewUpdate() {
 
   show("update", "Update prices", pageTitle("Update prices and delivery fees"),
     h("p", { class: "muted" }, "For claimed listings. Load your current published menu.json, change what you need and sign the new version with your key. Every change is published in the menu's price history."),
-    h("div", { class: "field border round" }, file),
+    textField("menufile", "Current menu.json", file),
     h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => {
       try {
         prevBytes = await readFile(file);

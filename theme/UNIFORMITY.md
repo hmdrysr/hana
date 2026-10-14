@@ -13,7 +13,7 @@ Every Hana screen follows these rules so that the app looks and behaves the same
 
 ## Type
 
-Four heading levels only. Pages never set font sizes.
+Four heading levels only. Pages never set font sizes. Sizes are fluid (the Utopia method): each grows smoothly between a 320px and a 1280px screen, as set in `theme/theme.css`.
 
 | Use | Element and class | Size |
 |---|---|---|
@@ -23,6 +23,10 @@ Four heading levels only. Pages never set font sizes.
 | Card title | `h2.card-title` | 1.125rem, semibold |
 | Small label above a group (a menu category) | `.overline-label` | 0.75rem, capitals |
 | Secondary text | `.muted`, `.small-text` | |
+
+## No text is cut off
+
+Text wraps; it is never clipped, hidden or shortened with an ellipsis, at any screen width or text size. `tools/browser_test.py` checks every screen for clipped text.
 
 ## Spacing
 
@@ -44,7 +48,7 @@ Use only these, in the forms shown in `app.js`:
 - List: `ul.list` or `ul.list.border`.
 - Chip: `span.chip.small.no-border` for status; `button.chip.medium.border` for an "add" action with a price.
 - Button: `button` (filled, the main action on a screen; at most one per section), `button.border` (secondary), `button.circle.transparent` (icon-only, with an `aria-label`), `a.button` for a link styled as a button.
-- Text field, text area, select: `div.field.label.border.round` (add `.suffix` with an arrow icon for a select, `.textarea` for a text area). Search: `div.field.prefix.round.fill`.
+- Text field, text area, select: a `label.field-label` above a `div.field.border.round` (`.suffix` with an arrow icon for a select, `.textarea` for a text area), built with `textField()` and `selectField()` in `core.js`. Labels are never placed inside fields, so they can wrap. Search: `div.field.prefix.round.fill`.
 - Radio button, checkbox, switch: `label.radio`, `label.checkbox`, `label.switch`.
 - Snackbar (`#snackbar`) for short confirmations; dialog (`#dialog`) for a decision that cannot be undone or that empties the basket.
 
@@ -66,6 +70,6 @@ Canadian English, plain and professional:
 
 `tools/check.py` rejects any class in those files that is not on this list:
 
-active, badge, bold, border, bottom, brand, brand-mark, brand-name, button, card-title, center-align, checkbox, chip, circle, dark, field, fill, flush, gap-top, group-title, l, label, left, left-align, link, list, m, max, medium, muted, no-border, no-elevate, no-space, overline-label, page-title, prefix, price, primary-container, radio, responsive, right-align, round, row, s, section-title, small, small-space, small-text, snackbar, space, suffix, surface-container-high, surface-container-highest, switch, tertiary-container, textarea, top-align, transparent, vertical, vertical-padding, wrap, light
+active, badge, bold, border, bottom, brand, brand-mark, brand-name, button, card-title, center-align, checkbox, chip, circle, dark, field, fill, flush, gap-top, group-title, l, label, left, left-align, link, list, m, max, medium, muted, no-border, no-elevate, no-space, overline-label, page-title, prefix, price, primary-container, radio, responsive, right-align, round, row, s, section-title, small, small-space, small-text, snackbar, space, suffix, surface-container-high, surface-container-highest, switch, tertiary-container, textarea, top-align, transparent, vertical, vertical-padding, wrap, light, field-label
 
 Adding a class to this list is a theme change: it needs a recorded decision and a commit that updates this file and `tools/check.py` together.
