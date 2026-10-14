@@ -20,7 +20,8 @@ These come from the reasons Hana exists (see `README.md`):
 10. One delivery charge per area, fixed by the business and within the limit in `rules.json`. The app adds no fee, surge or distance pricing.
 11. Cash on delivery only. Prepayment is never allowed.
 12. Every price includes VAT and every other charge.
-13. An order is valid only when the business confirms it.
+13. An order is valid only when the business confirms it within 15 minutes.
+14. Businesses keep all order communications for at least six months, and twelve months when there is a dispute.
 
 The community verifies claimed listings and reviews them regularly (`CLAIMS.md`).
 

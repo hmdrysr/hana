@@ -7,6 +7,7 @@ check catches each break.
     python3 tools/selftest.py
 """
 import copy
+import re
 import hashlib
 import http.server
 import json
@@ -370,7 +371,7 @@ def make_claim(r, change=None, sign=True, vouchers=("voucher-a", "voucher-b"), c
                     "public_key": ed.b64u(pub)},
              replaces=old["id"], replaces_hash=sha(r.raw[1]))
     m.pop("listing_note", None)
-    m["pledges"] = {k: {"signed": True, "date": "2026-10-15"} for k in ("rider_identity", "data_handling", "fair_pricing")}
+    m["pledges"] = {k: {"signed": True, "date": "2026-10-15"} for k in ("rider_identity", "data_handling", "fair_pricing", "records")}
     m["delivery"] = {"zones": [{"id": "khulshi", "shape": "named", "areas": ["khulshi"], "fee": 40, "min_order": 300, "eta_min": 45},
                                 {"id": "ccc", "shape": "named", "areas": ["ccc"], "fee": 90, "min_order": 300, "eta_min": 45}]}
     import check
@@ -450,7 +451,13 @@ pubb = ed.b64u(ed.public_key(SECRET))
 conf = order_line.make_confirmation(cl, "ABC123", "30", SECRET)
 check_true("signed confirmation is accepted", order_line.check_confirmation(conf, cl, "ABC123", pubb) == "signed")
 check_true("unsigned confirmation is recognised", order_line.check_confirmation(order_line.make_confirmation(cl, "ABC123"), cl, "ABC123") == "unsigned")
-check_true("confirmation with a changed time is rejected", raises(lambda: order_line.check_confirmation(conf.replace("E=30", "E=10"), cl, "ABC123", pubb)))
+check_true("confirmation with a changed delivery time is rejected", raises(lambda: order_line.check_confirmation(conf.replace("E=30", "E=10"), cl, "ABC123", pubb)))
+nowm = order_line.now_minutes()
+check_true("confirmation with a changed timestamp is rejected", raises(lambda: order_line.check_confirmation(re.sub(r"T=\d+", "T=" + str(nowm - 1), conf), cl, "ABC123", pubb)))
+check_true("confirmation inside the 15-minute window is accepted",
+           order_line.check_confirmation(order_line.make_confirmation(cl, "ABC123", "30", SECRET, minute=nowm + 10), cl, "ABC123", pubb, ordered_minute=nowm) == "signed")
+check_true("confirmation after the 15-minute window is rejected",
+           raises(lambda: order_line.check_confirmation(order_line.make_confirmation(cl, "ABC123", "30", SECRET, minute=nowm + 40), cl, "ABC123", pubb, ordered_minute=nowm)))
 check_true("confirmation for another order is rejected", raises(lambda: order_line.check_confirmation(conf, cl, "ZZZ999", pubb)))
 check_true("confirmation signed by another key is rejected",
            raises(lambda: order_line.check_confirmation(order_line.make_confirmation(cl, "ABC123", "30", bytes(32)), cl, "ABC123", pubb)))

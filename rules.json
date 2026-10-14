@@ -13,5 +13,8 @@
   "prices_include_all_charges": true,
   "max_delivery_fee": 150,
   "draft_order_expiry_hours": 24,
-  "community_review_days": 180
+  "community_review_days": 180,
+  "confirmation_window_minutes": 15,
+  "record_retention_months": 6,
+  "record_retention_months_when_disputed": 12
 }

@@ -56,6 +56,10 @@ Use only these, in the forms shown in `app.js`:
 
 Inline SVG from Material Symbols (outlined), through `icon(name)` in `app.js`. Add a new icon only by adding its path to `ICONS` from the same package version. Icons are decorative (`aria-hidden`); the text or `aria-label` next to them carries the meaning.
 
+## Legal text
+
+Legal text lives in `TERMS.md` (shown on the Terms page) and `CLAIMS.md`. Other screens state only the one rule that matters at that point, in plain words, without warning styling unless the person must act.
+
 ## Writing
 
 Canadian English, plain and professional:

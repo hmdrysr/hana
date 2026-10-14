@@ -168,6 +168,13 @@ def check_rules(root):
         err(rel, "prices_include_all_charges must be true (founding commitments)")
     if not (is_int(data.get("max_delivery_fee")) and 0 < data["max_delivery_fee"] <= 1000):
         err(rel, "max_delivery_fee must be a whole number of taka, more than 0")
+    if not (is_int(data.get("confirmation_window_minutes")) and 5 <= data["confirmation_window_minutes"] <= 60):
+        err(rel, "confirmation_window_minutes must be a whole number from 5 to 60")
+    if not (is_int(data.get("record_retention_months")) and data["record_retention_months"] >= 6):
+        err(rel, "record_retention_months must be at least 6")
+    if not (is_int(data.get("record_retention_months_when_disputed")) and
+            data["record_retention_months_when_disputed"] >= data.get("record_retention_months", 6)):
+        err(rel, "record_retention_months_when_disputed must be at least record_retention_months")
     if not isinstance(data.get("payment_methods_on_delivery"), dict) or not data["payment_methods_on_delivery"]:
         err(rel, "payment_methods_on_delivery must list the ways to pay at delivery")
 
@@ -572,7 +579,7 @@ def check_menu(menu_path, root, area_ids):
             else:
                 err(rel, f"{w}: shape must be named, circle or polygon")
     pledges = data.get("pledges")
-    for p in ("rider_identity", "data_handling", "fair_pricing"):
+    for p in ("rider_identity", "data_handling", "fair_pricing", "records"):
         entry = pledges.get(p) if isinstance(pledges, dict) else None
         if not isinstance(entry, dict) or not isinstance(entry.get("signed"), bool):
             err(rel, f"pledge '{p}' must be present with signed true or false (SPEC.md section 7)")
@@ -595,6 +602,19 @@ def check_menu(menu_path, root, area_ids):
     contact = data.get("contact")
     if not isinstance(contact, list) or not contact:
         err(rel, "contact needs at least one channel (SMS or phone is the baseline)")
+    else:
+        apps = {"whatsapp", "sms", "phone", "email", "xmpp", "matrix", "signal", "telegram", "messenger", "endpoint"}
+        written = False
+        for i, c in enumerate(contact):
+            if not (isinstance(c, dict) and c.get("app") in apps and isinstance(c.get("id"), str) and c["id"].strip()):
+                err(rel, f"contact[{i}] needs app (one of {', '.join(sorted(apps))}) and id")
+                continue
+            if c["app"] == "endpoint" and not HTTPS.match(c["id"]):
+                err(rel, f"contact[{i}]: an endpoint must be an https address")
+            if c["app"] != "phone":
+                written = True
+        if not written and not any(isinstance(c, dict) and c.get("app") == "phone" for c in contact):
+            err(rel, "contact needs at least one channel that can receive a written order")
     items = data.get("items")
     seen_items = set()
     if not isinstance(items, list) or not items:

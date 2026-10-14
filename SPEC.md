@@ -50,25 +50,21 @@ These are design rules, not features. Governance protects them (`GOVERNANCE.md` 
 10. One delivery charge per area, fixed by the business and never above the limit in `rules.json` (proposed: BDT 150). The app adds no fee of its own, and there is no surge, distance or per-customer pricing.
 11. Cash on delivery only. The customer pays the business on delivery or at pickup: in cash, by Bangla QR, by card on a POS terminal, or by mobile wallet transfer. Prepayment is never allowed, under any circumstances.
 12. Every price includes VAT and every other charge (packaging, service, platform or anything else). The delivery fee is the only addition.
-13. An order is valid only when the business confirms it in the customer's chat (section 6.5).
+13. An order is valid only when the business confirms it within 15 minutes (section 6.5). Otherwise it is cancelled automatically.
+14. Businesses keep all order communications for at least six months, and twelve months when there is a dispute (section 6.6 and `TERMS.md`).
 
 A change that breaks one of these is not accepted. `tools/check.py` rejects menu fields for commission, sponsorship, tracking, prepayment and extra charges, enforces the delivery fee limit, and checks `rules.json`.
 
-### 1.5 About screen
+### 1.5 About screen and Terms of Use
 
-One About screen, reachable from the footer of every page. It shows, in plain sentences:
+One About screen, reachable from the navigation. It shows, in plain sentences: that Hana is the Chittagonian word for food; the credit ("Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community."); how Hana works; the rules for every listing; a button for businesses to add or claim a listing; why Hana exists; the commitments; privacy; a short statement that each order is a contract between the customer and the business alone; and a link to the Terms of Use.
 
-- "Hana is the Chittagonian word for food."
-- "Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community."
-- Why Hana exists (section 1.3, shortened) and the commitments in section 1.4.
-- That Hana lists restaurants and formats orders, and takes no payments and runs no deliveries.
-- A link to the repo and to how to help.
-- A **Responsibility** notice, in these words or plainer ones: "Hamid Yasir & Co. assumes no responsibility for anything. Every order, payment and relationship is between the customer and the restaurant. Disputes are handled by the appropriate local government authority and the community." The README repeats it. UNVERIFIED: whether this wording is enough under Bangladeshi law (open item 1).
+The Terms of Use (`TERMS.md`, shown on the app's Terms page) hold the legal text: the nature of the Service, the obligations of businesses and customers, preservation of records, disputes, the disclaimer of warranties, the limitation of liability, privacy, third-party services, governing law and changes. Legal text stays there and in `CLAIMS.md`; screens show only the one rule that matters at that point (for example, "never pay in advance" at checkout). UNVERIFIED: the terms have not been reviewed by a lawyer qualified in Bangladesh (open item 1).
 
 ### 1.6 Logo and footer
 
 - The logo is the takeout box emoji 🥡, shown beside the word "Hana". In the app it is drawn by the phone's emoji font. The home screen icon (`icon-192.png`, `icon-512.png`) and `icon.svg` use the same emoji.
-- Every page has the same footer: "Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community." "Hamid Yasir & Co." links to https://hamidyasir.com. "Hana Community" links to the project repository. The repository address is filled in by `tools/autofill.py` and, on GitHub Pages, worked out by the app from its own address.
+- Every page has the same footer: "Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community.", followed by links to the Terms and to the business tools (or back to the restaurant list). "Hamid Yasir & Co." links to https://hamidyasir.com. "Hana Community" links to the project repository. The repository address is filled in by `tools/autofill.py` and, on GitHub Pages, worked out by the app from its own address.
 
 ## 2. Principles
 
@@ -124,7 +120,7 @@ The full rules, with the allowed classes, are in `theme/UNIFORMITY.md`. In short
 3. One spacing grid in steps of 0.5rem. Pages never use Beer CSS margin helpers (see `theme/UNIFORMITY.md` for the reason) or inline styles.
 4. One colour scheme in Material 3 roles, generated from the seed colour #9a3412. Light and dark follow the phone's setting by default; a toggle in the top bar switches between following the phone, light and dark, and the choice is kept on the device.
 5. Only the components listed in `theme/UNIFORMITY.md` are used: cards, lists, chips, buttons, text fields, selects, radio buttons, checkboxes, switches, the snackbar and the dialog.
-6. A short, fixed list of screen types: restaurant list, restaurant page, basket and checkout, orders and complaint summary, about, and the business tools (start, list or claim, confirm an order, update prices). The courier card comes later. New screen types need a recorded decision.
+6. A short, fixed list of screen types: restaurant list, restaurant page, basket and checkout, orders and complaint summary, about, terms of use, and the business tools (start, list or claim, confirm an order, update prices). The courier card comes later. New screen types need a recorded decision.
 7. Menu files carry data only. The app shows every value from a menu file as plain text. It never renders HTML, CSS or scripts from a menu file, and ignores them if present.
 8. Every change to the theme is a recorded commit.
 
@@ -481,9 +477,17 @@ Plain links, no API:
 
 Messenger and Telegram links may not accept pre-filled text (UNVERIFIED). For these, the client copies the text to the clipboard and tells the customer to paste it.
 
+### 6.2a Other channels (optional for businesses)
+
+WhatsApp and text messages are enough for most businesses. A business that already uses other channels may add them to its listing; nothing pushes businesses towards them:
+
+- **Email** (`mailto:` with the order filled in) and **XMPP** (`xmpp:` with the message body filled in).
+- **Matrix**, **Signal**, **Telegram** and **Messenger**: these links cannot carry a prepared message, so the app copies the order and the customer pastes it.
+- **Order endpoint**: an https address that accepts the order as plain text by POST and allows requests from the Hana site (CORS). The app sends the order directly, without opening another app. A self-hosted ntfy topic is one free, open-source option. A plain-text POST needs no special server set-up. The order still needs the business's confirmation within 15 minutes.
+
 ### 6.3 Order status
 
-An order is **waiting for confirmation** until the customer pastes the business's confirmation (section 6.5), then **confirmed**. Unconfirmed orders are removed after 24 hours. Only confirmed orders can produce a complaint summary.
+An order is **waiting for confirmation** until the customer pastes the business's reply (section 6.5). It then becomes **confirmed** or **declined**. With no confirmation within 15 minutes it is **cancelled automatically**. The customer can also cancel while waiting. Only confirmed orders can produce a complaint summary.
 
 ### 6.4 Order check line
 
@@ -503,18 +507,24 @@ Limits are in section 5.4.
 
 ### 6.5 Business confirmation
 
-An order is valid only when the business confirms it. This also prevents abuse: an order that was never sent cannot be confirmed, and only confirmed orders produce a complaint summary.
+An order is valid only when the business confirms it within **15 minutes** (`confirmation_window_minutes` in `rules.json`). This protects both sides: an order that was never sent cannot be confirmed, only confirmed orders produce a complaint summary, and a customer is never left waiting on an order nobody answered.
 
-- The business replies in the same chat. With the business tools page ("Confirm an order"), the business pastes the customer's message; the page re-prices it from the published menu, flags any mismatch, and prepares the reply:
-  `CONFIRMED hana1 O=<order code> C=<check code> E=<minutes> K=<key id> S=<signature>`
-  S is an Ed25519 signature by the business's key over `hana1-confirm|<check line>|<order code>|<minutes>`.
-- The customer pastes the reply into the order on the Orders page. The app checks the signature against the public key in the saved menu file (Web Crypto API) and marks the order **confirmed (signature checked)**.
-- An unclaimed listing has no key. Its confirmation is the plain reply "CONFIRMED <order code>", marked **confirmed by message (not signed)**; the chat screenshot is then the main evidence. A claimed listing must sign: the app refuses an unsigned confirmation for it.
-- If the browser cannot check Ed25519 signatures, the order is marked confirmed with a note that the signature was not checked.
-- An order not confirmed within 24 hours (`rules.json`) is removed from the phone. The customer can also cancel it. Every addition, confirmation, cancellation and removal is recorded in an activity record on the phone, which the customer can view and download.
+- The business replies in the same chat. With the business tools page ("Confirm an order"), it pastes the customer's message; the page re-prices it from the published menu, flags any mismatch, and prepares the reply:
+  `CONFIRMED hana1 O=<order code> C=<check code> E=<minutes> T=<time> K=<key id> S=<signature>`
+  T is the confirmation time in whole minutes since 1970 (UTC). S is an Ed25519 signature by the business's key over `hana1-confirm|<check line>|<order code>|<E>|<T>`.
+- The business can also decline: `DECLINED <order code>`.
+- The customer pastes the reply into the order on the Orders page. The app checks the signature against the public key in the saved menu file (Web Crypto API) and that T falls within the window after the order was prepared.
+- An unclaimed listing has no key. Its confirmation is the plain reply "CONFIRMED <order code>", accepted only within the window and marked **confirmed by message (not signed)**. A claimed listing must sign: the app refuses an unsigned confirmation for it.
+- **Automatic cancellation:** an order with no confirmation 15 minutes after it was prepared is marked **cancelled automatically**. The customer does nothing. If a signed confirmation dated inside the window is pasted later, the order is restored to confirmed. Cancelled, declined and expired records are removed after 24 hours. Every change is written to the activity record on the phone.
+- While waiting, the customer can send a reminder through the same channel, or cancel.
+- The app cannot see the customer's chats, so it cannot learn of a confirmation by itself; pasting the reply is the one step the customer takes. A business with an order endpoint (section 6.2) still confirms in a chat or by its own reply channel.
 - `tools/order_line.py` builds and checks confirmation lines in the same format, for vouchers, authorities and tests.
 
 What this does not stop: a customer can still forge an unsigned confirmation for an unclaimed listing, and nothing stops a business from confirming and then not delivering. Signed confirmations, the chat history and the public complaint bodies cover those cases.
+
+### 6.6 Keeping records
+
+Businesses keep all communications about orders placed through Hana (order messages, confirmations, courier details and payment records) for at least six months from the order date, and for at least twelve months when a complaint or dispute has been raised or is reasonably anticipated. Customers are encouraged to do the same; the app keeps confirmed orders and a downloadable record. Deleting, unsending or altering material communications may lead the deciding authority to draw an adverse inference against the party responsible. This is a suggested rule; decisions rest with the competent authorities under the law of Bangladesh (`TERMS.md`, section 6). The fourth pledge (section 7.4) commits claimed businesses to it.
 
 ## 7. Couriers and the restaurant pledge
 
@@ -540,7 +550,11 @@ Notes:
 
 > Every price I list includes VAT and every other charge. The delivery fee is the only addition, and it never exceeds the Hana limit. I take payment only on delivery or at pickup, and I will never ask a customer to pay in advance.
 
-### 7.4 Courier card
+### 7.4 Record-keeping pledge
+
+> I will confirm or decline every order within 15 minutes. I will keep all communications about orders placed through Hana for at least six months, and for at least twelve months when there is a complaint or dispute, and I will not delete, unsend or alter them.
+
+### 7.5 Courier card
 
 The business sends a courier card in the order chat when it confirms the order, or before delivery: courier name, courier phone number, and optionally a photo or bike plate. The app does not prepare a slip for the courier.
 
@@ -554,7 +568,7 @@ Client behaviour:
 - At handover the customer shows the order code.
 - Report button: "Courier number does not match." It records the report on the device and shows the police and consumer-rights routes (section 9).
 
-### 7.5 Tracking
+### 7.6 Tracking
 
 No live map. The courier may share live location in the order chat using the messaging app's own feature. Otherwise the restaurant sends plain status messages. A server relay is out of scope unless users ask for it.
 
@@ -599,7 +613,9 @@ The client fills a complaint only from a **confirmed** order: complainant, selle
 - Orders, favourites and courier cards are stored locally (IndexedDB).
 - Each order keeps the exact signed menu file it was priced from, so the customer has proof of the published price.
 - The phone keeps the highest menu version seen for each restaurant (rollback protection, section 5.4) and any photos the customer chose to load.
-- Browsers can clear storage. Provide one-tap export and import, and warn before data is cleared.
+- Browsers can clear storage. The Orders page offers one-tap download and restore (restore adds missing orders and never overwrites), and the app asks the browser to keep its storage (persistent storage).
+- **Updates without clearing anything:** GitHub Pages lets browsers cache files for about 10 minutes and cannot be configured otherwise. The service worker therefore fetches every file with "no-cache" (the browser asks the server whether the file changed; an unchanged file costs a short 304 reply) and keeps the last copy only for offline use. The worker itself is registered with `updateViaCache: "none"` and checked on every visit. While a page stays open, it re-checks the code files whenever it comes back into view and reloads itself, unless the person is typing, in which case the new version loads next time.
+- Updates replace only the app's code and design. Orders, the basket, saved details and the activity record live in the browser's local storage, which updates never touch.
 - Load no third-party scripts, fonts or analytics.
 
 ## 11. Repository and contributions

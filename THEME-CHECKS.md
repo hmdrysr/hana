@@ -14,6 +14,7 @@ Results of the theme checklist in `SPEC.md`, section 3.1. Each entry gives the d
 | Script errors | Page errors recorded during the browser test | None |
 | Colour-mode toggle | Browser test: the toggle cycles through phone setting, light and dark | Pass |
 | Signatures in the browser | Chromium 141: a key created and a menu and confirmation signed on the business tools page were accepted by `tools/hana_sign.py` and `tools/order_line.py`; a changed confirmation was refused | Pass in Chromium only. Older browsers may not support Ed25519. |
+| Updates reach open pages | Chromium: after a file changed on the server, the open page reloaded itself when it came back into view and served the new file; no cache was cleared | Pass |
 | Works offline after the first visit | Not tested | Not checked |
 | Low-end Android phone and older Android browser | Not tested | Not checked. Beer CSS uses `:is()` and `:has()`; browsers released before 2023 may ignore those rules. |
 | Screen reader | Not tested | Not checked. Landmarks, labels and `aria-label`s are in place, but no screen reader was run. |

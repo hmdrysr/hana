@@ -29,7 +29,7 @@ BASE = ROOT_URL + "/index.html"
 BIZ = ROOT_URL + "/business.html"
 TAVA = "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7"
 MEAL = "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b"
-SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BASE + "#/about",
+SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BASE + "#/about", BASE + "#/terms",
            BIZ, BIZ + "#/join", BIZ + "#/confirm", BIZ + "#/update"]
 failed = 0
 
@@ -150,13 +150,33 @@ with sync_playwright() as p:
     ok("a new order waits for confirmation", "Waiting for the business to confirm" in page.inner_text("article"))
     ok("no complaint summary before confirmation", "Problem with this order?" not in page.inner_text("article"))
     page.locator("textarea").first.fill("CONFIRMED ZZZZZZ")
-    page.click("text=Confirm order")
+    page.click("text=Save the reply")
     page.wait_for_timeout(300)
     ok("a confirmation for another order is refused", "different order" in page.inner_text("article"))
     page.locator("textarea").first.fill("Thank you. CONFIRMED " + code)
-    page.click("text=Confirm order")
+    page.click("text=Save the reply")
     page.wait_for_timeout(300)
     ok("the business's confirmation confirms the order", "Confirmed by message" in page.inner_text("article") and "Problem with this order?" in page.inner_text("article"))
+    stale = page.evaluate("""() => {
+        const orders = JSON.parse(localStorage.getItem("hana.orders"));
+        const o = Object.assign({}, orders[0], { code: "AAAAAA", status: "awaiting", confirmation: null,
+            created: new Date(Date.now() - 20 * 60000).toISOString() });
+        orders.unshift(o);
+        localStorage.setItem("hana.orders", JSON.stringify(orders));
+        return o.code;
+    }""")
+    page.reload()
+    page.wait_for_selector("article")
+    first = page.locator("article").first
+    ok("an order not confirmed within 15 minutes is cancelled automatically", "Cancelled automatically" in first.inner_text(), first.inner_text()[:200])
+    page.locator("textarea").first.fill("CONFIRMED " + stale)
+    page.locator("article").first.locator("text=Save the reply").click()
+    page.wait_for_timeout(300)
+    ok("a late plain confirmation is refused", "has passed" in page.locator("article").first.inner_text())
+    ok("the automatic cancellation is in the activity record", "cancelled automatically" in page.inner_text("main"))
+    page.goto(BASE + "#/terms")
+    page.wait_for_selector("text=Limitation of liability")
+    ok("the Terms page shows the terms", "Governing law" in page.inner_text("main"))
     ok("no script errors", not errors, errors)
     browser.close()
 

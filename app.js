@@ -10,7 +10,7 @@ const state = {
   restaurants: [],
   loaded: false,
   loadError: "",
-  rules: { max_delivery_fee: 150, payment_methods_on_delivery: { cash: "Cash" }, draft_order_expiry_hours: 24 },
+  rules: { max_delivery_fee: 150, payment_methods_on_delivery: { cash: "Cash" }, draft_order_expiry_hours: 24, confirmation_window_minutes: 15, record_retention_months: 6, record_retention_months_when_disputed: 12 },
   area: store.get("hana.area", ""),
   showAll: false,
   query: "",
@@ -400,11 +400,12 @@ function orderChannels(menu) {
   const seen = new Set();
   for (const c of menu.contact || []) {
     const app = c.app === "phone" ? "sms" : c.app;
-    if (!CHANNELS[app] || app === "phone") continue;
-    const k = app + ":" + String(c.id).replace(/^\+/, "");
+    if (!CHANNELS[app]) continue;
+    const id = CHANNEL_IDS_ARE_PHONES.includes(app) ? String(c.id).replace(/^\+/, "") : String(c.id);
+    const k = app + ":" + id;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ app, id: String(c.id).replace(/^\+/, ""), preferred: !!c.preferred });
+    out.push({ app, id, preferred: !!c.preferred });
   }
   return out;
 }
@@ -515,7 +516,7 @@ function viewBasket() {
   const anyPreferred = channels.some((x) => x.preferred);
   const channelRadios = channels.map((c, i) => h("label", { class: "radio" },
     h("input", { type: "radio", name: "channel", value: String(i), checked: c.preferred || (i === 0 && !anyPreferred) }),
-    h("span", null, CHANNELS[c.app].label + " · " + phoneText(c.id))));
+    h("span", null, CHANNELS[c.app].label + (c.app === "endpoint" ? " (" + contactText(c.app, c.id) + ")" : " · " + contactText(c.app, c.id)))));
 
   const form = h("form", { novalidate: true, on: { submit: async (e) => {
     e.preventDefault();
@@ -530,26 +531,35 @@ function viewBasket() {
     store.set("hana.me", remember.checked ? { name: name.value.trim(), address: address.value.trim() } : { name: "", address: "" });
     const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), address: address.value.trim(), note: note.value.trim() });
     const c = channels[Number((form.querySelector("input[name=channel]:checked") || { value: 0 }).value)];
-    const link = CHANNELS[c.app].link(c.id, o.message);
+    const ch = CHANNELS[c.app];
+    let sentDirect = false, directError = "";
+    if (ch.direct) {
+      try { await sendDirect(c.id, o.message); sentDirect = true; } catch (err) { directError = err.message; }
+      if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent directly. " + directError + " Choose another way to send it."))); return; }
+    }
+    const link = ch.direct ? null : ch.link(c.id, o.message, o.code);
+    const created = new Date().toISOString();
     const orders = store.get("hana.orders", []);
-    orders.unshift({ code: o.code, status: "awaiting", created: new Date().toISOString(), restaurant_id: r.id, restaurant: menu.name,
+    orders.unshift({ code: o.code, status: "awaiting", created, restaurant_id: r.id, restaurant: menu.name,
       claimed: menu.claimed === true, public_key: menu.owner && menu.owner.public_key ? menu.owner.public_key : null,
       menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
       items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price })), subtotal: o.sub, fee: o.fee,
-      message: o.message, check_line: o.check, channel: c.app, menu_file: r.raw });
+      message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw });
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
-    log("Prepared order " + o.code + " for " + menu.name + ".");
+    log("Prepared order " + o.code + " for " + menu.name + (sentDirect ? "; sent directly to the business." : "."));
     state.basket = null; saveBasket();
-    out.replaceChildren(
-      h("h2", { class: "section-title" }, "Order " + o.code + ": send it, then wait for confirmation"),
+    const win = state.rules.confirmation_window_minutes;
+    out.replaceChildren(...[
+      h("h2", { class: "section-title" }, sentDirect ? "Order " + o.code + " sent" : "Order " + o.code + ": send it now"),
       savedOk ? null : notice("warn", h("p", { class: "flush" }, "This phone could not save a copy of the order. Copy the message below to keep a record.")),
-      h("p", null, "Hana does not send anything. Send this message from your own app. The order counts only when " + menu.name + " confirms it in the same chat."),
+      h("p", null, sentDirect ? "Your order went straight to " + menu.name + "." : (ch.prefill ? "Your app opens with the message ready. Press send there." : "Copy the message, open " + ch.label + " and paste it there.")),
+      h("p", null, menu.name + " has " + win + " minutes to confirm. If it does not, the order is cancelled automatically."),
       h("pre", null, o.message),
       h("nav", { class: "wrap gap-top" },
-        h("a", { href: link, class: "button", rel: "noopener", target: "_blank" }, icon(CHANNELS[c.app].icon), h("span", null, "Open " + CHANNELS[c.app].label)),
+        link ? h("a", { href: link, class: "button", rel: "noopener", target: "_blank", on: { click: () => { if (!ch.prefill) copy(o.message); } } }, icon(ch.icon), h("span", null, ch.prefill ? "Open " + ch.label : "Copy and open " + ch.label)) : null,
         h("button", { type: "button", class: "border", on: { click: () => copy(o.message) } }, icon("content_copy"), h("span", null, "Copy message"))),
-      h("p", { class: "small-text muted" }, "When the business replies with its confirmation, paste the reply on the Orders page. An order that is not confirmed within " + state.rules.draft_order_expiry_hours + " hours is removed from this phone."),
-      h("nav", null, h("a", { href: "#/orders", class: "button border" }, icon("receipt_long"), h("span", null, "Go to Orders"))));
+      h("p", { class: "small-text muted" }, "When the business replies, paste its reply on the Orders page."),
+      h("nav", null, h("a", { href: "#/orders", class: "button border" }, icon("receipt_long"), h("span", null, "Go to Orders")))].filter(Boolean));
     form.remove();
     out.scrollIntoView({ behavior: "smooth", block: "start" });
   } } },
@@ -582,27 +592,41 @@ function viewBasket() {
 function log(text) {
   const entries = store.get("hana.log", []);
   entries.unshift({ at: new Date().toISOString(), text });
-  store.set("hana.log", entries.slice(0, 200));
+  store.set("hana.log", entries.slice(0, 500));
 }
 
 /* Orders that the business never confirmed are removed after the expiry time, so an unsent or
    unconfirmed order cannot be kept and used for a complaint. */
 function expireOrders() {
-  const hours = Number(state.rules.draft_order_expiry_hours) || 24;
+  const win = Number(state.rules.confirmation_window_minutes) || 15;
+  const keepHours = Number(state.rules.draft_order_expiry_hours) || 24;
   const now = Date.now();
   const orders = store.get("hana.orders", []);
+  let changed = false;
   const keep = orders.filter((o) => {
-    if (!o.status) o.status = o.confirmation ? "confirmed" : "awaiting";
-    if (o.status !== "awaiting") return true;
-    const expired = now - new Date(o.created || o.at).getTime() > hours * 3600 * 1000;
-    if (expired) log("Removed order " + o.code + " for " + o.restaurant + ": not confirmed by the business within " + hours + " hours.");
-    return !expired;
+    if (!o.status) { o.status = o.confirmation ? "confirmed_unsigned" : "awaiting"; changed = true; }
+    const age = now - new Date(o.created || o.at).getTime();
+    if (o.status === "awaiting" && age > win * 60000) {
+      o.status = "expired";
+      o.closed_at = new Date().toISOString();
+      changed = true;
+      log("Order " + o.code + " for " + o.restaurant + " was cancelled automatically: no confirmation within " + win + " minutes.");
+    }
+    if (["expired", "declined", "cancelled"].includes(o.status) && age > keepHours * 3600000) {
+      log("Removed the record of unconfirmed order " + o.code + " for " + o.restaurant + " after " + keepHours + " hours.");
+      changed = true;
+      return false;
+    }
+    return true;
   });
-  if (keep.length !== orders.length) store.set("hana.orders", keep);
+  if (changed) store.set("hana.orders", keep);
 }
 
 const STATUS_TEXT = {
   awaiting: ["Waiting for the business to confirm", "warn"],
+  expired: ["Cancelled automatically: not confirmed in time", "info"],
+  declined: ["Declined by the business", "info"],
+  cancelled: ["Cancelled by you", "info"],
   confirmed_signed: ["Confirmed by the business (signature checked)", "ok"],
   confirmed_unsigned: ["Confirmed by message (not signed)", "info"],
   confirmed_unchecked: ["Confirmed (this browser cannot check the signature)", "info"],
@@ -619,6 +643,7 @@ function complaintText(o) {
     "Items subtotal: " + money(o.subtotal), "Delivery fee: " + (o.mode === "pickup" ? "none (pickup)" : o.fee === null ? "not stated" : money(o.fee)),
     "", "Message sent to the business:", o.message || o.kitchen_message, "",
     "Attach a screenshot of the chat showing the order and the business's confirmation.",
+    "Under the Hana Terms of Use, the business must keep its communications about this order for at least " + state.rules.record_retention_months + " months, or " + state.rules.record_retention_months_when_disputed + " months once a dispute is raised.",
     "", "Description of the problem:", "", "Amount in dispute (BDT):", ""].join("\n");
 }
 
@@ -632,31 +657,49 @@ function orderCard(o, orders) {
     h("nav", { class: "wrap small-space" }, chip(st[0], st[1])),
   ];
   const save = () => store.set("hana.orders", orders);
-  if (o.status === "awaiting") {
+  const win = Number(state.rules.confirmation_window_minutes) || 15;
+  const deadline = new Date(new Date(o.created || o.at).getTime() + win * 60000);
+  const reminder = () => {
+    const ch = CHANNELS[o.channel];
+    const text = "Reminder: order " + o.code + " is waiting for your confirmation. To confirm, reply: CONFIRMED " + o.code;
+    if (!ch || !o.channel_id) { copy(text); return; }
+    if (ch.direct) { sendDirect(o.channel_id, text).then(() => snackbar("Reminder sent."), () => snackbar("Could not send the reminder.")); return; }
+    if (!ch.prefill) copy(text);
+    window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener");
+  };
+  if (o.status === "awaiting" || o.status === "expired") {
     const reply = h("textarea", { id: "reply-" + o.code, rows: 3, placeholder: " " });
+    const left = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / 60000));
     kids.push(
-      h("p", { class: "small-text muted" }, "Paste the business's reply. It contains CONFIRMED and your order code. Only a confirmed order can be used for a complaint."),
+      o.status === "awaiting"
+        ? h("p", { class: "small-text" }, "The business must confirm by " + clock(String(deadline.getHours()).padStart(2, "0") + ":" + String(deadline.getMinutes()).padStart(2, "0")) + " (" + left + (left === 1 ? " minute" : " minutes") + " left). If it does not, this order is cancelled automatically.")
+        : h("p", { class: "small-text" }, "No confirmation arrived within " + win + " minutes, so this order was cancelled. If the business did confirm in time, paste its reply below. This record is removed after " + state.rules.draft_order_expiry_hours + " hours."),
       textField("reply-" + o.code, "Business's reply", reply),
       h("nav", { class: "wrap" },
         h("button", { type: "button", on: { click: async () => {
-          const res = await readConfirmation(reply.value, o, o.public_key);
+          const res = await readConfirmation(reply.value, o, o.public_key, win);
           if (res.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, res.error))); return; }
-          o.status = "confirmed_" + res.status;
+          o.status = res.status === "declined" ? "declined" : "confirmed_" + res.status;
           o.confirmation = res.line;
           o.eta = res.eta;
           o.confirmed_at = new Date().toISOString();
+          if (res.minute) o.confirmed_minute = res.minute;
           save();
-          log("Order " + o.code + " confirmed: " + STATUS_TEXT[o.status][0] + ".");
+          log("Order " + o.code + ": " + STATUS_TEXT[o.status][0] + ".");
           viewOrders();
-        } } }, icon("check_circle"), h("span", null, "Confirm order")),
-        h("button", { type: "button", class: "border", on: { click: async () => {
-          if (!(await ask("Cancel this order?", "This removes the order from this phone. If you already sent it, tell the business too.", "Cancel order"))) return;
-          orders.splice(orders.indexOf(o), 1);
+        } } }, icon("check_circle"), h("span", null, "Save the reply")),
+        o.status === "awaiting" ? h("button", { type: "button", class: "border", on: { click: reminder } }, icon("send"), h("span", null, "Send a reminder")) : null,
+        o.status === "awaiting" ? h("button", { type: "button", class: "border", on: { click: async () => {
+          if (!(await ask("Cancel this order?", "Tell the business that you are cancelling. The order will be marked as cancelled on this phone.", "Cancel order"))) return;
+          o.status = "cancelled";
+          o.closed_at = new Date().toISOString();
           save();
           log("Cancelled order " + o.code + " for " + o.restaurant + " before confirmation.");
           viewOrders();
-        } } }, icon("close"), h("span", null, "Cancel order"))),
+        } } }, icon("close"), h("span", null, "Cancel order")) : null),
       out);
+  } else if (o.status === "declined" || o.status === "cancelled") {
+    kids.push(h("p", { class: "small-text muted" }, "This record is removed after " + state.rules.draft_order_expiry_hours + " hours."));
   } else {
     if (o.eta && o.eta !== "?") kids.push(h("p", { class: "small-text" }, "Expected in about " + o.eta + " minutes from confirmation."));
     kids.push(h("details", { class: "gap-top" }, h("summary", { class: "link" }, "Problem with this order?"),
@@ -671,7 +714,7 @@ function orderCard(o, orders) {
 function viewOrders() {
   expireOrders();
   const orders = store.get("hana.orders", []);
-  const nodes = [pageTitle("Orders"), h("p", { class: "muted" }, "Orders are stored only on this phone. An order counts once the business confirms it. Unconfirmed orders are removed after " + state.rules.draft_order_expiry_hours + " hours.")];
+  const nodes = [pageTitle("Orders"), h("p", { class: "muted" }, "Orders are stored only on this phone. An order counts once the business confirms it within " + state.rules.confirmation_window_minutes + " minutes; otherwise it is cancelled automatically.")];
   if (!orders.length) nodes.push(h("p", { class: "muted" }, "No orders yet."));
   for (const o of orders) nodes.push(orderCard(o, orders));
   const entries = store.get("hana.log", []);
@@ -682,6 +725,8 @@ function viewOrders() {
     sectionTitle("Your data"),
     h("nav", { class: "wrap" },
       h("button", { type: "button", class: "border", on: { click: exportData } }, icon("download"), h("span", null, "Download my data")),
+      h("button", { type: "button", class: "border", on: { click: () => document.getElementById("restore-file").click() } }, icon("upload"), h("span", null, "Restore from a download")),
+      h("input", { type: "file", id: "restore-file", accept: ".json,application/json", hidden: true, "aria-label": "Restore from a download", on: { change: (e) => importData(e.target) } }),
       h("button", { type: "button", class: "border", on: { click: async () => {
         if (await ask("Delete everything on this phone?", "This removes your orders, saved details, record, area and basket. It cannot be undone. Download your data first if you want a copy.", "Delete")) {
           for (const k of ["hana.orders", "hana.me", "hana.basket", "hana.area", "hana.log"]) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
@@ -689,6 +734,29 @@ function viewOrders() {
         }
       } } }, icon("delete"), h("span", null, "Delete everything"))));
   show("orders", "Orders", ...nodes);
+}
+
+/* Adds orders and records from a downloaded copy. Nothing on this phone is overwritten or removed. */
+function importData(fileInput) {
+  const f = fileInput.files && fileInput.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      const orders = store.get("hana.orders", []);
+      const have = new Set(orders.map((o) => o.code));
+      const added = (data.orders || []).filter((o) => o && o.code && !have.has(o.code));
+      store.set("hana.orders", orders.concat(added));
+      const entries = store.get("hana.log", []);
+      const seen = new Set(entries.map((e) => e.at + e.text));
+      store.set("hana.log", entries.concat((data.record || []).filter((e) => e && !seen.has(e.at + e.text))).sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 500));
+      log("Restored " + added.length + (added.length === 1 ? " order" : " orders") + " from a downloaded copy.");
+      viewOrders();
+      snackbar("Restored " + added.length + (added.length === 1 ? " order." : " orders."));
+    } catch (e) { snackbar("This file is not a Hana download."); }
+  };
+  reader.readAsText(f);
 }
 
 function exportData() {
@@ -719,10 +787,6 @@ function viewAbout() {
     pageTitle("About Hana"),
     h("p", null, "Hana is the Chittagonian word for food. It is a free directory of restaurants in Chittagong and a tool for preparing orders."),
     h("p", null, "Built by ", link(state.site.company_url || "https://hamidyasir.com", "Hamid Yasir & Co."), " for the people of Chittagong. Managed by the ", link(repo, "Hana Community"), "."),
-    sectionTitle("Responsibility"),
-    notice("warn", h("p", { class: "bold flush" }, "Hamid Yasir & Co. assumes no responsibility for anything."),
-      h("p", { class: "flush" }, "All transactions and relationships are between the customer and the restaurant. All disputes are handled by the appropriate local government authority and the community.")),
-    h("p", null, "For a problem involving money, contact the Directorate of National Consumer Rights Protection (DNCRP) at 16121. The Orders page prepares a complaint summary for you."),
     sectionTitle("How it works"),
     h("p", null, "Hana lists restaurants and prepares your order message. You send the message yourself, from your own phone, through the app the business uses. The order counts once the business confirms it in the same chat. Hana does not take payments, prepare food or make deliveries."),
     sectionTitle("Rules for every listing"),
@@ -731,7 +795,8 @@ function viewAbout() {
       "Every price includes VAT and every other charge. The delivery fee is the only addition.",
       "Each business sets one fixed delivery fee for each area it serves, up to " + money(state.rules.max_delivery_fee) + ".",
       "A business may offer pickup, with no delivery fee.",
-      "An order counts only when the business confirms it. Unconfirmed orders are removed from your phone after " + state.rules.draft_order_expiry_hours + " hours.",
+      "Businesses confirm or decline each order within " + state.rules.confirmation_window_minutes + " minutes. Otherwise the order is cancelled automatically.",
+      "Businesses keep all order communications for at least " + state.rules.record_retention_months + " months, or " + state.rules.record_retention_months_when_disputed + " months if there is a dispute.",
       "Claimed listings are checked by community members when claimed and reviewed regularly after that.",
     ].map((x) => h("li", null, icon("check_circle"), h("div", { class: "max" }, x)))),
     sectionTitle("For businesses"),
@@ -757,8 +822,24 @@ function viewAbout() {
     ].map((x) => h("li", null, x))),
     sectionTitle("Privacy"),
     h("p", null, "Your area, basket, name, address and orders stay on this phone. Hana has no server and sends no information about you. You can download or delete all of it from the Orders page."),
+    sectionTitle("Terms and disputes"),
+    h("p", null, "Hana is a directory and an order-preparation tool. Each order is a contract between the customer and the business alone; Hamid Yasir & Co. and the Hana Community are not parties to it and do not handle payments, food or deliveries. Disputes are for the parties and the competent authorities, starting with the Directorate of National Consumer Rights Protection (16121)."),
+    h("nav", null, h("a", { href: "#/terms", class: "button border" }, h("span", null, "Read the Terms of Use"))),
     sectionTitle("Get involved"),
     h("p", null, repo ? ["The code, the directory and every decision are public on the ", link(repo, "project page"), ". Report a problem or suggest a change there."] : "The project page is not linked on this host."));
+}
+
+/* ---------------------------------------------------------------- terms */
+
+async function viewTerms() {
+  show("about", "Terms of Use", pageTitle("Terms of Use"), h("p", { class: "muted" }, "Loading…"));
+  try {
+    const r = await fetch("TERMS.md", { cache: "no-cache" });
+    if (!r.ok) throw new Error();
+    show("about", "Terms of Use", ...renderMarkdown(await r.text()));
+  } catch (e) {
+    show("about", "Terms of Use", pageTitle("Terms of Use"), notice("warn", h("p", { class: "flush" }, "The terms could not be loaded. They are also in TERMS.md on the project page.")));
+  }
 }
 
 /* ---------------------------------------------------------------- routing and start-up */
@@ -773,6 +854,7 @@ function route() {
   if (hash === "#/basket") return viewBasket();
   if (hash === "#/orders") return viewOrders();
   if (hash === "#/about") return viewAbout();
+  if (hash === "#/terms") return viewTerms();
   return viewList();
 }
 
@@ -788,6 +870,4 @@ updateBasketBadge();
 route();
 loadAll().then(() => { expireOrders(); fixFooterLink(); updateBasketBadge(); route(); });
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => { /* the app still works online */ });
-}
+setupUpdates(["index.html", "core.js", "app.js", "theme/theme.css"]);

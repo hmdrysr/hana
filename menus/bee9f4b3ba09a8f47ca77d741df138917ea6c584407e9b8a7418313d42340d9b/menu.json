@@ -93,6 +93,9 @@
     },
     "fair_pricing": {
       "signed": false
+    },
+    "records": {
+      "signed": false
     }
   },
   "items": [

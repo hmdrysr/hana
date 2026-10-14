@@ -103,4 +103,4 @@ The Oriental menu photograph is too blurry to match each price to its item relia
 
 ## Making this listing official
 
-The owner, or a volunteer working with the owner, confirms every price, adds the missing items, fills in fees and hours, signs the three pledges, creates a key and signs the menu. That produces a new version, and every price change from the entries above is announced automatically (see `SPEC.md`, section 5.4).
+The owner, or a volunteer working with the owner, confirms every price, adds the missing items, fills in fees and hours, signs the four pledges, creates a key and signs the menu. That produces a new version, and every price change from the entries above is announced automatically (see `SPEC.md`, section 5.4).

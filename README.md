@@ -6,9 +6,9 @@ Created by [Hamid Yasir & Co.](https://hamidyasir.com) for the people of Chittag
 
 Live site (once GitHub Pages is turned on; see `SETUP.md`): https://hmdrysr.github.io/hana/
 
-## Responsibility
+## Terms
 
-Hamid Yasir & Co. assumes no responsibility for anything. All transactions and relationships are between the customer and the restaurant. All disputes are handled by the appropriate local government authority and the community. Hana lists restaurants and prepares order messages; it does not take payments, prepare food or make deliveries.
+Hana is a directory and an order-preparation tool. Each order is a contract between the customer and the business alone; Hamid Yasir & Co. and the Hana Community are not parties to it and do not handle payments, food or deliveries. The full terms, including the rules for businesses and the limitation of liability, are in `TERMS.md` and on the app's Terms page.
 
 ## Status
 
@@ -48,7 +48,8 @@ This explains why the project exists. It is not an audit: Hana has not measured 
 10. **One delivery charge, set by the business and capped.** Hana adds no fee of its own and has no surge or distance pricing. An order is for one restaurant at a time.
 11. **Cash on delivery only.** Pay on delivery or at pickup, in cash, by Bangla QR, by card on a POS terminal or by mobile wallet transfer. No business may ask for payment in advance.
 12. **All charges included.** Every price includes VAT and every other charge; the delivery fee is the only addition.
-13. **Orders are confirmed by the business.** An order counts only once the business confirms it.
+13. **Orders are confirmed by the business.** An order counts only once the business confirms it, within 15 minutes; otherwise it is cancelled automatically.
+14. **Records are kept.** Businesses keep all order communications for at least six months, and twelve months when there is a dispute. See `TERMS.md`.
 
 These promises are protected by `GOVERNANCE.md`. A change that adds fees, paid placement, tracking or lock-in is not accepted.
 
@@ -63,6 +64,7 @@ Read `CONTRIBUTING.md`. You can list a restaurant, report a wrong listing, fix a
 | `index.html`, `core.js`, `app.js`, `sw.js`, `site.json`, `manifest.webmanifest`, `icon*` | The customer app. Plain files, no build step |
 | `business.html`, `business.js` | Business tools: list or claim, confirm orders, update prices |
 | `rules.json` | Rules every listing follows: cash on delivery only, all-inclusive prices, the delivery fee limit |
+| `TERMS.md` | Terms of Use: rules for businesses and customers, records, disputes and liability |
 | `CLAIMS.md`, `claims/` | How claims are verified by the community, and the claim records |
 | `SPEC.md` | The full design, with open items and what is still unverified |
 | `SETUP.md` | How to put this on GitHub, step by step |

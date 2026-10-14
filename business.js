@@ -14,6 +14,7 @@ const PLEDGES = {
   rider_identity: "Every courier who delivers for this business uses a mobile number registered in their own name with their own NID. I have checked this myself and will check every new courier before their first delivery.",
   data_handling: "I will give couriers only what they need to deliver: the customer's first name or nickname, the address or landmark, the order code and the amount to collect. I will not keep customer details longer than needed or share them with anyone else.",
   fair_pricing: "Every price I list includes VAT and every other charge. The delivery fee is the only addition, and it never exceeds the Hana limit. I take payment only on delivery or at pickup, and I will never ask a customer to pay in advance.",
+  records: "I will confirm or decline every order within 15 minutes. I will keep all communications about orders placed through Hana for at least six months, and for at least twelve months when there is a complaint or dispute, and I will not delete, unsend or alter them.",
 };
 
 /* ---------------------------------------------------------------- shared helpers */
@@ -246,7 +247,8 @@ function viewHome() {
       "Cash on delivery only: payment is taken on delivery or at pickup, never in advance.",
       "Every price includes VAT and every other charge. The delivery fee is the only addition.",
       "One fixed delivery fee per area, at most " + money(B.rules.max_delivery_fee) + ".",
-      "Orders count only when you confirm them in the customer's chat.",
+      "Confirm or decline each order within " + (B.rules.confirmation_window_minutes || 15) + " minutes, in the customer's chat. Unconfirmed orders are cancelled automatically.",
+      "Keep all order communications for at least " + (B.rules.record_retention_months || 6) + " months, or " + (B.rules.record_retention_months_when_disputed || 12) + " months if there is a dispute. Do not delete or unsend them.",
       "Claims are checked by two community members and reviewed every " + (B.rules.community_review_days || 180) + " days.",
     ].map((x) => h("li", null, icon("check_circle"), h("div", { class: "max" }, x)))));
 }
@@ -363,6 +365,14 @@ function viewJoin() {
     hint("Write it like +8801XXXXXXXXX."),
     textField("whatsapp", "WhatsApp number (if any)", input("whatsapp", { inputmode: "tel", maxlength: 14 })),
     check("sms", "Customers may also send orders by text message to the business phone", true),
+    h("details", null, h("summary", { class: "link" }, "Other ways to receive orders (optional)"),
+      hint("Only if your business already uses them. WhatsApp and text messages are enough for most businesses."),
+      textField("ch-email", "Email address", input("ch-email", { type: "email" })),
+      textField("ch-matrix", "Matrix ID, like @kitchen:matrix.org", input("ch-matrix")),
+      textField("ch-xmpp", "XMPP address, like kitchen@example.org", input("ch-xmpp")),
+      textField("ch-signal", "Signal number, like +8801XXXXXXXXX", input("ch-signal", { inputmode: "tel" })),
+      textField("ch-endpoint", "Order endpoint (https)", input("ch-endpoint", { type: "url" })),
+      hint("An endpoint receives each order as plain text by HTTPS POST and must allow requests from the Hana site (CORS). A self-hosted ntfy topic works, for example https://ntfy.example.org/kitchen-orders. Customers then send orders without opening another app.")),
     textField("address", "Street address", input("address", { maxlength: 200 })),
     select("zone", "Zone (thana) the business is in", zoneOptions, ""),
     textField("plus", "Plus Code (optional)", input("plus", { maxlength: 13 })),
@@ -448,8 +458,13 @@ function viewJoin() {
     const account = val("account"), source = val("source"), raw = val("raw");
     if (!/^https:\/\/\S+$/.test(account) || !/^https:\/\/\S+$/.test(source)) errors.push("Enter your account page and repository as https addresses.");
     if (raw && !/^https:\/\/\S+$/.test(raw)) errors.push("The direct address of menu.json must start with https://.");
-    for (const k of Object.keys(PLEDGES)) if (!checked("pledge-" + k)) errors.push("Sign all three pledges to claim a listing.");
+    for (const k of Object.keys(PLEDGES)) if (!checked("pledge-" + k)) errors.push("Sign all four pledges to claim a listing.");
     if (!B.key) errors.push("Create or load your key.");
+    if (val("ch-email") && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val("ch-email"))) errors.push("Check the email address.");
+    if (val("ch-matrix") && !/^@[^:\s]+:[^\s]+$/.test(val("ch-matrix"))) errors.push("A Matrix ID looks like @name:server.org.");
+    if (val("ch-xmpp") && !/^[^@\s]+@[^@\s]+$/.test(val("ch-xmpp"))) errors.push("An XMPP address looks like name@server.org.");
+    if (val("ch-signal") && !/^\+?8801\d{9}$/.test(val("ch-signal").replace(/[\s-]/g, ""))) errors.push("Write the Signal number like +8801XXXXXXXXX.");
+    if (val("ch-endpoint") && !/^https:\/\/\S+$/.test(val("ch-endpoint"))) errors.push("The order endpoint must start with https://.");
     if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); out.scrollIntoView({ block: "start" }); return; }
 
     const hours = {};
@@ -457,6 +472,9 @@ function viewJoin() {
     const contact = [];
     if (wa) contact.push({ app: "whatsapp", id: wa, preferred: true });
     if (checked("sms")) contact.push({ app: "sms", id: phone.replace(/^\+/, ""), preferred: !wa });
+    const extra = [["email", val("ch-email")], ["matrix", val("ch-matrix")], ["xmpp", val("ch-xmpp")],
+      ["signal", val("ch-signal").replace(/[\s+-]/g, "")], ["endpoint", val("ch-endpoint")]];
+    for (const [app, id] of extra) if (id) contact.push({ app, id });
     const now = new Date();
     const stamp = new Date(now.getTime() + 6 * 3600 * 1000).toISOString().slice(0, 19) + "+06:00";
     const menu = {
@@ -525,7 +543,7 @@ function issueText(menu, hash, claimCode, raw, existing) {
     "Zone: " + areaName(menu.neighbourhood),
     "Address: " + menu.address,
     "Business phone: " + menu.business_phone,
-    "Ordering: " + menu.contact.map((c) => (c.app === "whatsapp" ? "WhatsApp" : "Text message") + " +" + c.id).join(", "),
+    "Ordering: " + menu.contact.map((c) => CHANNELS[c.app].label + " " + contactText(c.app, c.id)).join(", "),
     "Pickup: " + (menu.pickup ? "yes" : "no"),
     "Payment at delivery: " + menu.payment_on_delivery.join(", "),
     "Items: " + menu.items.length,
@@ -543,7 +561,7 @@ function issueText(menu, hash, claimCode, raw, existing) {
     "Claim code: " + claimCode,
     "",
     "### Pledges",
-    "The owner signed the courier identity, data handling and fair pricing pledges on " + menu.pledges.fair_pricing.date + ".",
+    "The owner signed the courier identity, data handling, fair pricing and record-keeping pledges on " + menu.pledges.fair_pricing.date + ".",
     "",
     "### For the vouchers (CLAIMS.md)",
     "- [ ] Voucher 1 called the business phone, found from an independent source, and heard the claim code",
@@ -614,9 +632,10 @@ function viewConfirm() {
         if (B.key) {
           if (owner && B.key.publicB64 !== owner) { snackbar("This key does not belong to this listing."); return; }
           k = B.key.id;
-          s = b64u(await signBytes(B.key, confirmMessage(d.check, d.code, e)));
         }
-        reply.textContent = "Order " + d.code + " is confirmed." + (e !== "?" ? " Expected in about " + e + " minutes." : "") + "\nCONFIRMED hana1 O=" + d.code + " C=" + d.checkCode + " E=" + e + " K=" + k + " S=" + s;
+        const minute = unixMinutes();
+        if (B.key) s = b64u(await signBytes(B.key, confirmMessage(d.check, d.code, e, minute)));
+        reply.textContent = "Order " + d.code + " is confirmed." + (e !== "?" ? " Expected in about " + e + " minutes." : "") + "\nCONFIRMED hana1 O=" + d.code + " C=" + d.checkCode + " E=" + e + " T=" + minute + " K=" + k + " S=" + s;
       };
       out.replaceChildren(
         sectionTitle("Order " + d.code),
@@ -627,7 +646,9 @@ function viewConfirm() {
         textField("eta-min", "Minutes until delivery or pickup (optional)", eta),
         owner ? h("div", null, h("p", { class: "small-text muted" }, "Load your key to sign the confirmation."), keyBox(makeReply)) :
           h("p", { class: "small-text muted" }, "This listing has no key yet, so the confirmation is not signed. Claim the listing to sign confirmations."),
-        h("nav", { class: "wrap" }, h("button", { type: "button", on: { click: makeReply } }, icon("check_circle"), h("span", null, "Prepare my reply"))),
+        h("nav", { class: "wrap" },
+          h("button", { type: "button", on: { click: makeReply } }, icon("check_circle"), h("span", null, "Prepare a confirmation")),
+          h("button", { type: "button", class: "border", on: { click: () => { reply.textContent = "Sorry, we cannot take order " + d.code + " right now.\nDECLINED " + d.code; } } }, icon("close"), h("span", null, "Prepare a decline"))),
         reply,
         h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => reply.textContent ? copy(reply.textContent) : snackbar("Prepare the reply first.") } }, icon("content_copy"), h("span", null, "Copy reply"))),
         h("p", { class: "small-text muted" }, "Send the reply in the same chat as the order. The customer pastes it into Hana, and only then does the order count. Take payment only on delivery or at pickup."));
@@ -728,3 +749,4 @@ loadDirectory().then(() => {
   a.setAttribute("href", u || "index.html#/about");
   route();
 });
+setupUpdates(["business.html", "core.js", "business.js", "theme/theme.css"]);

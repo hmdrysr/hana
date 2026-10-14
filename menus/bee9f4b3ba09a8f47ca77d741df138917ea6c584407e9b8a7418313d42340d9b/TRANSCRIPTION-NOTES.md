@@ -68,4 +68,4 @@ All 39 items from the five menu images.
 
 ## Making this listing official
 
-The owner confirms every price and the missing details, signs the three pledges, creates a key and signs the menu. That produces a new version, and every price change is announced automatically (see `SPEC.md`, section 5.4).
+The owner confirms every price and the missing details, signs the four pledges, creates a key and signs the menu. That produces a new version, and every price change is announced automatically (see `SPEC.md`, section 5.4).

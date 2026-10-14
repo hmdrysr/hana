@@ -151,14 +151,36 @@ function dateTime(iso) {
 
 const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const DAY_NAMES = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+/* Ways a business can receive written orders. "prefill" means the link opens with the order
+   already typed; otherwise the customer pastes the copied message. "direct" sends the order
+   straight to the business's own open endpoint (for example a self-hosted ntfy topic). */
 const CHANNELS = {
-  whatsapp: { label: "WhatsApp", icon: "chat", link: (id, text) => "https://wa.me/" + id + "?text=" + encodeURIComponent(text) },
-  sms: { label: "Text message", icon: "sms", link: (id, text) => "sms:+" + id + "?body=" + encodeURIComponent(text) },
-  phone: { label: "Phone call", icon: "call", link: (id) => "tel:+" + id },
-  messenger: { label: "Messenger", icon: "chat", link: (id) => "https://m.me/" + encodeURIComponent(id) },
-  telegram: { label: "Telegram", icon: "send", link: (id) => "https://t.me/" + encodeURIComponent(id) },
+  whatsapp: { label: "WhatsApp", icon: "chat", prefill: true, link: (id, text) => "https://wa.me/" + id + "?text=" + encodeURIComponent(text) },
+  sms: { label: "Text message", icon: "sms", prefill: true, link: (id, text) => "sms:+" + id + "?body=" + encodeURIComponent(text) },
+  email: { label: "Email", icon: "send", prefill: true, link: (id, text, code) => "mailto:" + id + "?subject=" + encodeURIComponent("Hana order " + (code || "")) + "&body=" + encodeURIComponent(text) },
+  xmpp: { label: "XMPP", icon: "chat", prefill: true, link: (id, text) => "xmpp:" + id + "?message;body=" + encodeURIComponent(text) },
+  matrix: { label: "Matrix", icon: "chat", prefill: false, link: (id) => "https://matrix.to/#/" + encodeURIComponent(id) },
+  signal: { label: "Signal", icon: "chat", prefill: false, link: (id) => "https://signal.me/#p/+" + String(id).replace(/^\+/, "") },
+  telegram: { label: "Telegram", icon: "send", prefill: false, link: (id) => "https://t.me/" + encodeURIComponent(id) },
+  messenger: { label: "Messenger", icon: "chat", prefill: false, link: (id) => "https://m.me/" + encodeURIComponent(id) },
+  endpoint: { label: "Send directly to the business", icon: "send", prefill: true, direct: true, link: () => null },
+  phone: { label: "Phone call", icon: "call", prefill: false, link: (id) => "tel:+" + id },
 };
+const CHANNEL_IDS_ARE_PHONES = ["whatsapp", "sms", "signal", "phone"];
 const phoneText = (id) => "+" + String(id).replace(/^\+/, "");
+function contactText(app, id) {
+  if (CHANNEL_IDS_ARE_PHONES.includes(app)) return phoneText(id);
+  if (app === "endpoint") { try { return new URL(id).host; } catch (e) { return id; } }
+  return String(id);
+}
+
+/* Sends the order text straight to a business endpoint. A plain-text POST is a "simple"
+   request, so open servers such as ntfy accept it without extra set-up. */
+async function sendDirect(url, text) {
+  if (!/^https:\/\//.test(url)) throw new Error("The address must start with https://");
+  const r = await fetch(url, { method: "POST", body: text, headers: { "Content-Type": "text/plain;charset=utf-8" }, cache: "no-store" });
+  if (!r.ok) throw new Error("The business's server answered " + r.status + ".");
+}
 
 /* ---------------------------------------------------------------- hashing, order check line (SPEC 6.4) */
 
@@ -250,8 +272,10 @@ function priceLines(menu) {
 /* ---------------------------------------------------------------- confirmations and signatures (SPEC 4.1, 6.5) */
 
 const CHECK_LINE = /CHECK hana1 H=([0-9a-f]{12}) Z=([a-z0-9-]+) I=([a-z0-9.*,-]+) S=(\d+) F=(\d+|\?) C=([0-9A-HJKMNP-TV-Z]{8})/;
-const CONFIRM_LINE = /CONFIRMED hana1 O=([0-9A-HJKMNP-TV-Z]{6}) C=([0-9A-HJKMNP-TV-Z]{8}) E=(\d{1,3}|\?) K=([0-9a-f]{8}|-) S=([A-Za-z0-9_-]{86}|-)/;
+const CONFIRM_LINE = /CONFIRMED hana1 O=([0-9A-HJKMNP-TV-Z]{6}) C=([0-9A-HJKMNP-TV-Z]{8}) E=(\d{1,3}|\?) T=(\d{8,10}) K=([0-9a-f]{8}|-) S=([A-Za-z0-9_-]{86}|-)/;
 const SIMPLE_CONFIRM = /CONFIRMED\s+([0-9A-HJKMNP-TV-Z]{6})\b/i;
+const SIMPLE_DECLINE = /DECLINED\s+([0-9A-HJKMNP-TV-Z]{6})\b/i;
+const unixMinutes = (d) => Math.floor((d ? new Date(d) : new Date()).getTime() / 60000);
 
 function b64u(bytes) {
   let s = "";
@@ -264,7 +288,7 @@ function unb64u(text) {
 }
 
 const utf8 = (s) => new TextEncoder().encode(s);
-function confirmMessage(checkLine, orderCode, eta) { return utf8("hana1-confirm|" + checkLine.trim() + "|" + orderCode + "|" + eta); }
+function confirmMessage(checkLine, orderCode, eta, minute) { return utf8("hana1-confirm|" + checkLine.trim() + "|" + orderCode + "|" + eta + "|" + minute); }
 async function keyId(publicRaw) { return (await sha256Hex(publicRaw)).slice(0, 8); }
 
 /* The same canonical JSON as tools/hana_sign.py: keys sorted, no spaces, "signature" left out. */
@@ -289,31 +313,44 @@ async function ed25519Verify(publicRaw, message, signature) {
   } catch (e) { return null; }
 }
 
-/* Reads a reply pasted by the customer. Returns {status, eta, line} or {error}.
-   status: "signed" (signature valid), "unsigned" (the business confirmed by message), or an error. */
-async function readConfirmation(text, order, publicB64) {
+/* Reads a reply pasted by the customer. Returns {status, eta, line, minute} or {error}.
+   status: "signed" (signature valid), "unsigned" (plain reply from a listing without a key),
+   "unchecked" (this browser cannot check signatures) or "declined".
+   windowMinutes: the business must confirm within this many minutes of the order (rules.json). */
+async function readConfirmation(text, order, publicB64, windowMinutes) {
+  const win = Number(windowMinutes) || 15;
+  const created = unixMinutes(order.created || order.at);
+  const decline = SIMPLE_DECLINE.exec(text || "");
+  if (decline) {
+    if (decline[1].toUpperCase() !== order.code) return { error: "This reply is for a different order." };
+    return { status: "declined", eta: "?", line: decline[0], minute: unixMinutes() };
+  }
   const full = CONFIRM_LINE.exec(text || "");
   if (full) {
     const check = CHECK_LINE.exec(order.check_line || "");
     if (full[1] !== order.code || !check || full[2] !== check[6]) return { error: "This confirmation is for a different order." };
-    if (full[4] === "-" && full[5] === "-") {
+    const minute = Number(full[4]);
+    if (minute < created - 2) return { error: "This confirmation is dated before the order was prepared." };
+    if (minute > created + win + 2) return { error: "The business confirmed after the " + win + "-minute limit, so the order had already been cancelled. Place a new order if you still want it." };
+    if (full[5] === "-" && full[6] === "-") {
       if (order.claimed) return { error: "This business signs its confirmations. Ask it to reply using the Hana business tools." };
-      return { status: "unsigned", eta: full[3], line: full[0] };
+      return { status: "unsigned", eta: full[3], line: full[0], minute };
     }
-    if (full[4] === "-" || full[5] === "-") return { error: "The confirmation is incomplete." };
+    if (full[5] === "-" || full[6] === "-") return { error: "The confirmation is incomplete." };
     if (!publicB64) return { error: "The confirmation is signed, but this listing has no key to check it against." };
     const pub = unb64u(publicB64);
-    if ((await keyId(pub)) !== full[4]) return { error: "The confirmation was signed with a different key from the listing's." };
-    const ok = await ed25519Verify(pub, confirmMessage(order.check_line, order.code, full[3]), unb64u(full[5]));
-    if (ok === null) return { status: "unchecked", eta: full[3], line: full[0] };
+    if ((await keyId(pub)) !== full[5]) return { error: "The confirmation was signed with a different key from the listing's." };
+    const ok = await ed25519Verify(pub, confirmMessage(order.check_line, order.code, full[3], full[4]), unb64u(full[6]));
+    if (ok === null) return { status: "unchecked", eta: full[3], line: full[0], minute };
     if (!ok) return { error: "The signature does not match. The confirmation was altered or did not come from the business." };
-    return { status: "signed", eta: full[3], line: full[0] };
+    return { status: "signed", eta: full[3], line: full[0], minute };
   }
   const simple = SIMPLE_CONFIRM.exec(text || "");
   if (simple) {
     if (simple[1].toUpperCase() !== order.code) return { error: "This confirmation is for a different order." };
     if (order.claimed) return { error: "This business signs its confirmations. Ask it to reply using the Hana business tools." };
-    return { status: "unsigned", eta: "?", line: simple[0] };
+    if (unixMinutes() > created + win + 2) return { error: "The " + win + "-minute limit for confirmation has passed, so the order was cancelled. If the business did reply in time, keep the chat as your record." };
+    return { status: "unsigned", eta: "?", line: simple[0], minute: unixMinutes() };
   }
   return { error: "No confirmation found. Paste the business's reply, which contains CONFIRMED and your order code." };
 }
@@ -368,6 +405,24 @@ function textField(id, label, input) {
     h("div", { class: "field border round" + (input.tagName === "TEXTAREA" ? " textarea" : "") }, input));
 }
 
+/* Renders the small subset of Markdown used in TERMS.md as plain elements (text only, never HTML). */
+function renderMarkdown(text) {
+  const nodes = [];
+  let list = null;
+  const inline = (s) => s.replace(/\*\*/g, "").replace(/`/g, "");
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) { list = null; continue; }
+    let m;
+    if ((m = /^# (.+)/.exec(line))) { nodes.push(pageTitle(inline(m[1]))); list = null; }
+    else if ((m = /^## (.+)/.exec(line))) { nodes.push(sectionTitle(inline(m[1]))); list = null; }
+    else if ((m = /^- (.+)/.exec(line))) { if (!list || list.tagName !== "UL") { list = h("ul"); nodes.push(list); } list.append(h("li", null, inline(m[1]))); }
+    else if ((m = /^\d+\. (.+)/.exec(line))) { if (!list || list.tagName !== "OL") { list = h("ol"); nodes.push(list); } list.append(h("li", null, inline(m[1]))); }
+    else { nodes.push(h("p", null, inline(line))); list = null; }
+  }
+  return nodes;
+}
+
 /* Labels sit above their fields, never inside them, so a long label or large text wraps instead of being cut off. */
 function selectField(id, label, selectEl) {
   return h("div", null,
@@ -380,5 +435,49 @@ function copy(text) {
   else snackbar("Could not copy. Select the text and copy it manually.");
 }
 
+
+/* ---------------------------------------------------------------- updates and offline use */
+
+/* True while the person is typing something that a reload would lose. */
+function busyTyping() {
+  return Array.from(document.querySelectorAll("main input, main textarea"))
+    .some((el) => el.type !== "radio" && el.type !== "checkbox" && el.type !== "file" && el.value && el.value !== el.defaultValue);
+}
+
+function applyUpdate() {
+  if (busyTyping()) { snackbar("A new version of Hana is ready. It loads the next time you open this page."); return; }
+  location.reload();
+}
+
+/* The service worker keeps a copy for offline use and always asks the server for the newest
+   files first. While a page stays open, the code files are also checked whenever the page
+   comes back into view, so a release reaches people without clearing anything. */
+function setupUpdates(files) {
+  if (!("serviceWorker" in navigator)) return;
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || reloading) return;
+    reloading = true;
+    applyUpdate();
+  });
+  navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+    .then((reg) => { reg.update(); return reg; })
+    .then((reg) => {
+      const fingerprint = () => Promise.all(files.map((f) => fetch(f, { cache: "no-cache" }).then((r) => r.ok ? r.arrayBuffer() : new ArrayBuffer(0)).then((b) => sha256Hex(new Uint8Array(b)))))
+        .then((hs) => hs.join(""));
+      let known = null;
+      fingerprint().then((f) => { known = f; }).catch(() => {});
+      const check = () => {
+        if (document.visibilityState !== "visible" || known === null) return;
+        reg.update();
+        fingerprint().then((f) => { if (f !== known) { known = f; applyUpdate(); } }).catch(() => {});
+      };
+      document.addEventListener("visibilitychange", check);
+      setInterval(check, 30 * 60 * 1000);
+    })
+    .catch(() => { /* the page still works online without the service worker */ });
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+}
 
 setupThemeToggle();

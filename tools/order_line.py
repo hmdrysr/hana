@@ -23,11 +23,13 @@ Pickup orders use Z=pickup and F=0.
 
 Business confirmation (SPEC.md section 6.5). The business replies in the same chat with:
 
-    CONFIRMED hana1 O=<order code> C=<check code> E=<minutes or ?> K=<key id or -> S=<signature or ->
+    CONFIRMED hana1 O=<order code> C=<check code> E=<minutes or ?> T=<time> K=<key id or -> S=<signature or ->
 
-K is the first 8 hex characters of SHA-256 of the business's public key, and S is the
-Ed25519 signature (unpadded base64url) over
-    hana1-confirm|<the full check line>|<order code>|<E>
+T is the time of the confirmation in whole minutes since 1970-01-01 UTC. It must fall within
+the confirmation window (rules.json, confirmation_window_minutes) after the order was
+prepared. K is the first 8 hex characters of SHA-256 of the business's public key, and S is
+the Ed25519 signature (unpadded base64url) over
+    hana1-confirm|<the full check line>|<order code>|<E>|<T>
 A listing without an owner key replies with K=- S=-, which the app shows as
 "confirmed by message, not signed".
 
@@ -46,7 +48,7 @@ LINE = re.compile(
     r"S=(?P<s>\d+) F=(?P<f>\d+|\?) C=(?P<c>[0-9A-HJKMNP-TV-Z]{8})$")
 CONFIRM = re.compile(
     r"CONFIRMED hana1 O=(?P<o>[0-9A-HJKMNP-TV-Z]{6}) C=(?P<c>[0-9A-HJKMNP-TV-Z]{8}) E=(?P<e>\d{1,3}|\?) "
-    r"K=(?P<k>[0-9a-f]{8}|-) S=(?P<s>[A-Za-z0-9_-]{86}|-)")
+    r"T=(?P<t>\d{8,10}) K=(?P<k>[0-9a-f]{8}|-) S=(?P<s>[A-Za-z0-9_-]{86}|-)")
 MAX_QTY = 99
 PICKUP = "pickup"
 
@@ -163,37 +165,50 @@ def decode(line, known_menus):
             "subtotal_from_menu": sub, "delivery_fee": fee_text, "flags": flags, "ok": not flags}
 
 
-def confirm_message(check_line, order_code, eta):
-    return f"hana1-confirm|{check_line.strip()}|{order_code}|{eta}".encode("utf-8")
+def confirm_message(check_line, order_code, eta, minute):
+    return f"hana1-confirm|{check_line.strip()}|{order_code}|{eta}|{minute}".encode("utf-8")
+
+
+def now_minutes():
+    import time
+    return int(time.time() // 60)
 
 
 def key_id(public_raw):
     return hashlib.sha256(public_raw).hexdigest()[:8]
 
 
-def make_confirmation(check_line, order_code, eta="?", secret=None):
-    """secret: the 32-byte Ed25519 private key (seed), or None for an unsigned confirmation."""
+def make_confirmation(check_line, order_code, eta="?", secret=None, minute=None):
+    """secret: the 32-byte Ed25519 private key (seed), or None for an unsigned confirmation.
+    minute: confirmation time in minutes since 1970 (UTC); now if not given."""
     m = LINE.match(check_line.strip())
     if not m:
         raise OrderError("not a valid check line")
     eta = str(eta)
+    minute = now_minutes() if minute is None else int(minute)
     if secret is None:
         k, s = "-", "-"
     else:
         import ed25519
         k = key_id(ed25519.public_key(secret))
-        s = ed25519.b64u(ed25519.sign(secret, confirm_message(check_line, order_code, eta)))
-    return f"CONFIRMED hana1 O={order_code} C={m['c']} E={eta} K={k} S={s}"
+        s = ed25519.b64u(ed25519.sign(secret, confirm_message(check_line, order_code, eta, minute)))
+    return f"CONFIRMED hana1 O={order_code} C={m['c']} E={eta} T={minute} K={k} S={s}"
 
 
-def check_confirmation(text, check_line, order_code, public_b64=None):
-    """Returns 'signed' (valid signature), 'unsigned' (K=- S=-, matches the order) or raises OrderError."""
+def check_confirmation(text, check_line, order_code, public_b64=None, ordered_minute=None, window=15):
+    """Returns 'signed' (valid signature), 'unsigned' (K=- S=-, matches the order) or raises OrderError.
+    ordered_minute: when the order was prepared (minutes since 1970, UTC); if given, the
+    confirmation time must fall within the window."""
     m = CONFIRM.search(text or "")
     if not m:
         raise OrderError("no confirmation line found")
     cl = LINE.match(check_line.strip())
     if not cl or m["c"] != cl["c"] or m["o"] != order_code:
         raise OrderError("this confirmation is for a different order")
+    if ordered_minute is not None:
+        t = int(m["t"])
+        if t < ordered_minute - 2 or t > ordered_minute + window + 2:
+            raise OrderError(f"the confirmation is outside the {window}-minute window after the order")
     if m["s"] == "-" and m["k"] == "-":
         return "unsigned"
     if m["s"] == "-" or m["k"] == "-":
@@ -204,7 +219,7 @@ def check_confirmation(text, check_line, order_code, public_b64=None):
     pub = ed25519.unb64u(public_b64)
     if key_id(pub) != m["k"]:
         raise OrderError("the confirmation was signed with a different key from the listing's")
-    if not ed25519.verify(pub, confirm_message(check_line, order_code, m["e"]), ed25519.unb64u(m["s"])):
+    if not ed25519.verify(pub, confirm_message(check_line, order_code, m["e"], m["t"]), ed25519.unb64u(m["s"])):
         raise OrderError("the signature does not match: the confirmation was altered or forged")
     return "signed"
 
