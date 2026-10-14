@@ -44,7 +44,7 @@ class Repo:
         self.dir = self.root / "menus" / TAVA
         (self.root / "menus").mkdir()
         shutil.copytree(ROOT / "menus" / TAVA, self.dir)
-        for f in ("areas.json", "peers.json", "vouchers.json"):
+        for f in ("areas.json", "peers.json", "vouchers.json", "rules.json"):
             shutil.copy(ROOT / f, self.root / f)
         self.versions = {1: json.loads((self.dir / "versions" / "1.json").read_bytes())}
         self.raw = {1: (self.dir / "versions" / "1.json").read_bytes()}
@@ -273,16 +273,16 @@ def area(a, aid):
     return next(x for x in a["areas"] if x["id"] == aid)
 
 
-check_case("ward placed directly in the city", True, "must be part of a station",
+check_case("ward placed directly in the city", True, "must be part of a zone",
            edit_areas(lambda a: area(a, "ward-14").update(part_of=["ccc"])))
 check_case("area without a kind", True, "kind must be",
            edit_areas(lambda a: area(a, "ward-14").pop("kind")))
 check_case("ward without a number", True, "needs its number",
            edit_areas(lambda a: area(a, "ward-14").pop("number")))
-check_case("station without part_of", True, "part_of is required",
-           edit_areas(lambda a: area(a, "station-khulshi").pop("part_of")))
+check_case("zone without part_of", True, "part_of is required",
+           edit_areas(lambda a: area(a, "khulshi").pop("part_of")))
 check_case("two city areas", True, "exactly one area of kind city",
-           edit_areas(lambda a: area(a, "station-epz").update(kind="city", part_of=[])))
+           edit_areas(lambda a: area(a, "epz").update(kind="city", part_of=[])))
 
 # interface uniformity
 check_case("unknown class in the app", True, "not in the allowed list", lambda r: None,
@@ -350,6 +350,110 @@ with tempfile.TemporaryDirectory() as d:
     oldline = order_line.build(old_bytes, old_menu, {"dahi-bara": 1}, "khulshi")
     rr = order_line.decode(oldline, [(repo.raw[1], repo.versions[1]), (repo.raw[2], repo.versions[2])])
     check_true("order on an older menu version is flagged", (not rr["ok"]) and any("current version" in f for f in rr["flags"]), str(rr))
+
+
+# ------------------------------------------------------------ claimed listings, rules and confirmations
+import hana_sign  # noqa: E402
+import ed25519 as ed  # noqa: E402
+
+SECRET = bytes(range(1, 33))
+
+
+def make_claim(r, change=None, sign=True, vouchers=("voucher-a", "voucher-b"), claim_file=True, signer=SECRET):
+    """Turn the Tava listing into a claimed listing signed with SECRET (version 1, replaces Tava)."""
+    old = r.versions[1]
+    pub = ed.public_key(SECRET)
+    m = copy.deepcopy(old)
+    m.update(claimed=True, id=hana_sign.listing_id(pub), pickup=True, payment_on_delivery=["cash", "bangla_qr"],
+             hours={d: [["11:00", "23:00"]] for d in ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]},
+             owner={"account": "https://github.com/example", "menu_source": "https://github.com/example/menu",
+                    "public_key": ed.b64u(pub)},
+             replaces=old["id"], replaces_hash=sha(r.raw[1]))
+    m.pop("listing_note", None)
+    m["pledges"] = {k: {"signed": True, "date": "2026-10-15"} for k in ("rider_identity", "data_handling", "fair_pricing")}
+    m["delivery"] = {"zones": [{"id": "khulshi", "shape": "named", "areas": ["khulshi"], "fee": 40, "min_order": 300, "eta_min": 45},
+                                {"id": "ccc", "shape": "named", "areas": ["ccc"], "fee": 90, "min_order": 300, "eta_min": 45}]}
+    import check
+    changes = [{**c, "label": c["key"]} for c in check.diff_money(check.money_map(old), check.money_map(m))]
+    m["announcement"] = {"published": STAMP2, "summary": "Claimed.", "changes": changes}
+    m["price_history"] = [{"version": 1, "published": STAMP2, "summary": "Claimed.", "changes": changes}]
+    if change:
+        change(m)
+    if sign:
+        m = hana_sign.sign_menu(m, signer)
+    raw = dump(m)
+    d = r.root / "menus" / m["id"]
+    (d / "versions").mkdir(parents=True)
+    (d / "versions" / "1.json").write_bytes(raw)
+    (d / "menu.json").write_bytes(raw)
+    (r.root / "vouchers.json").write_text(json.dumps({"version": 1, "vouchers": [{"key": "voucher-a"}, {"key": "voucher-b"}]}))
+    if claim_file:
+        (r.root / "claims").mkdir(exist_ok=True)
+        (r.root / "claims" / (m["id"] + ".json")).write_text(json.dumps({
+            "id": m["id"], "account": m["owner"]["account"], "menu_source": m["owner"]["menu_source"],
+            "claimed_on": "2026-10-15", "evidence": ["Phone check with claim code", "Visit to the address"],
+            "vouchers": list(vouchers), "reviews": [{"date": "2026-10-15", "voucher": "voucher-a", "result": "confirmed"}]}))
+    idx = {"version": 1, "city": "Chittagong", "updated": "2026-10-20", "restaurants": [{
+        "id": m["id"], "name": m["name"], "neighbourhood": m["neighbourhood"], "claimed": True, "version": 1,
+        "menu_hash": sha(raw), "reviewed": "2026-10-15", "replaces": old["id"], "locations": [f"menus/{m['id']}/menu.json"]}]}
+    (r.root / "index.json").write_text(json.dumps(idx))
+    return m
+
+
+check_case("claimed, signed listing with a claim record passes", False, "0 error(s)", lambda r: make_claim(r))
+
+
+def tampered(r):
+    m = make_claim(r)
+    m["items"][0]["price"] = 1
+    raw = dump(m)
+    d = r.root / "menus" / m["id"]
+    (d / "versions" / "1.json").write_bytes(raw)
+    (d / "menu.json").write_bytes(raw)
+    idx = json.loads((r.root / "index.json").read_text())
+    idx["restaurants"][0]["menu_hash"] = sha(raw)
+    (r.root / "index.json").write_text(json.dumps(idx))
+
+
+CASES_EXTRA = [
+    ("claimed listing edited after signing", True, "signature does not match", tampered),
+    ("claimed listing signed with another key", True, "signature does not match",
+     lambda r: make_claim(r, signer=bytes(32))),
+    ("claimed listing without a claim record", True, "does not exist", lambda r: make_claim(r, claim_file=False)),
+    ("claim checked by only one voucher", True, "at least two different", lambda r: make_claim(r, vouchers=("voucher-a",))),
+    ("claim announces no price changes", True, "announce every price", lambda r: make_claim(r, change=lambda m: m.update(announcement={**m["announcement"], "changes": []}, price_history=[]))),
+    ("claimed listing that does not say about pickup", True, "pickup", lambda r: make_claim(r, change=lambda m: m.update(pickup=None))),
+    ("delivery fee above the limit", True, "above the limit", lambda r: make_claim(r, change=lambda m: m["delivery"]["zones"][1].update(fee=500))),
+    ("ward used as a delivery area", True, "is a ward", lambda r: make_claim(r, change=lambda m: m["delivery"]["zones"][0].update(areas=["ward-14"]))),
+    ("prepayment field", True, "founding commitments", lambda r: make_claim(r, change=lambda m: m.update(advance_payment=100))),
+    ("payment method that is not at delivery", True, "payment_on_delivery", lambda r: make_claim(r, change=lambda m: m.update(payment_on_delivery=["bank_transfer_in_advance"]))),
+]
+for name, fail, needle, fn in CASES_EXTRA:
+    check_case(name, fail, needle, fn)
+
+
+def rules_edit(fn):
+    def go(r):
+        rules = json.loads((ROOT / "rules.json").read_text())
+        fn(rules)
+        (r.root / "rules.json").write_text(json.dumps(rules))
+    return go
+
+
+check_case("rules allowing prepayment", True, "prepayment_allowed", rules_edit(lambda x: x.update(prepayment_allowed=True)))
+check_case("rules without tax-inclusive prices", True, "prices_include_all_charges", rules_edit(lambda x: x.update(prices_include_all_charges=False)))
+
+# confirmations
+cl = order_line.build(mbytes, menu, {"dahi-bara": 1}, "pickup")
+check_true("pickup order has no delivery fee", " Z=pickup " in cl and " F=0 " in cl, cl)
+pubb = ed.b64u(ed.public_key(SECRET))
+conf = order_line.make_confirmation(cl, "ABC123", "30", SECRET)
+check_true("signed confirmation is accepted", order_line.check_confirmation(conf, cl, "ABC123", pubb) == "signed")
+check_true("unsigned confirmation is recognised", order_line.check_confirmation(order_line.make_confirmation(cl, "ABC123"), cl, "ABC123") == "unsigned")
+check_true("confirmation with a changed time is rejected", raises(lambda: order_line.check_confirmation(conf.replace("E=30", "E=10"), cl, "ABC123", pubb)))
+check_true("confirmation for another order is rejected", raises(lambda: order_line.check_confirmation(conf, cl, "ZZZ999", pubb)))
+check_true("confirmation signed by another key is rejected",
+           raises(lambda: order_line.check_confirmation(order_line.make_confirmation(cl, "ABC123", "30", bytes(32)), cl, "ABC123", pubb)))
 
 # ------------------------------------------------------------ verify_images cases
 payload = b"\xff\xd8\xff\xe0test-image-bytes"
@@ -457,11 +561,15 @@ with tempfile.TemporaryDirectory() as d:
                autofill.values("me/me.github.io")["{{SITE_URL}}"] == "https://me.github.io/")
 
 wf_path = ROOT / ".github" / "workflows" / "unzip.yml"
-if wf_path.exists():  # it is pasted in by hand, so a fresh checkout may not have it yet
-    check_true("unzip workflow is up to date with the tools (run tools/make_workflow.py)",
-               wf_path.read_text(encoding="utf-8") == make_workflow.render())
-else:
+# The workflow is pasted in by hand, so a repo may carry its own edited copy. A difference
+# is reported, not counted as a failure; the unpack rules themselves are tested above.
+if not wf_path.exists():
     print("NOTE  .github/workflows/unzip.yml is not installed here, so it was not compared")
+elif wf_path.read_text(encoding="utf-8") != make_workflow.render():
+    print("NOTE  .github/workflows/unzip.yml differs from the one tools/make_workflow.py generates. "
+          "Check that it still skips .github/workflows/, refuses unsafe paths and deletes nothing.")
+else:
+    check_true("unzip workflow matches tools/make_workflow.py", True)
 
 print()
 print(f"{TOTAL - FAILED} of {TOTAL} self-test cases behaved as expected.")

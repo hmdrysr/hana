@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; connect-src 'self' https:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#9a3412">
+<meta name="description" content="Free tools for businesses listed on Hana: list or claim a business, confirm orders and publish price changes.">
+<title>Business tools | Hana</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="theme/beer.min.css">
+<link rel="stylesheet" href="theme/theme.css">
+</head>
+<body>
+<nav class="left m l" aria-label="Business tools" id="nav-rail">
+  <a href="#/" data-nav="home"><i data-icon="storefront"></i><span>Start</span></a>
+  <a href="#/join" data-nav="join"><i data-icon="add_business"></i><span>List or claim</span></a>
+  <a href="#/confirm" data-nav="confirm"><i data-icon="check_circle"></i><span>Confirm</span></a>
+  <a href="#/update" data-nav="update"><i data-icon="edit_note"></i><span>Update prices</span></a>
+</nav>
+<nav class="bottom s" aria-label="Business tools" id="nav-bar">
+  <a href="#/" data-nav="home"><i data-icon="storefront"></i><span>Start</span></a>
+  <a href="#/join" data-nav="join"><i data-icon="add_business"></i><span>List or claim</span></a>
+  <a href="#/confirm" data-nav="confirm"><i data-icon="check_circle"></i><span>Confirm</span></a>
+  <a href="#/update" data-nav="update"><i data-icon="edit_note"></i><span>Prices</span></a>
+</nav>
+<header class="responsive">
+  <nav>
+    <a href="index.html" class="brand" aria-label="Hana home"><span class="brand-mark" aria-hidden="true">🥡</span><span class="brand-name">Hana</span></a>
+    <div class="max"></div>
+    <button type="button" class="circle transparent" id="theme-toggle" aria-label="Colour mode"></button>
+  </nav>
+</header>
+<main class="responsive" id="main" tabindex="-1">
+  <p>Loading the business tools. This page requires JavaScript.</p>
+</main>
+<footer class="responsive">
+  <p class="small-text center-align muted">
+    Built by <a class="link" href="https://hamidyasir.com" rel="noopener">Hamid Yasir &amp; Co.</a> for the people of Chittagong.
+    Managed by the <a class="link" href="{{REPO_URL}}" id="repo-link" rel="noopener">Hana Community</a>.
+  </p>
+</footer>
+<div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
+<dialog id="dialog" aria-labelledby="dialog-title">
+  <h5 id="dialog-title"></h5>
+  <p id="dialog-text"></p>
+  <nav class="right-align">
+    <button class="border" type="button" id="dialog-cancel">Cancel</button>
+    <button type="button" id="dialog-ok">OK</button>
+  </nav>
+</dialog>
+<script src="core.js" defer></script>
+<script src="business.js" defer></script>
+</body>
+</html>

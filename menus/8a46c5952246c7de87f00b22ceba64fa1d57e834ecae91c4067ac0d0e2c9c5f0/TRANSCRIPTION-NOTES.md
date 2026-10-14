@@ -17,7 +17,8 @@ Dish names and prices are as printed. In the descriptions, "nd" is written as "a
 ## Not stated
 
 - Map location. No Plus Code or coordinates were provided, so the listing has no map point. The address is recorded as provided: "442/A Hwy Society Rd, Chittagong 4000". UNVERIFIED.
-- Station and ward. The listing uses the City Corporation area until these are known.
+- Zone (thana). The listing uses the City Corporation area until the zone is known.
+- Pickup and the accepted ways to pay at delivery.
 - Delivery fee, minimum order and delivery time.
 - Opening days. Hours of 7 p.m. to 3:30 a.m. were reported by a customer; every day is shown until confirmed.
 
@@ -30,4 +31,4 @@ Dish names and prices are as printed. In the descriptions, "nd" is written as "a
 
 ## Making this listing official
 
-The owner confirms every price and the missing details, signs both pledges, creates a key and signs the menu. That produces a new version, and every price change is announced automatically (see `SPEC.md`, section 5.4).
+The owner confirms every price and the missing details, signs the three pledges, creates a key and signs the menu. That produces a new version, and every price change is announced automatically (see `SPEC.md`, section 5.4).

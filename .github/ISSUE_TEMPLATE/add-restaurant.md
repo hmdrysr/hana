@@ -1,6 +1,6 @@
 ---
-name: Add a restaurant
-about: List a restaurant in the Hana directory
+name: Suggest an unclaimed listing (volunteers)
+about: A volunteer suggests a business that has not claimed its listing yet. Businesses use "List or claim a business" instead.
 labels: listing
 ---
 

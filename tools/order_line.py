@@ -19,6 +19,18 @@ What this protects, and what it does not
   a valid line, but the decoder still prices the items from the signed menu, so the
   price cannot be changed this way. The restaurant must read the decoded view.
 
+Pickup orders use Z=pickup and F=0.
+
+Business confirmation (SPEC.md section 6.5). The business replies in the same chat with:
+
+    CONFIRMED hana1 O=<order code> C=<check code> E=<minutes or ?> K=<key id or -> S=<signature or ->
+
+K is the first 8 hex characters of SHA-256 of the business's public key, and S is the
+Ed25519 signature (unpadded base64url) over
+    hana1-confirm|<the full check line>|<order code>|<E>
+A listing without an owner key replies with K=- S=-, which the app shows as
+"confirmed by message, not signed".
+
 Command line:
     python3 tools/order_line.py decode MENU_VERSIONS_DIR "CHECK hana1 ..."
 """
@@ -32,7 +44,11 @@ CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 LINE = re.compile(
     r"^CHECK hana1 H=(?P<h>[0-9a-f]{12}) Z=(?P<z>[a-z0-9-]+) I=(?P<i>[a-z0-9.*,-]+) "
     r"S=(?P<s>\d+) F=(?P<f>\d+|\?) C=(?P<c>[0-9A-HJKMNP-TV-Z]{8})$")
+CONFIRM = re.compile(
+    r"CONFIRMED hana1 O=(?P<o>[0-9A-HJKMNP-TV-Z]{6}) C=(?P<c>[0-9A-HJKMNP-TV-Z]{8}) E=(?P<e>\d{1,3}|\?) "
+    r"K=(?P<k>[0-9a-f]{8}|-) S=(?P<s>[A-Za-z0-9_-]{86}|-)")
 MAX_QTY = 99
+PICKUP = "pickup"
 
 
 class OrderError(ValueError):
@@ -66,6 +82,10 @@ def price_table(menu):
 
 
 def zone_fee(menu, zone_id):
+    if zone_id == PICKUP:
+        if menu.get("pickup") is False:
+            raise OrderError("this business does not offer pickup")
+        return 0
     for z in menu["delivery"]["zones"]:
         if z["id"] == zone_id:
             return z.get("fee")
@@ -141,6 +161,52 @@ def decode(line, known_menus):
                      "Compare prices in the price history before deciding.")
     return {"menu_version": menu["version"], "zone": m["z"], "lines": out_lines,
             "subtotal_from_menu": sub, "delivery_fee": fee_text, "flags": flags, "ok": not flags}
+
+
+def confirm_message(check_line, order_code, eta):
+    return f"hana1-confirm|{check_line.strip()}|{order_code}|{eta}".encode("utf-8")
+
+
+def key_id(public_raw):
+    return hashlib.sha256(public_raw).hexdigest()[:8]
+
+
+def make_confirmation(check_line, order_code, eta="?", secret=None):
+    """secret: the 32-byte Ed25519 private key (seed), or None for an unsigned confirmation."""
+    m = LINE.match(check_line.strip())
+    if not m:
+        raise OrderError("not a valid check line")
+    eta = str(eta)
+    if secret is None:
+        k, s = "-", "-"
+    else:
+        import ed25519
+        k = key_id(ed25519.public_key(secret))
+        s = ed25519.b64u(ed25519.sign(secret, confirm_message(check_line, order_code, eta)))
+    return f"CONFIRMED hana1 O={order_code} C={m['c']} E={eta} K={k} S={s}"
+
+
+def check_confirmation(text, check_line, order_code, public_b64=None):
+    """Returns 'signed' (valid signature), 'unsigned' (K=- S=-, matches the order) or raises OrderError."""
+    m = CONFIRM.search(text or "")
+    if not m:
+        raise OrderError("no confirmation line found")
+    cl = LINE.match(check_line.strip())
+    if not cl or m["c"] != cl["c"] or m["o"] != order_code:
+        raise OrderError("this confirmation is for a different order")
+    if m["s"] == "-" and m["k"] == "-":
+        return "unsigned"
+    if m["s"] == "-" or m["k"] == "-":
+        raise OrderError("the confirmation has a key id without a signature, or the reverse")
+    import ed25519
+    if not public_b64:
+        raise OrderError("the confirmation is signed, but the listing has no public key to check it")
+    pub = ed25519.unb64u(public_b64)
+    if key_id(pub) != m["k"]:
+        raise OrderError("the confirmation was signed with a different key from the listing's")
+    if not ed25519.verify(pub, confirm_message(check_line, order_code, m["e"]), ed25519.unb64u(m["s"])):
+        raise OrderError("the signature does not match: the confirmation was altered or forged")
+    return "signed"
 
 
 def _load_versions(folder):

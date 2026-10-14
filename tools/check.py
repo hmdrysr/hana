@@ -23,6 +23,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ed25519  # noqa: E402
+import hana_sign  # noqa: E402
+
 ERRORS = []
 WARNINGS = []
 
@@ -49,12 +53,19 @@ OLC_ALPHABET = "23456789CFGHJMPQRVWX"
 FORBIDDEN_WORDS = ["Chatto" + "gram"]
 # Founding commitments (GOVERNANCE.md section 1): no fee or paid-placement fields.
 FORBIDDEN_KEYS = {"commission", "sponsored", "promoted", "paid_placement",
+                  "prepayment", "advance", "advance_payment", "deposit", "pay_before", "booking_fee",
+                  "service_charge", "packaging_fee", "vat", "tax", "extra_charges", "surcharge",
                   "advertisement", "ad", "tracker", "analytics", "referral_fee",
                   "featured", "pinned", "boost", "priority", "rank", "service_fee", "platform_fee",
                   "surge", "fee_per_km", "fee_rules"}
 # Wide Bangladesh bounds. Only meant to catch swapped or wrong coordinates.
 LAT_RANGE = (20.5, 26.7)
 LON_RANGE = (88.0, 92.8)
+AREA_KINDS = {}
+RULES = {}
+PAYMENT_DEFAULTS = {"cash", "bangla_qr", "card_pos", "mobile_wallet"}
+B64U = re.compile(r"^[A-Za-z0-9_-]+$")
+HTTPS = re.compile(r"^https://[^\s]+$")
 # Photo limits (SPEC.md section 5.3). Proposed values.
 PHOTO_MAX_BYTES = 300_000
 PHOTO_MAX_SIDE = 1600
@@ -89,7 +100,7 @@ def walk_strings(obj, path, rel):
     if isinstance(obj, dict):
         for k, v in obj.items():
             if k.lower() in FORBIDDEN_KEYS:
-                err(rel, f"field '{k}' is not allowed (founding commitments: no fees or paid placement)")
+                err(rel, f"field '{k}' is not allowed (founding commitments: no commission, paid placement, prepayment or extra charges)")
             walk_strings(v, f"{path}.{k}", rel)
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
@@ -144,6 +155,23 @@ def check_polygon(geo, where, rel):
                 return
 
 
+def check_rules(root):
+    """rules.json: the rules every listing follows (SPEC.md section 1.4)."""
+    rel = "rules.json"
+    data = load_json(root / "rules.json", root)
+    if not isinstance(data, dict):
+        return
+    RULES.update(data)
+    if data.get("payment") != "cash_on_delivery_only" or data.get("prepayment_allowed") is not False:
+        err(rel, "payment must be cash_on_delivery_only and prepayment_allowed must be false (founding commitments)")
+    if data.get("prices_include_all_charges") is not True:
+        err(rel, "prices_include_all_charges must be true (founding commitments)")
+    if not (is_int(data.get("max_delivery_fee")) and 0 < data["max_delivery_fee"] <= 1000):
+        err(rel, "max_delivery_fee must be a whole number of taka, more than 0")
+    if not isinstance(data.get("payment_methods_on_delivery"), dict) or not data["payment_methods_on_delivery"]:
+        err(rel, "payment_methods_on_delivery must list the ways to pay at delivery")
+
+
 def check_areas(root):
     data = load_json(root / "areas.json", root)
     ids = set()
@@ -179,8 +207,8 @@ def check_areas(root):
         else:
             no_boundary.append(aid)
         kind = a.get("kind")
-        if kind not in ("city", "station", "ward"):
-            err(rel, f"{w}: kind must be city, station or ward")
+        if kind not in ("city", "zone", "ward"):
+            err(rel, f"{w}: kind must be city, zone or ward")
         elif kind == "ward" and not (is_int(a.get("number")) and 1 <= a["number"] <= 99):
             err(rel, f"{w}: a ward needs its number")
         kinds[aid] = kind
@@ -196,15 +224,16 @@ def check_areas(root):
                 elif x not in ids:
                     err(rel, f"areas[{i}].part_of: '{x}' is not in areas.json")
                 else:
-                    want = {"station": "city", "ward": "station"}.get(a.get("kind"))
+                    want = {"zone": "city", "ward": "zone"}.get(a.get("kind"))
                     if want and kinds.get(x) != want:
                         err(rel, f"areas[{i}] ('{a.get('id')}'): a {a.get('kind')} must be part of a {want}")
-        elif isinstance(a, dict) and a.get("kind") in ("station", "ward"):
+        elif isinstance(a, dict) and a.get("kind") in ("zone", "ward"):
             err(rel, f"areas[{i}] ('{a.get('id')}'): part_of is required for a {a.get('kind')}")
     if [k for k in kinds.values() if k == "city"] != ["city"]:
         err(rel, "there must be exactly one area of kind city (the City Corporation)")
     if no_boundary:
         warn(rel, f"{len(no_boundary)} of {len(areas)} areas have no boundary yet, so they can only be matched by name")
+    AREA_KINDS.update(kinds)
     return ids
 
 
@@ -308,7 +337,30 @@ def check_version_chain(menu_dir, root):
             err(vrel, "id changed between versions without 'replaces' naming the old id")
         ann = cur.get("announcement") if isinstance(cur.get("announcement"), dict) else {}
         when = parse_stamp(ann.get("published"))
-        if prev is None:
+        if prev is None and cur.get("replaces"):
+            # A claimed listing starts its own chain but continues the listing it replaces.
+            rp = root / "menus" / str(cur["replaces"]) / "menu.json"
+            if n != 1:
+                err(vrel, "first version found is not 1")
+            if not rp.exists():
+                err(vrel, f"'replaces' names {cur['replaces']}, but menus/{cur['replaces']}/menu.json is not in this repo")
+            else:
+                old_bytes = rp.read_bytes()
+                old = json.loads(old_bytes.decode("utf-8"))
+                if cur.get("replaces_hash") != hashlib.sha256(old_bytes).hexdigest():
+                    err(vrel, "'replaces_hash' must be the SHA-256 of the replaced listing's current menu.json")
+                real = diff_money(money_map(old), money_map(cur))
+                declared = ann.get("changes") if isinstance(ann.get("changes"), list) else []
+                if change_set(declared) != change_set(real):
+                    err(vrel, "the claim must announce every price that differs from the listing it replaces: "
+                              f"{sorted(change_set(real) ^ change_set(declared), key=str)}")
+                expected = list(old.get("price_history") or [])
+                if declared:
+                    expected.append({"version": n, "published": ann.get("published"),
+                                     "summary": ann.get("summary"), "changes": declared})
+                if cur.get("price_history") != expected:
+                    err(vrel, "price_history must be the replaced listing's history plus this version's changes")
+        elif prev is None:
             if n != 1:
                 err(vrel, "first version found is not 1")
             if ann.get("changes") not in ([], None):
@@ -406,6 +458,8 @@ def check_menu(menu_path, root, area_ids):
             err(rel, f"'{f}' is required")
     if area_ids and data.get("neighbourhood") not in area_ids:
         err(rel, f"neighbourhood '{data.get('neighbourhood')}' is not in areas.json")
+    elif AREA_KINDS and AREA_KINDS.get(data.get("neighbourhood")) not in ("city", "zone"):
+        err(rel, "neighbourhood must be the zone the business is in (or the city, if the zone is not known yet)")
     phone = data.get("business_phone")
     if not isinstance(phone, str) or not BIZ_PHONE.match(phone):
         err(rel, "business_phone is required, written like +8801XXXXXXXXX (no spaces)")
@@ -419,10 +473,23 @@ def check_menu(menu_path, root, area_ids):
         if data.get("signature") not in (None, ""):
             err(rel, "an unclaimed listing has no owner, so it cannot carry an owner signature")
     else:
-        if not HEX64.match(str(data.get("id", ""))):
-            err(rel, "a claimed listing's id must be the 64-character hash of the owner's public key")
-        if not isinstance(data.get("signature"), str) or not data["signature"]:
-            err(rel, "signature is required for a claimed listing (not verified yet by this tool)")
+        owner = data.get("owner")
+        if not isinstance(owner, dict):
+            err(rel, "a claimed listing needs 'owner': account, menu_source and public_key (SPEC.md section 4.1)")
+        else:
+            for f in ("account", "menu_source"):
+                if not (isinstance(owner.get(f), str) and HTTPS.match(owner[f])):
+                    err(rel, f"owner.{f} must be an https address (the owner's account on GitHub, Codeberg, "
+                             "GitLab or another open forge, and the repository the owner edits the menu in)")
+            pub = hana_sign.owner_key(data)
+            if pub is None:
+                err(rel, "owner.public_key must be a 32-byte Ed25519 public key in unpadded base64url")
+            elif data.get("id") != hana_sign.listing_id(pub):
+                err(rel, "a claimed listing's id must be the SHA-256 of the owner's public key")
+            else:
+                problem = hana_sign.verify_menu(data)
+                if problem:
+                    err(rel, problem)
     loc = data.get("location")
     if isinstance(loc, dict):
         lat, lon = loc.get("lat"), loc.get("lon")
@@ -480,6 +547,9 @@ def check_menu(menu_path, root, area_ids):
                     continue  # "not stated" is allowed for an unclaimed listing
                 if not is_int(v) or v < 0:
                     err(rel, f"{w}.{f} must be a whole number, 0 or more (whole taka, no decimals)")
+            cap = RULES.get("max_delivery_fee")
+            if is_int(z.get("fee")) and is_int(cap) and z["fee"] > cap:
+                err(rel, f"{w}.fee is {z['fee']}, above the limit of {cap} set in rules.json")
             shape = z.get("shape")
             if shape == "named":
                 names = z.get("areas")
@@ -489,6 +559,8 @@ def check_menu(menu_path, root, area_ids):
                     for n in names:
                         if area_ids and n not in area_ids:
                             err(rel, f"{w}: area '{n}' is not in areas.json")
+                        elif AREA_KINDS.get(n) == "ward":
+                            err(rel, f"{w}: '{n}' is a ward. Delivery areas are the whole city (ccc) or zones")
             elif shape == "circle":
                 if not (is_num(z.get("lat")) and is_num(z.get("lon"))
                         and LAT_RANGE[0] <= z["lat"] <= LAT_RANGE[1] and LON_RANGE[0] <= z["lon"] <= LON_RANGE[1]):
@@ -500,7 +572,7 @@ def check_menu(menu_path, root, area_ids):
             else:
                 err(rel, f"{w}: shape must be named, circle or polygon")
     pledges = data.get("pledges")
-    for p in ("rider_identity", "data_handling"):
+    for p in ("rider_identity", "data_handling", "fair_pricing"):
         entry = pledges.get(p) if isinstance(pledges, dict) else None
         if not isinstance(entry, dict) or not isinstance(entry.get("signed"), bool):
             err(rel, f"pledge '{p}' must be present with signed true or false (SPEC.md section 7)")
@@ -508,6 +580,18 @@ def check_menu(menu_path, root, area_ids):
             err(rel, f"pledge '{p}' must be signed by the owner for a claimed listing")
         elif not claimed and entry["signed"] is True:
             err(rel, f"pledge '{p}' cannot be signed on an unclaimed listing: only the owner can sign it")
+    if data.get("pickup") not in (True, False, None):
+        err(rel, "pickup must be true, false or null (not stated)")
+    elif claimed and data.get("pickup") is None:
+        err(rel, "a claimed listing must say whether it offers pickup (true or false)")
+    pay = data.get("payment_on_delivery")
+    allowed = set((RULES.get("payment_methods_on_delivery") or {}).keys()) or PAYMENT_DEFAULTS
+    if pay is None:
+        if claimed:
+            err(rel, "a claimed listing must list payment_on_delivery (for example [\"cash\", \"bangla_qr\"])")
+    elif not (isinstance(pay, list) and pay and all(x in allowed for x in pay) and len(set(pay)) == len(pay)):
+        err(rel, f"payment_on_delivery must be a list taken from: {', '.join(sorted(allowed))}. Payment is "
+                 "only ever taken at delivery or pickup")
     contact = data.get("contact")
     if not isinstance(contact, list) or not contact:
         err(rel, "contact needs at least one channel (SMS or phone is the baseline)")
@@ -616,6 +700,67 @@ def check_index(root, area_ids):
                     err(rel, f"{w}: 'version' does not match the menu file")
             except (ValueError, UnicodeDecodeError):
                 pass
+        if r.get("claimed") is True and isinstance(rid, str):
+            check_claim(root, rid, r, w)
+
+
+DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def check_claim(root, rid, row, where):
+    """A claimed listing needs a claim record kept by the community (SPEC.md section 4.1)."""
+    rel = f"claims/{rid}.json"
+    p = root / "claims" / f"{rid}.json"
+    if not p.exists():
+        err("index.json", f"{where}: claimed, but {rel} does not exist")
+        return
+    c = load_json(p, root)
+    if not isinstance(c, dict):
+        return
+    walk_strings(c, "claim", rel)
+    if c.get("id") != rid:
+        err(rel, "id must match the file name")
+    for f in ("account", "menu_source"):
+        if not (isinstance(c.get(f), str) and HTTPS.match(c[f])):
+            err(rel, f"'{f}' must be an https address")
+    menu = load_json(root / "menus" / rid / "menu.json", root) if (root / "menus" / rid / "menu.json").exists() else None
+    if isinstance(menu, dict) and isinstance(menu.get("owner"), dict):
+        for f in ("account", "menu_source"):
+            if c.get(f) != menu["owner"].get(f):
+                err(rel, f"'{f}' does not match owner.{f} in the menu file")
+    if not (isinstance(c.get("claimed_on"), str) and DATE.match(c["claimed_on"])):
+        err(rel, "claimed_on must be a date (YYYY-MM-DD)")
+    ev = c.get("evidence")
+    if not (isinstance(ev, list) and len(ev) >= 2 and all(isinstance(x, str) and x.strip() for x in ev)):
+        err(rel, "evidence must list at least two checks that were done (see CLAIMS.md)")
+    vs = c.get("vouchers")
+    if not (isinstance(vs, list) and len(set(vs)) >= 2 and all(isinstance(x, str) for x in vs)):
+        err(rel, "vouchers must name at least two different community vouchers")
+    known = load_json(root / "vouchers.json", root)
+    keys = {v.get("key") for v in (known.get("vouchers") or []) if isinstance(v, dict)} if isinstance(known, dict) else set()
+    for v in vs if isinstance(vs, list) else []:
+        if v not in keys:
+            err(rel, f"voucher '{v}' is not in vouchers.json")
+    reviews = c.get("reviews")
+    if not (isinstance(reviews, list) and reviews):
+        err(rel, "reviews must have at least one entry (the claim check itself)")
+        return
+    dates = []
+    for i, rv in enumerate(reviews):
+        if not (isinstance(rv, dict) and isinstance(rv.get("date"), str) and DATE.match(rv["date"])
+                and rv.get("result") in ("confirmed", "problem") and isinstance(rv.get("voucher"), str)):
+            err(rel, f"reviews[{i}] needs date (YYYY-MM-DD), voucher and result (confirmed or problem)")
+        else:
+            dates.append(rv["date"])
+    if dates != sorted(dates):
+        err(rel, "reviews must be in date order; add new reviews at the end and never edit old ones")
+    if dates and row.get("reviewed") != dates[-1]:
+        err("index.json", f"{where}: 'reviewed' must be the date of the latest review in {rel} ({dates[-1]})")
+    days = RULES.get("community_review_days")
+    if dates and is_int(days):
+        age = (datetime.now() - datetime.fromisoformat(dates[-1])).days
+        if age > days:
+            warn(rel, f"the last community review was {age} days ago; reviews are due every {days} days")
 
 
 def check_peers(root):
@@ -673,7 +818,7 @@ def check_text_files(root):
             if in_menu:
                 continue  # a restaurant's own business number belongs in its menu
             warn(rel, f"looks like a mobile number ({m.group(0)[:6]}...). Only a restaurant's own "
-                      "business number belongs in this repo. Remove any customer or rider number.")
+                      "business number belongs in this repo. Remove any customer or courier number.")
             break
 
 
@@ -684,12 +829,12 @@ UI_CLASSES = set("""active badge bold border bottom brand brand-mark brand-name 
 chip circle dark field fill flush gap-top group-title l label left left-align link list m max medium muted no-border
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
-tertiary-container textarea top-align transparent vertical vertical-padding wrap""".split())
+tertiary-container textarea top-align transparent vertical vertical-padding wrap light""".split())
 
 
 def check_ui(root):
     """Allowed classes only, no inline styles, no Beer CSS margin helpers."""
-    for rel in ("index.html", "app.js"):
+    for rel in ("index.html", "app.js", "core.js", "business.html", "business.js"):
         p = root / rel
         if not p.exists():
             continue
@@ -715,6 +860,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=".", help="repo root to check")
     root = Path(ap.parse_args().root).resolve()
+    check_rules(root)
     area_ids = check_areas(root)
     check_index(root, area_ids)
     check_peers(root)
@@ -731,7 +877,8 @@ def main():
         print(line)
     print()
     print(f"{len(ERRORS)} error(s), {len(WARNINGS)} warning(s).")
-    print("NOTE: signatures are not verified yet. A pass means well-formed, not authentic.")
+    print("NOTE: owner signatures on claimed listings are checked. Unclaimed listings have none, so a pass "
+          "for them means well-formed, not confirmed by the business.")
     sys.exit(1 if ERRORS else 0)
 
 

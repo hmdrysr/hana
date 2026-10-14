@@ -53,7 +53,8 @@ All 39 items from the five menu images.
 ## Not stated
 
 - Street address. Only a Plus Code was provided (9R3F+GQ). It was expanded to the full code 7MJH9R3F+GQ using a reference point in central Chittagong and decodes to approximately 22.3538, 91.8244. UNVERIFIED: compare with a map.
-- Station and ward. The listing uses the City Corporation area until these are known.
+- Zone (thana). The listing uses the City Corporation area until the zone is known.
+- Pickup and the accepted ways to pay at delivery.
 - Delivery fee, minimum order and delivery time.
 - Quantities for the wings and meat boxes.
 - Opening days. The menu gives 7 p.m. to 4 a.m.; every day is shown until confirmed.
@@ -67,4 +68,4 @@ All 39 items from the five menu images.
 
 ## Making this listing official
 
-The owner confirms every price and the missing details, signs both pledges, creates a key and signs the menu. That produces a new version, and every price change is announced automatically (see `SPEC.md`, section 5.4).
+The owner confirms every price and the missing details, signs the three pledges, creates a key and signs the menu. That produces a new version, and every price change is announced automatically (see `SPEC.md`, section 5.4).

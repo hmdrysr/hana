@@ -2,8 +2,8 @@
    Everything is read from the network first, so price changes show up as soon as
    there is a connection; the saved copy is used only when offline. */
 "use strict";
-const CACHE = "hana-v2";
-const SHELL = ["./", "index.html", "app.js", "site.json", "icon.svg", "manifest.webmanifest",
+const CACHE = "hana-v3";
+const SHELL = ["./", "index.html", "core.js", "app.js", "business.html", "business.js", "rules.json", "site.json", "icon.svg", "manifest.webmanifest",
   "theme/beer.min.css", "theme/theme.css", "theme/material-symbols-subset.woff2", "icon-192.png", "areas.json", "index.json"];
 
 self.addEventListener("install", (e) => {

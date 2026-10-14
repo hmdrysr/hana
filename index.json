@@ -9,7 +9,7 @@
       "neighbourhood": "ccc",
       "claimed": false,
       "version": 1,
-      "menu_hash": "488fdf3deb053da4964383b40e60d8aabde45c2e13332ad074749a0e9606bc87",
+      "menu_hash": "8856fa4c885de2eeab3716eed6713dfd4518fb5041cbc11c930aaba091f96705",
       "locations": [
         "menus/bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b/menu.json"
       ]
@@ -20,7 +20,7 @@
       "neighbourhood": "ccc",
       "claimed": false,
       "version": 1,
-      "menu_hash": "3bfff7f36df0085428e55f9e96b2ddec940e73c7f194055f43cd9e08118d2cbc",
+      "menu_hash": "3ee987177164dcc710f417da769ced0af7a20c3b5235226ac8297007c8964452",
       "locations": [
         "menus/8a46c5952246c7de87f00b22ceba64fa1d57e834ecae91c4067ac0d0e2c9c5f0/menu.json"
       ]
@@ -28,10 +28,10 @@
     {
       "id": "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7",
       "name": "Tava Restaurant",
-      "neighbourhood": "station-khulshi",
+      "neighbourhood": "khulshi",
       "claimed": false,
       "version": 1,
-      "menu_hash": "8dfd7868217dbb502b8489b667063ce41657fc847550452d74fe055607f28db1",
+      "menu_hash": "6b891adefdbb6d1d4b47c94967271e31e339b31860b3027c3d97f151a49e330e",
       "locations": [
         "menus/6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7/menu.json"
       ]

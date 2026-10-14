@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "note": "Rules that apply to every listing. tools/check.py enforces them and the app shows them. Changing a value needs a recorded community decision (GOVERNANCE.md).",
+  "currency": "BDT",
+  "payment": "cash_on_delivery_only",
+  "payment_methods_on_delivery": {
+    "cash": "Cash",
+    "bangla_qr": "Bangla QR",
+    "card_pos": "Card, on a POS terminal at delivery",
+    "mobile_wallet": "Mobile wallet transfer, at delivery"
+  },
+  "prepayment_allowed": false,
+  "prices_include_all_charges": true,
+  "max_delivery_fee": 150,
+  "draft_order_expiry_hours": 24,
+  "community_review_days": 180
+}

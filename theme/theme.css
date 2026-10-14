@@ -112,6 +112,13 @@ label.checkbox > span,
 label.radio > span {
   white-space: normal;
 }
+main label.checkbox,
+main label.radio {
+  margin-block: 0.75rem;
+}
+.field + p.small-text {
+  margin-block-start: -0.5rem;
+}
 
 /* ---------- Brand mark: emoji and wordmark share one height and one baseline ---------- */
 .brand {
@@ -310,4 +317,26 @@ nav.bottom > a {
 }
 .chip .price {
   white-space: normal;
+}
+
+/* ---------- Top bar: the brand gives way before the colour-mode toggle is pushed off screen ---------- */
+header > nav {
+  min-inline-size: 0;
+}
+header nav > .brand {
+  min-inline-size: 0;
+  flex-shrink: 1;
+}
+header nav > .brand > .brand-name {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+header nav > .max {
+  flex-shrink: 1;
+  min-inline-size: 0;
+}
+#theme-toggle {
+  flex-shrink: 0;
 }

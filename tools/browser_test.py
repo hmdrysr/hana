@@ -24,10 +24,13 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import order_line  # noqa: E402
 
-BASE = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8765/").rstrip("/") + "/index.html"
+ROOT_URL = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8765/").rstrip("/")
+BASE = ROOT_URL + "/index.html"
+BIZ = ROOT_URL + "/business.html"
 TAVA = "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7"
 MEAL = "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b"
-SCREENS = ["", "#/r/" + TAVA, "#/basket", "#/orders", "#/about"]
+SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BASE + "#/about",
+           BIZ, BIZ + "#/join", BIZ + "#/confirm", BIZ + "#/update"]
 failed = 0
 
 
@@ -45,13 +48,13 @@ with sync_playwright() as p:
             for screen in SCREENS:
                 page = browser.new_page(viewport={"width": width, "height": 800}, color_scheme=scheme)
                 page.on("pageerror", lambda e: errors.append(str(e)))
-                page.goto(BASE + screen)
+                page.goto(screen)
                 page.wait_for_timeout(500)
                 normal = page.evaluate("document.documentElement.scrollWidth - innerWidth")
                 page.evaluate("document.documentElement.style.fontSize = '200%'")
                 page.wait_for_timeout(150)
                 large = page.evaluate("document.documentElement.scrollWidth - innerWidth")
-                ok(f"no sideways scroll, {scheme}, {width}px, {screen[:6] or 'list'}", normal <= 0 and large <= 0, (normal, large))
+                ok(f"no sideways scroll, {scheme}, {width}px, {screen.replace(ROOT_URL, '')}", normal <= 0 and large <= 0, (normal, large))
                 page.close()
 
     page = browser.new_page(viewport={"width": 360, "height": 800})
@@ -61,10 +64,17 @@ with sync_playwright() as p:
     names = lambda: page.eval_on_selector_all("#results .card-title", "e => e.map(x => x.textContent)")
     got = names()
     ok("list is alphabetical", got == sorted(got, key=str.lower), got)
-    page.select_option("#area", "ccc")
-    ok("whole-city area hides the Khulshi-only restaurant", "Tava Restaurant" not in names(), names())
-    page.select_option("#area", "ward-14")
-    ok("a Khulshi ward shows the Khulshi-only restaurant", "Tava Restaurant" in names(), names())
+    opts = page.eval_on_selector_all("#area option", "e => e.map(x => x.value)")
+    ok("customers choose a zone, not the whole city or a ward", "ccc" not in opts and not any(o.startswith("ward-") for o in opts), opts)
+    page.select_option("#area", "bakalia")
+    ok("another zone hides the Khulshi-only restaurant", "Tava Restaurant" not in names(), names())
+    page.select_option("#area", "khulshi")
+    ok("Khulshi shows the Khulshi-only restaurant", "Tava Restaurant" in names(), names())
+    before = page.evaluate("document.body.className")
+    page.click("#theme-toggle")
+    page.click("#theme-toggle")
+    ok("colour-mode toggle switches to dark", "dark" in page.evaluate("document.body.className"), (before, page.evaluate("document.body.className")))
+    page.click("#theme-toggle")
     page.fill("#q", "piza")
     ok("fuzzy search finds pizza", set(names()) == {"Meal Master", "Sliced"}, names())
     page.fill("#q", "")
@@ -83,14 +93,33 @@ with sync_playwright() as p:
     page.click("#dialog-cancel")
     page.goto(BASE + "#/basket")
     page.wait_for_selector("#zone")
+    labels = page.eval_on_selector_all("input[name=channel] + span", "e => e.map(x => x.textContent)")
+    ok("checkout offers written channels only (no phone call)", labels and not any("call" in x.lower() for x in labels), labels)
+    wards = page.eval_on_selector_all("#ward option", "e => e.map(x => x.value)")
+    ok("wards are offered only inside the chosen zone", "ward-14" in wards and "ward-40" not in wards, wards)
     page.fill("#name", "Test")
     page.fill("#address", "House 1, Road 2")
     page.click("button[type=submit]")
     page.wait_for_selector("pre")
-    line = page.inner_text("pre").strip().splitlines()[-1]
+    message = page.inner_text("pre").strip()
+    line = message.splitlines()[-1]
     menu_bytes = (HERE.parent / "menus" / TAVA / "menu.json").read_bytes()
     res = order_line.decode(line, [(menu_bytes, json.loads(menu_bytes))])
     ok("order check line is accepted by tools/order_line.py", res["ok"] and res["subtotal_from_menu"] == 440, res)
+    ok("no courier slip is prepared", "DELIVERY SLIP" not in page.inner_text("main"))
+    code = message.split()[1]
+    page.goto(BASE + "#/orders")
+    page.wait_for_selector("textarea")
+    ok("a new order waits for confirmation", "Waiting for the business to confirm" in page.inner_text("article"))
+    ok("no complaint summary before confirmation", "Problem with this order?" not in page.inner_text("article"))
+    page.locator("textarea").first.fill("CONFIRMED ZZZZZZ")
+    page.click("text=Confirm order")
+    page.wait_for_timeout(300)
+    ok("a confirmation for another order is refused", "different order" in page.inner_text("article"))
+    page.locator("textarea").first.fill("Thank you. CONFIRMED " + code)
+    page.click("text=Confirm order")
+    page.wait_for_timeout(300)
+    ok("the business's confirmation confirms the order", "Confirmed by message" in page.inner_text("article") and "Problem with this order?" in page.inner_text("article"))
     ok("no script errors", not errors, errors)
     browser.close()
 

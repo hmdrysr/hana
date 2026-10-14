@@ -1,6 +1,6 @@
 # Hana: Chittagong Food Directory and Order App. Draft Spec v0.6
 
-Created by Hamid Yasir.
+Created by Hamid Yasir & Co.
 
 Status: draft. Items marked UNVERIFIED are from memory and must be checked against current official sources before launch.
 
@@ -15,7 +15,7 @@ Anything the app does not do is stated plainly in the app.
 This app is purpose-made for Chittagong. It does not cover other cities, and nothing in the design is built around a multi-city directory.
 
 - The city is always written "Chittagong". The alternative official spelling is never used anywhere in the app, the data files or the documentation.
-- There is one directory for Chittagong. If it grows large, it is split by Station, not by city.
+- There is one directory for Chittagong. If it grows large, it is split by zone (thana), not by city.
 - Neighbourhood names come from one shared file, `areas.json`, so every restaurant and every customer uses the same spellings (see section 5.1).
 
 ### 1.2 Name
@@ -47,16 +47,19 @@ These are design rules, not features. Governance protects them (`GOVERNANCE.md` 
 7. Open source and open formats only.
 8. The creator is credited in `README.md`, `AUTHORS.md` and the About screen.
 9. Every price change is public, announced inside the menu file and kept in its history (section 5.4).
-10. One delivery charge per zone, fixed by the restaurant. The app adds no fee of its own, and no surge, distance or per-customer pricing.
+10. One delivery charge per area, fixed by the business and never above the limit in `rules.json` (proposed: BDT 150). The app adds no fee of its own, and there is no surge, distance or per-customer pricing.
+11. Cash on delivery only. The customer pays the business on delivery or at pickup: in cash, by Bangla QR, by card on a POS terminal, or by mobile wallet transfer. Prepayment is never allowed, under any circumstances.
+12. Every price includes VAT and every other charge (packaging, service, platform or anything else). The delivery fee is the only addition.
+13. An order is valid only when the business confirms it in the customer's chat (section 6.5).
 
-A change that breaks one of these is not accepted. `tools/check.py` already rejects menu fields for commission, sponsorship and tracking.
+A change that breaks one of these is not accepted. `tools/check.py` rejects menu fields for commission, sponsorship, tracking, prepayment and extra charges, enforces the delivery fee limit, and checks `rules.json`.
 
 ### 1.5 About screen
 
 One About screen, reachable from the footer of every page. It shows, in plain sentences:
 
 - "Hana is the Chittagonian word for food."
-- "Created by Hamid Yasir."
+- "Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community."
 - Why Hana exists (section 1.3, shortened) and the commitments in section 1.4.
 - That Hana lists restaurants and formats orders, and takes no payments and runs no deliveries.
 - A link to the repo and to how to help.
@@ -119,9 +122,9 @@ The full rules, with the allowed classes, are in `theme/UNIFORMITY.md`. In short
 1. One layout for every screen: a top bar with the brand mark, a single content column no wider than 45rem, the footer credit, and the navigation (a bottom bar on phones, a side rail on wider screens) with four destinations: Restaurants, Basket, Orders and About.
 2. One type scale with four levels (page title, section title, group title, card title), set once in `theme.css`. Pages never set font sizes.
 3. One spacing grid in steps of 0.5rem. Pages never use Beer CSS margin helpers (see `theme/UNIFORMITY.md` for the reason) or inline styles.
-4. One colour scheme in Material 3 roles, generated from the seed colour #9a3412. Light and dark follow the phone's setting. There is no theme switcher.
+4. One colour scheme in Material 3 roles, generated from the seed colour #9a3412. Light and dark follow the phone's setting by default; a toggle in the top bar switches between following the phone, light and dark, and the choice is kept on the device.
 5. Only the components listed in `theme/UNIFORMITY.md` are used: cards, lists, chips, buttons, text fields, selects, radio buttons, checkboxes, switches, the snackbar and the dialog.
-6. A short, fixed list of screen types: restaurant list, restaurant page, basket and checkout, orders and complaint summary, about, and later the courier card and owner onboarding. New screen types need a recorded decision.
+6. A short, fixed list of screen types: restaurant list, restaurant page, basket and checkout, orders and complaint summary, about, and the business tools (start, list or claim, confirm an order, update prices). The courier card comes later. New screen types need a recorded decision.
 7. Menu files carry data only. The app shows every value from a menu file as plain text. It never renders HTML, CSS or scripts from a menu file, and ignores them if present.
 8. Every change to the theme is a recorded commit.
 
@@ -160,15 +163,27 @@ Record the result of each item, with the date, device and browser, in `THEME-CHE
   - Fees, minimum order, delivery time and opening hours may be `null`, shown as "not stated". The app never guesses them.
   - It is never shown with the courier-verified badge.
   - Prices follow the same safeguards as any other listing (section 5.4).
-- When the owner claims the listing, the first claimed version has the owner's key-hash ID, `replaces` set to the temporary ID, `previous` set to the hash of the last unclaimed version, and the full price history carried over. The old ID then points to the new one.
+- **Claiming a listing** (full rules in `CLAIMS.md`):
+  1. The owner uses the business tools page (`business.html`, "List or claim"). One form covers the business details, zone, hours, delivery areas and fees, pickup, ways to pay at delivery, the menu, and the three pledges.
+  2. The owner must have an account on GitHub or another open forge (Codeberg, GitLab, a self-hosted Forgejo or Gitea) and a public repository for the menu file. That account is how the business updates its listing from then on, so only the business can change it.
+  3. The page creates an Ed25519 key on the owner's device (Web Crypto API) and signs the menu. The private key file stays with the owner. The listing ID is the SHA-256 of the public key.
+  4. The page prepares a verification request with a claim code and opens it as a GitHub issue (or the owner copies it to a volunteer or a mirror). The request holds no private information.
+  5. Two community vouchers check the claim independently (section 4.2 and `CLAIMS.md`). When both confirm, a maintainer adds the listing to `index.json` and records the claim in `claims/<id>.json`.
+- A claimed listing's first version has `replaces` set to the unclaimed listing's ID and `replaces_hash` set to the hash of its last menu file. Every price and fee that differs from the unclaimed listing is announced, and the price history is carried over. The unclaimed folder is kept; it is removed from `index.json` only.
+- A claimed menu carries `owner` (account, menu_source, public_key) and a `signature` over its canonical form (keys sorted, no spaces, without the `signature` key). `tools/hana_sign.py` and `tools/check.py` check it.
+- **Regular review:** the community reviews every claimed listing at least every 180 days (`rules.json`), and at once after any report of prepayment, hidden charges or a fake listing. Each review is appended to the claim record; `index.json` carries the date of the latest one, and the app shows it.
 - Near-duplicates with different IDs are shown as "possible duplicate". Only a vouched member's signed merge note resolves them. Nothing merges silently.
 - Key rotation: the old key signs the new key. If the old key is lost, vouched members can sign a recovery.
 
-### 4.2 Vouching
+### 4.2 Vouching and community verification
 
-- A new restaurant key is shown as verified only after a trusted local member signs a vouch, ideally after visiting the shop.
-- Unverified listings are shown differently and labelled as such.
-- A false pledge (section 7) is grounds for removal by a vouched member's signed note.
+The full rules are in `CLAIMS.md`. In short:
+
+- A claim is approved only when **two vouchers**, working separately, confirm it. Vouchers are listed in `vouchers.json`; a voucher must not be the owner, a relative or an employee of the business, and must declare any other connection.
+- Each voucher checks that the business controls its phone (they call the number found from an independent source, such as the shop sign or an existing public page, and hear the claim code), that the business exists at the stated address, that the forge account and repository belong to the business, that the menu file's hash and signature match, and that the listing follows the rules (prices include every charge, fees within the limit, no prepayment).
+- Vouchers never ask for or record payment, NID numbers, trade licence numbers or other private documents. They may look at a document in person but do not copy it.
+- The community reviews every claimed listing at least every 180 days, and at once after any report of prepayment, hidden charges, a fake listing or a false pledge. A failed review, or a confirmed request for prepayment, removes the listing from `index.json` with a recorded reason; the files and history stay.
+- Unclaimed listings are labelled "not yet confirmed by the business" until claimed.
 
 ## 5. Menu file
 
@@ -271,28 +286,25 @@ Rules:
 - If a customer's point falls in more than one zone, the client uses the first matching zone in the order listed. The owner controls the order.
 - A restaurant with no `delivery` block is shown as "delivery area not stated" and is never suggested as delivering to the customer.
 
-### Default area: the whole city
+### Areas: the city, zones and wards
 
-Every business delivers to the whole Chittagong City Corporation (CCC) area unless it reports a smaller one. A business may report its delivery area by police Station or, more precisely, by ward. The word used everywhere in Hana is "Station".
+The city is the Chittagong City Corporation (CCC). It is divided into **zones**, which are the police station areas (thanas), and 41 wards. In the app and the files, zones are named without a suffix: "Khulshi", not "Khulshi Station".
+
+- **Businesses** choose where they deliver: the whole city (`ccc`), which covers every zone, or a list of zones. They cannot choose wards. Each delivery area has one fee, minimum order and time. A typical set-up is the business's own zone with one fee and the whole city with a flat fee for every other zone; the first matching area in the list wins. Businesses can also set a fee for each zone. Fees can be changed at any time with a new menu version, which is announced automatically (section 5.4).
+- **Customers** choose their zone, never "anywhere in the city", because the whole city is a delivery area, not a place to deliver to. At checkout they may also choose their ward, from the wards in that zone. The ward is optional and only added to the order message.
 
 ### `areas.json`
 
-One shared file with three levels:
+One shared file with three levels: the city (`ccc`), 15 zones (`khulshi`, for example), and 41 wards (`ward-14`, for example). Each area has an ID, a `kind` (city, zone or ward), an English name, a `source` and, once one exists, a boundary (GeoJSON). Each zone is `part_of` the city and each ward is `part_of` one or more zones. `tools/check.py` enforces the levels.
 
-1. **City:** the Chittagong City Corporation (`ccc`).
-2. **Stations:** the Chittagong Metropolitan Police Stations inside the City Corporation (`station-khulshi`, for example). Each is `part_of` the city.
-3. **Wards:** the 41 City Corporation wards (`ward-14`, for example), each with its number and name. Each is `part_of` one or more Stations. Where the source places a ward in more than one Station, the ward lists all of them, so a business that delivers to any of those Stations is matched for that ward. The business can still decline an order.
-
-Each area has an ID, a `kind` (city, station or ward), an English name, a `source` and, once one exists, a boundary (GeoJSON). An area without a boundary can only be matched by name, and its `source` says so. Matching a customer's GPS position requires boundaries. `tools/check.py` enforces the levels: a Station must be part of the city and a ward part of a Station.
-
-The ward list and the ward-to-Station assignments come from the English Wikipedia article on the City Corporation, read on October 15, 2026. That article predates the Sadarghat and EPZ Stations, so some assignments may be out of date. UNVERIFIED against Chittagong Metropolitan Police and City Corporation records. Karnaphuli Station lies outside the City Corporation and is not listed. Boundaries can be built from OpenStreetMap data (UNVERIFIED: check the current licence and attribution rules before copying any boundaries). Local members review the list so that spellings and boundaries are agreed in one place.
+The ward list and the ward-to-zone assignments come from the English Wikipedia article on the City Corporation, read on October 15, 2026. That article predates the Sadarghat and EPZ thanas, so some assignments may be out of date. UNVERIFIED against Chittagong Metropolitan Police and City Corporation records. Karnaphuli thana lies outside the City Corporation and is not listed. No area has a boundary yet, so matching is by name.
 
 ### How the customer is placed
 
 All matching runs on the customer's phone. The customer's location is never sent anywhere and is never part of any file.
 
 1. **Use my location:** the browser asks permission and reads the device position. The point-in-zone check runs locally.
-2. **Pick my area:** the whole city, a Station or a ward, from `areas.json`. Works without location permission or mobile data.
+2. **Pick my zone:** a zone (thana) from `areas.json`, and optionally a ward at checkout. Works without location permission or mobile data.
 3. **Saved home area:** optional, stored on the device only.
 
 ### What the customer sees
@@ -341,7 +353,7 @@ The app does not scrape. It fetches the exact file addresses listed in the index
 
 A single offline-capable page, "Add my restaurant". Progress saves on the device after every step, so an owner can stop and come back.
 
-1. Basics: name, Station or ward, address, business phone, hours.
+1. Basics: name, zone, address, business phone, hours.
 2. Contact channels: tick the apps the restaurant uses, enter each ID, mark the preferred one.
 3. Delivery zones: pick named areas, or draw a circle or polygon (section 5.1).
 4. Menu items: name, price, short description, optional photo (compressed automatically).
@@ -450,14 +462,12 @@ Proposed, not built: a minimum notice period before a price increase takes effec
 ### 6.1 Flow
 
 1. The customer builds an order from **one restaurant's** menu. An order is for one restaurant at a time. If the customer adds a dish from a second restaurant, the app asks whether to empty the basket and start a new order there. It never mixes restaurants in one order.
-2. At checkout the customer picks a channel from the restaurant's list. The preferred one is pre-selected.
-3. The delivery charge is the one fee the restaurant set for the customer's zone (section 5.1). The app shows it as its own line, adds nothing to it and never calculates a fee itself. If the restaurant has not stated a fee, checkout says "delivery fee not stated, confirm with the restaurant" and does not guess.
-4. The client builds two text blocks and shows them before sending:
-   - **Kitchen block:** items, quantities, total, order code.
-   - **Courier slip:** order code, first name or nickname, delivery address or landmark, cash amount to collect. It has no full name, no phone number and no order history.
-   - **Check line:** one machine-readable last line (section 6.4).
-5. The client opens the chosen app with the kitchen block filled in. The customer presses send.
-6. The client saves the order on the device with a timestamp and a hash.
+2. At checkout the customer chooses **delivery** or **pickup**. Pickup is offered unless the menu says `"pickup": false`; it has no delivery fee. For delivery, the customer chooses their zone and, optionally, their ward.
+3. The customer picks a channel. An order is written, so checkout offers WhatsApp, text message and other written channels only; a business phone number is offered as a text message, never as a call.
+4. The delivery charge is the one fee the business set for the matching area (section 5.1). The app shows it as its own line and adds nothing. If the business has not stated a fee, checkout says so and does not guess.
+5. Checkout states the rules: all prices include every charge, payment is on delivery or at pickup only, and the customer must never pay in advance.
+6. The client builds the order message: order code, items, totals, payment terms, name, address or pickup, the confirmation request ("To confirm, reply: CONFIRMED <code>") and the check line (section 6.4). The customer presses send in their own app. There is no courier slip; the business sends courier details when it confirms (section 7.3).
+7. The client saves the order on the device as **waiting for confirmation**, with a timestamp and the signed menu file it was priced from.
 
 ### 6.2 Link formats
 
@@ -473,7 +483,7 @@ Messenger and Telegram links may not accept pre-filled text (UNVERIFIED). For th
 
 ### 6.3 Order status
 
-The restaurant replies in chat. The customer can tick off "confirmed", "picked up" and "received" in the app. These ticks are local only and are not proof of anything.
+An order is **waiting for confirmation** until the customer pastes the business's confirmation (section 6.5), then **confirmed**. Unconfirmed orders are removed after 24 hours. Only confirmed orders can produce a complaint summary.
 
 ### 6.4 Order check line
 
@@ -490,6 +500,21 @@ CHECK hana1 H=<first 12 hex of the menu hash> Z=<zone id> I=<items> S=<subtotal>
 - `tools/order_line.py` is the reference implementation, with tests in `tools/selftest.py`. The app must produce exactly this format.
 
 Limits are in section 5.4.
+
+### 6.5 Business confirmation
+
+An order is valid only when the business confirms it. This also prevents abuse: an order that was never sent cannot be confirmed, and only confirmed orders produce a complaint summary.
+
+- The business replies in the same chat. With the business tools page ("Confirm an order"), the business pastes the customer's message; the page re-prices it from the published menu, flags any mismatch, and prepares the reply:
+  `CONFIRMED hana1 O=<order code> C=<check code> E=<minutes> K=<key id> S=<signature>`
+  S is an Ed25519 signature by the business's key over `hana1-confirm|<check line>|<order code>|<minutes>`.
+- The customer pastes the reply into the order on the Orders page. The app checks the signature against the public key in the saved menu file (Web Crypto API) and marks the order **confirmed (signature checked)**.
+- An unclaimed listing has no key. Its confirmation is the plain reply "CONFIRMED <order code>", marked **confirmed by message (not signed)**; the chat screenshot is then the main evidence. A claimed listing must sign: the app refuses an unsigned confirmation for it.
+- If the browser cannot check Ed25519 signatures, the order is marked confirmed with a note that the signature was not checked.
+- An order not confirmed within 24 hours (`rules.json`) is removed from the phone. The customer can also cancel it. Every addition, confirmation, cancellation and removal is recorded in an activity record on the phone, which the customer can view and download.
+- `tools/order_line.py` builds and checks confirmation lines in the same format, for vouchers, authorities and tests.
+
+What this does not stop: a customer can still forge an unsigned confirmation for an unclaimed listing, and nothing stops a business from confirming and then not delivering. Signed confirmations, the chat history and the public complaint bodies cover those cases.
 
 ## 7. Couriers and the restaurant pledge
 
@@ -511,9 +536,13 @@ Notes:
 
 > I will give couriers only what they need to deliver: the customer's first name or nickname, the address or landmark, the order code and the amount to collect. I will not share a customer's phone number or order history with couriers or anyone else. I will delete customer details when they are no longer needed.
 
-### 7.3 Courier card
+### 7.3 Fair pricing pledge
 
-The restaurant sends a courier card in the order chat before delivery: courier name, courier phone number, and optionally a photo or bike plate.
+> Every price I list includes VAT and every other charge. The delivery fee is the only addition, and it never exceeds the Hana limit. I take payment only on delivery or at pickup, and I will never ask a customer to pay in advance.
+
+### 7.4 Courier card
+
+The business sends a courier card in the order chat when it confirms the order, or before delivery: courier name, courier phone number, and optionally a photo or bike plate. The app does not prepare a slip for the courier.
 
 Client behaviour:
 
@@ -525,7 +554,7 @@ Client behaviour:
 - At handover the customer shows the order code.
 - Report button: "Courier number does not match." It records the report on the device and shows the police and consumer-rights routes (section 9).
 
-### 7.4 Tracking
+### 7.5 Tracking
 
 No live map. The courier may share live location in the order chat using the messaging app's own feature. Otherwise the restaurant sends plain status messages. A server relay is out of scope unless users ask for it.
 
@@ -563,7 +592,7 @@ Verified from published sources: complaints under the Consumer Rights Protection
 
 ### 9.1 Complaint export
 
-The client fills a complaint from the saved order: complainant, seller, order ID and hash, date, items, prices, payment method, the menu version ordered from (with the saved signed menu file and its price announcements attached), courier card, what went wrong, the date the problem arose, what the customer already tried, evidence list and remedy sought. It exports as a printable file and a plain text file. The customer must check it against the current official DNCRP form before filing.
+The client fills a complaint only from a **confirmed** order: complainant, seller, order ID and hash, date, items, prices, payment method, the business's confirmation (signed or not), the menu version ordered from (with the saved signed menu file and its price announcements attached), courier card, what went wrong, the date the problem arose, what the customer already tried, evidence list and remedy sought. It exports as a printable file and a plain text file. The customer must check it against the current official DNCRP form before filing.
 
 ## 10. Data on the device
 
@@ -579,11 +608,11 @@ The project lives in an open git repo that anyone can fork or mirror. Full rules
 
 - **Routes:** list a restaurant, update or remove a listing, report a wrong listing, vouch, fix an area, code, theme, docs, and phone test reports. Most routes need no GitHub account: an owner or volunteer can send the ready message from the onboarding page to a volunteer.
 - **Forms:** issue forms for each route and a pull request template, in `.github/`. Forgejo-based hosts such as Codeberg may need these copied to their own template folder (UNVERIFIED).
-- **Check:** `python3 tools/check.py` must pass on every pull request. It checks that data files are well-formed: the Chittagong spelling, hashes, https locations, menu fields, pledges, zone shapes, coordinate order, no HTML in menu text, and no fee or paid-placement fields. It also checks the price safeguards (whole-taka prices, stable ids, kept version files, hash chain, announced price changes matching the real changes, append-only price history) and photo entries. It does not yet verify signatures. `tools/selftest.py` proves the checker catches each of these.
+- **Check:** `python3 tools/check.py` must pass on every pull request. It checks that data files are well-formed: the Chittagong spelling, hashes, https locations, menu fields, pledges, zone shapes, coordinate order, no HTML in menu text, and no fee or paid-placement fields. It also checks the price safeguards (whole-taka prices, stable ids, kept version files, hash chain, announced price changes matching the real changes, append-only price history), photo entries, `rules.json` (cash on delivery only, all-inclusive prices, the delivery fee limit), owner signatures on claimed listings, claim records and review dates, and the interface uniformity rules. `tools/selftest.py` proves the checker catches each of these.
 - **People:** maintainers (code, spec, docs), vouchers (real-world checks of restaurants) and contributors. Starting numbers for approvals are proposed in `GOVERNANCE.md`.
 - **Privacy:** no customer or courier data, no NID numbers and no screenshots with private details in issues, pull requests or files.
 - **Records:** history is kept. A removal is a new commit with a reason.
-- **Credit:** Hamid Yasir is credited as creator (`README.md`, `AUTHORS.md`, About screen). Contributors are credited through commit sign-offs.
+- **Credit:** Hamid Yasir & Co. is credited as creator (`README.md`, `AUTHORS.md`, About screen). Contributors are credited through commit sign-offs.
 - **Licence:** not chosen yet (open item 14).
 
 ## 12. Open items
@@ -614,7 +643,10 @@ The project lives in an open git repo that anyone can fork or mirror. Full rules
 24. Check ImgBB and any other free image host the owner tool lists: terms, retention, direct-link behaviour, and whether the app can read files (CORS).
 25. Build the restaurant's "Check an order" page on top of `tools/order_line.py` (offline, static).
 26. Confirm Tava Restaurant's, Meal Master's and Sliced's listings with the owners, claim them with the owners' keys, and have the owners sign the pledges.
-27. Draw boundaries for the city, the 15 Stations and the 41 wards, from a source with a clear licence, and have two local reviewers confirm them. The OpenStreetMap lookup service blocked automated requests, so this needs a proper data download or manual drawing.
-28. Confirm the ward-to-Station assignments in `areas.json` against Chittagong Metropolitan Police and City Corporation records, including the wards now in the Sadarghat and EPZ Stations.
+27. Draw boundaries for the city, the 15 zones and the 41 wards, from a source with a clear licence, and have two local reviewers confirm them. The OpenStreetMap lookup service blocked automated requests, so this needs a proper data download or manual drawing.
+28. Confirm the ward-to-zone assignments in `areas.json` against Chittagong Metropolitan Police and City Corporation records, including the wards now in the Sadarghat and EPZ thanas.
 29. ~~Decide what "whole Chittagong" means.~~ Decided: it means the Chittagong City Corporation area, which every listing covers by default.
 30. Write and test the reference fuzzy-search code in `tools/` (section 5.1, Search).
+31. Agree the delivery fee limit (proposed BDT 150 in `rules.json`) and review it yearly.
+32. Test Ed25519 in the Web Crypto API on the phones customers and businesses use; older browsers cannot create keys or check signatures.
+33. Decide how a business without a forge account is helped to create one (volunteers, a guide in Bengali-language community channels).

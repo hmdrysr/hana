@@ -91,15 +91,16 @@ The Oriental menu photograph is too blurry to match each price to its item relia
 
 - Delivery fee, minimum order and delivery time. The app shows "Not stated".
 - Opening hours. The app shows "Not stated".
-- Delivery area: the Khulshi Station area only, as reported by a regular customer. Customers whose ward belongs to Khulshi Station are matched. Boundaries have not been drawn yet, so matching is by name.
+- Delivery area: the Khulshi zone (thana) only, as reported by a regular customer. Boundaries have not been drawn yet, so matching is by name.
+- Pickup and the accepted ways to pay at delivery.
 
 ## Assumptions to confirm with the owner
 
 1. The WhatsApp number is the same as the telephone number provided (+880 1729-298282). The number is also listed for voice calls, which has not been confirmed.
 2. The address is recorded as "4 Zakir Hossain Road, Chittagong 4000". The Plus Code provided was 9R66+7MF. It was expanded to the full code 7MJH9R66+7MF using a reference point in central Chittagong and decodes to approximately 22.3607, 91.8117. UNVERIFIED: compare with a map.
-3. The restaurant is located in the Khulshi Station area. This was inferred from the road name and coordinates.
+3. The restaurant is located in the Khulshi zone (thana). This was inferred from the road name and coordinates.
 4. Food photographs on the printed menus were not copied. Photographs require the owner's permission (see `SPEC.md`, section 5.3).
 
 ## Making this listing official
 
-The owner, or a volunteer working with the owner, confirms every price, adds the missing items, fills in fees and hours, signs both pledges, creates a key and signs the menu. That produces a new version, and every price change from the entries above is announced automatically (see `SPEC.md`, section 5.4).
+The owner, or a volunteer working with the owner, confirms every price, adds the missing items, fills in fees and hours, signs the three pledges, creates a key and signs the menu. That produces a new version, and every price change from the entries above is announced automatically (see `SPEC.md`, section 5.4).

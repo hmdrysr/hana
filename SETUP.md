@@ -12,9 +12,9 @@ Your repository address is https://github.com/hmdrysr/hana and your site will be
 4. Optional: add `.github/workflows/check.yml` the same way. It runs the repo checks on every pull request.
 5. **Add file, then Upload files**. Drag in `hana-repo.zip` at the top level of the repo (not in a folder). Commit.
 6. Open the **Actions** tab. The "unzip" run unpacks the zip, fills in the repo address, runs the checks and commits the result. When it is green, refresh the repo page. You will see the files.
-7. Open **Settings, then Pages**. Under **Build and deployment** choose **Deploy from a branch**, branch `main`, folder `/ (root)`. Save. After a minute your site is live at the address in the line above.
+7. Publish the site. Either: (a) add `.github/workflows/pages.yml` by hand as in step 3, then in **Settings, then Pages**, set **Source** to **GitHub Actions** (the site is redeployed on every change to `main`); or (b) in **Settings, then Pages**, choose **Deploy from a branch**, branch `main`, folder `/ (root)`. Use one method, not both. After a minute the site is live at the address above.
 
-## Why steps 3 and 4 are by hand
+## Why workflow files are added by hand
 
 GitHub does not let an automatic commit change workflow files, so the unzip workflow skips `.github/workflows/` inside any zip. The same protection means a zip can never swap in a different workflow.
 

@@ -1,6 +1,6 @@
 # Contributing to Hana
 
-Hana is an open, static food directory and order formatter for Chittagong, created by Hamid Yasir. It exists so that customers and restaurants keep their own choices, with no platform taking a cut (see "Why Hana exists" in `README.md`). Anyone can help. You do not need to write code, and you do not need a GitHub account for the simplest routes.
+Hana is an open, static food directory and order formatter for Chittagong, created by Hamid Yasir & Co. It exists so that customers and restaurants keep their own choices, with no platform taking a cut (see "Why Hana exists" in `README.md`). Anyone can help. You do not need to write code, and you do not need a GitHub account for the simplest routes.
 
 Status: design stage. Read `SPEC.md` first. Anything marked UNVERIFIED there still needs checking, and checking it is a useful contribution.
 
@@ -8,7 +8,7 @@ Status: design stage. Read `SPEC.md` first. Anything marked UNVERIFIED there sti
 
 | I want to... | Do this | Who reviews |
 |---|---|---|
-| List my restaurant | Use the "Add my restaurant" page, then send the ready message to a volunteer (no account needed), or open an **Add a restaurant** issue | One voucher |
+| List or claim my business | Use the business tools page (`business.html`), which prepares a signed menu and opens a **List or claim a business** issue (see `CLAIMS.md`) | Two vouchers |
 | Fix or remove my listing | Publish a new signed menu version, then open an **Update or remove a listing** issue | One voucher |
 | Report a wrong or false listing | Open a **Report a listing** issue | Two vouchers |
 | Vouch for a restaurant | Become a voucher (see `GOVERNANCE.md`), then add a vouch file | One other voucher |
@@ -36,14 +36,11 @@ If you only have a phone and no GitHub account, message a volunteer. The contact
 3. Sign off your commits (`git commit -s`). This adds a line saying you wrote the change, or have the right to submit it, under the Developer Certificate of Origin (an open, published statement).
 4. Keep each pull request to one purpose.
 
-## Listings: what a good submission has
+## Listings and claims
 
-- The menu file is signed by the owner's key. A volunteer may host or submit the file, but cannot change it.
-- The menu file's SHA-256 hash (over the exact bytes of the file) matches the hash in the index entry.
-- Business phone, hours and delivery zones are filled in.
-- Both pledges are signed by the owner.
-- At least one working location (an https address that allows the app to read the file).
-- A reference to the vouch, or a note that the listing is unverified until someone vouches.
+- A business lists or claims itself with the business tools page (`business.html`). The page prepares a signed menu and a verification request. Two vouchers check it as described in `CLAIMS.md`.
+- A volunteer may suggest an unclaimed listing from a printed menu. It must carry a `listing_note`, its prices must be read with certainty (leave out anything unclear), and its transcription notes go in the listing's folder.
+- Every listing follows `rules.json`: cash on delivery only, every price includes all charges, and delivery fees stay within the limit.
 
 ## Fixing an area or adding a boundary
 

@@ -1,148 +1,148 @@
 {
-  "version": 2,
+  "version": 3,
   "city": "Chittagong",
-  "note": "The city is the Chittagong City Corporation (CCC). It is divided into police Stations and 41 wards. A ward that the source places in more than one Station is listed under each of them, so a business that delivers to any of those Stations is matched for that ward. Karnaphuli Station is part of the Chittagong Metropolitan Police but lies outside the City Corporation, so it is not listed.",
+  "note": "The city is the Chittagong City Corporation (CCC). It is divided into zones (thanas, the police station areas) and 41 wards. Wards are a finer, optional detail inside a zone. A ward that the source places in more than one zone is listed under each of them. Karnaphuli thana lies outside the City Corporation, so it is not listed.",
   "areas": [
     {
       "id": "ccc",
       "kind": "city",
       "name": "Chittagong City Corporation (CCC)",
-      "source": "The whole city. Every listing delivers to the whole CCC area unless the business reports a smaller area. No boundary yet, so matching is by name only."
+      "source": "The whole city. Businesses that deliver everywhere in the city choose this area. Customers choose their zone (thana) instead. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-akbar-shah",
-      "kind": "station",
-      "name": "Akbar Shah Station",
+      "id": "akbar-shah",
+      "kind": "zone",
+      "name": "Akbar Shah",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-bakalia",
-      "kind": "station",
-      "name": "Bakalia Station",
+      "id": "bakalia",
+      "kind": "zone",
+      "name": "Bakalia",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-bandar",
-      "kind": "station",
-      "name": "Bandar (Port) Station",
+      "id": "bandar",
+      "kind": "zone",
+      "name": "Bandar (Port)",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-bayazid-bostami",
-      "kind": "station",
-      "name": "Bayazid Bostami Station",
+      "id": "bayazid-bostami",
+      "kind": "zone",
+      "name": "Bayazid Bostami",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-chandgaon",
-      "kind": "station",
-      "name": "Chandgaon Station",
+      "id": "chandgaon",
+      "kind": "zone",
+      "name": "Chandgaon",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-chawkbazar",
-      "kind": "station",
-      "name": "Chawkbazar Station",
+      "id": "chawkbazar",
+      "kind": "zone",
+      "name": "Chawkbazar",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-double-mooring",
-      "kind": "station",
-      "name": "Double Mooring Station",
+      "id": "double-mooring",
+      "kind": "zone",
+      "name": "Double Mooring",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-epz",
-      "kind": "station",
-      "name": "EPZ Station",
+      "id": "epz",
+      "kind": "zone",
+      "name": "EPZ",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only. No wards are assigned to EPZ in the source; choose the Station itself."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only. The source assigns no wards to EPZ."
     },
     {
-      "id": "station-halishahar",
-      "kind": "station",
-      "name": "Halishahar Station",
+      "id": "halishahar",
+      "kind": "zone",
+      "name": "Halishahar",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-khulshi",
-      "kind": "station",
-      "name": "Khulshi Station",
+      "id": "khulshi",
+      "kind": "zone",
+      "name": "Khulshi",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-kotwali",
-      "kind": "station",
-      "name": "Kotwali Station",
+      "id": "kotwali",
+      "kind": "zone",
+      "name": "Kotwali",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-pahartali",
-      "kind": "station",
-      "name": "Pahartali Station",
+      "id": "pahartali",
+      "kind": "zone",
+      "name": "Pahartali",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-panchlaish",
-      "kind": "station",
-      "name": "Panchlaish Station",
+      "id": "panchlaish",
+      "kind": "zone",
+      "name": "Panchlaish",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-patenga",
-      "kind": "station",
-      "name": "Patenga Station",
+      "id": "patenga",
+      "kind": "zone",
+      "name": "Patenga",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
-      "id": "station-sadarghat",
-      "kind": "station",
-      "name": "Sadarghat Station",
+      "id": "sadarghat",
+      "kind": "zone",
+      "name": "Sadarghat",
       "part_of": [
         "ccc"
       ],
-      "source": "Chittagong Metropolitan Police Station, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
+      "source": "Zone (thana): a Chittagong Metropolitan Police station area, as listed in the English Wikipedia article on the Chittagong City Corporation, read October 15, 2026. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-01",
@@ -150,9 +150,9 @@
       "number": 1,
       "name": "Ward 1, South Pahartali",
       "part_of": [
-        "station-panchlaish"
+        "panchlaish"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only. Part of Ward 1 lies in Hathazari Upazila, outside the city."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only. Part of Ward 1 lies in Hathazari Upazila, outside the city."
     },
     {
       "id": "ward-02",
@@ -160,10 +160,10 @@
       "number": 2,
       "name": "Ward 2, Jalalabad",
       "part_of": [
-        "station-bayazid-bostami",
-        "station-panchlaish"
+        "bayazid-bostami",
+        "panchlaish"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-03",
@@ -171,9 +171,9 @@
       "number": 3,
       "name": "Ward 3, Panchlaish",
       "part_of": [
-        "station-panchlaish"
+        "panchlaish"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-04",
@@ -181,9 +181,9 @@
       "number": 4,
       "name": "Ward 4, Chandgaon",
       "part_of": [
-        "station-chandgaon"
+        "chandgaon"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-05",
@@ -191,9 +191,9 @@
       "number": 5,
       "name": "Ward 5, Mohra",
       "part_of": [
-        "station-chandgaon"
+        "chandgaon"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-06",
@@ -201,9 +201,9 @@
       "number": 6,
       "name": "Ward 6, East Sholashahar",
       "part_of": [
-        "station-chandgaon"
+        "chandgaon"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-07",
@@ -211,9 +211,9 @@
       "number": 7,
       "name": "Ward 7, West Sholashahar",
       "part_of": [
-        "station-panchlaish"
+        "panchlaish"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-08",
@@ -221,10 +221,10 @@
       "number": 8,
       "name": "Ward 8, Sholokbahar",
       "part_of": [
-        "station-panchlaish",
-        "station-khulshi"
+        "panchlaish",
+        "khulshi"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-09",
@@ -232,11 +232,11 @@
       "number": 9,
       "name": "Ward 9, North Pahartali",
       "part_of": [
-        "station-akbar-shah",
-        "station-pahartali",
-        "station-khulshi"
+        "akbar-shah",
+        "pahartali",
+        "khulshi"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-10",
@@ -244,9 +244,9 @@
       "number": 10,
       "name": "Ward 10, North Kattali",
       "part_of": [
-        "station-akbar-shah"
+        "akbar-shah"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-11",
@@ -254,10 +254,10 @@
       "number": 11,
       "name": "Ward 11, South Kattali",
       "part_of": [
-        "station-pahartali",
-        "station-halishahar"
+        "pahartali",
+        "halishahar"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-12",
@@ -265,10 +265,10 @@
       "number": 12,
       "name": "Ward 12, Saraipara",
       "part_of": [
-        "station-pahartali",
-        "station-double-mooring"
+        "pahartali",
+        "double-mooring"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-13",
@@ -276,9 +276,9 @@
       "number": 13,
       "name": "Ward 13, Pahartali",
       "part_of": [
-        "station-khulshi"
+        "khulshi"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-14",
@@ -286,9 +286,9 @@
       "number": 14,
       "name": "Ward 14, Lalkhan Bazar",
       "part_of": [
-        "station-khulshi"
+        "khulshi"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-15",
@@ -296,10 +296,10 @@
       "number": 15,
       "name": "Ward 15, Bagmaniram",
       "part_of": [
-        "station-panchlaish",
-        "station-kotwali"
+        "panchlaish",
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-16",
@@ -307,11 +307,11 @@
       "number": 16,
       "name": "Ward 16, Chawkbazar",
       "part_of": [
-        "station-chawkbazar",
-        "station-panchlaish",
-        "station-kotwali"
+        "chawkbazar",
+        "panchlaish",
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-17",
@@ -319,9 +319,9 @@
       "number": 17,
       "name": "Ward 17, West Bakalia",
       "part_of": [
-        "station-bakalia"
+        "bakalia"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-18",
@@ -329,9 +329,9 @@
       "number": 18,
       "name": "Ward 18, East Bakalia",
       "part_of": [
-        "station-bakalia"
+        "bakalia"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-19",
@@ -339,9 +339,9 @@
       "number": 19,
       "name": "Ward 19, South Bakalia",
       "part_of": [
-        "station-bakalia"
+        "bakalia"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-20",
@@ -349,9 +349,9 @@
       "number": 20,
       "name": "Ward 20, Dewan Bazar",
       "part_of": [
-        "station-kotwali"
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-21",
@@ -359,9 +359,9 @@
       "number": 21,
       "name": "Ward 21, Jamal Khan",
       "part_of": [
-        "station-kotwali"
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-22",
@@ -369,9 +369,9 @@
       "number": 22,
       "name": "Ward 22, Enayet Bazar",
       "part_of": [
-        "station-kotwali"
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-23",
@@ -379,9 +379,9 @@
       "number": 23,
       "name": "Ward 23, North Pathantooly",
       "part_of": [
-        "station-double-mooring"
+        "double-mooring"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-24",
@@ -389,10 +389,10 @@
       "number": 24,
       "name": "Ward 24, North Agrabad",
       "part_of": [
-        "station-halishahar",
-        "station-double-mooring"
+        "halishahar",
+        "double-mooring"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-25",
@@ -400,9 +400,9 @@
       "number": 25,
       "name": "Ward 25, Rampur",
       "part_of": [
-        "station-halishahar"
+        "halishahar"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-26",
@@ -410,9 +410,9 @@
       "number": 26,
       "name": "Ward 26, North Halishahar",
       "part_of": [
-        "station-halishahar"
+        "halishahar"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-27",
@@ -420,9 +420,9 @@
       "number": 27,
       "name": "Ward 27, South Agrabad",
       "part_of": [
-        "station-double-mooring"
+        "double-mooring"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-28",
@@ -430,9 +430,9 @@
       "number": 28,
       "name": "Ward 28, Pathantooly",
       "part_of": [
-        "station-double-mooring"
+        "double-mooring"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-29",
@@ -440,10 +440,10 @@
       "number": 29,
       "name": "Ward 29, West Madarbari",
       "part_of": [
-        "station-double-mooring",
-        "station-sadarghat"
+        "double-mooring",
+        "sadarghat"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-30",
@@ -451,11 +451,11 @@
       "number": 30,
       "name": "Ward 30, East Madarbari",
       "part_of": [
-        "station-kotwali",
-        "station-double-mooring",
-        "station-sadarghat"
+        "kotwali",
+        "double-mooring",
+        "sadarghat"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-31",
@@ -463,9 +463,9 @@
       "number": 31,
       "name": "Ward 31, Alkaran",
       "part_of": [
-        "station-kotwali"
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-32",
@@ -473,9 +473,9 @@
       "number": 32,
       "name": "Ward 32, Andarkilla",
       "part_of": [
-        "station-kotwali"
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-33",
@@ -483,9 +483,9 @@
       "number": 33,
       "name": "Ward 33, Firingee Bazar",
       "part_of": [
-        "station-kotwali"
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-34",
@@ -493,9 +493,9 @@
       "number": 34,
       "name": "Ward 34, Patharghata",
       "part_of": [
-        "station-kotwali"
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-35",
@@ -503,10 +503,10 @@
       "number": 35,
       "name": "Ward 35, Boxirhat",
       "part_of": [
-        "station-bakalia",
-        "station-kotwali"
+        "bakalia",
+        "kotwali"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-36",
@@ -514,10 +514,10 @@
       "number": 36,
       "name": "Ward 36, Gosaildanga",
       "part_of": [
-        "station-double-mooring",
-        "station-bandar"
+        "double-mooring",
+        "bandar"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-37",
@@ -525,9 +525,9 @@
       "number": 37,
       "name": "Ward 37, North Middle Halishahar",
       "part_of": [
-        "station-bandar"
+        "bandar"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-38",
@@ -535,9 +535,9 @@
       "number": 38,
       "name": "Ward 38, South Middle Halishahar",
       "part_of": [
-        "station-bandar"
+        "bandar"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-39",
@@ -545,10 +545,10 @@
       "number": 39,
       "name": "Ward 39, South Halishahar",
       "part_of": [
-        "station-bandar",
-        "station-patenga"
+        "bandar",
+        "patenga"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-40",
@@ -556,9 +556,9 @@
       "number": 40,
       "name": "Ward 40, North Patenga",
       "part_of": [
-        "station-patenga"
+        "patenga"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     },
     {
       "id": "ward-41",
@@ -566,9 +566,9 @@
       "number": 41,
       "name": "Ward 41, South Patenga",
       "part_of": [
-        "station-patenga"
+        "patenga"
       ],
-      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Station for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ Stations, so some wards may now belong to a different Station. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
+      "source": "Ward numbers and names: the English Wikipedia article on the Chittagong City Corporation (ward table), read October 15, 2026. Facts only; no text copied. Zone (thana) for each ward: the same article (ward-to-station paragraph), read October 15, 2026. That paragraph predates the Sadarghat and EPZ thanas, so some wards may now belong to a different zone. Wards 29 and 30 are also listed under Sadarghat, from the Wikipedia articles on those wards. UNVERIFIED against Chittagong Metropolitan Police or City Corporation records. No boundary yet, so matching is by name only."
     }
   ]
 }

@@ -1,10 +1,12 @@
 # Uniformity rules
 
-Every Hana screen follows these rules so that the app looks and behaves the same everywhere, on every phone. `tools/check.py` enforces the class list and the bans below for `index.html` and `app.js`.
+Every Hana screen follows these rules so that the app looks and behaves the same everywhere, on every phone. `tools/check.py` enforces the class list and the bans below for `index.html`, `business.html`, `core.js`, `app.js` and `business.js`.
 
 ## Layout
 
-- One frame for every screen: the top bar with the brand mark, one content column (at most 45rem wide), the footer credit, and the main navigation.
+- One frame for every screen: the top bar with the brand mark and the colour-mode toggle, one content column (at most 45rem wide), the footer credit, and the main navigation.
+- The colour-mode toggle (`#theme-toggle`) cycles through: follow the phone, light, dark. The choice is kept on the device.
+- The business tools page (`business.html`) uses the same frame, with its own four destinations: Start, List or claim, Confirm, Update prices.
 - Main navigation has exactly four destinations, in this order: Restaurants, Basket, Orders, About. Phones show a bottom bar (`nav.bottom.s`); tablets and computers show a side rail (`nav.left.m.l`).
 - The brand mark is the 🥡 emoji and the word "Hana", set by `.brand`, `.brand-mark` and `.brand-name`. The emoji box is 2rem and the wordmark 1.375rem bold, centred on one line. Do not resize either one on a single screen.
 - The footer reads: "Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community." The two names are links.
@@ -57,13 +59,13 @@ Canadian English, plain and professional:
 - Canadian spelling (colour, centre, licence as a noun, neighbourhood, organize).
 - Money: `BDT 1,290` (ISO code, comma for thousands, whole taka).
 - Time: `7 p.m.`, `3:30 a.m.`, `midnight`, `noon`. Dates: `October 15, 2026`.
-- "Station" for a police station area, "ward" for a City Corporation ward, "courier" or "delivery person" for the person who delivers, "business" when the text covers restaurants and delivery-only kitchens alike.
+- "zone" for a police station area (thana), written without a suffix ("Khulshi"); "ward" for a City Corporation ward; "courier" or "delivery person" for the person who delivers, "business" when the text covers restaurants and delivery-only kitchens alike.
 - Sentence case for headings and buttons. No exclamation marks.
 
 ## Allowed classes
 
-`tools/check.py` rejects any class in `index.html` or `app.js` that is not on this list:
+`tools/check.py` rejects any class in those files that is not on this list:
 
-active, badge, bold, border, bottom, brand, brand-mark, brand-name, button, card-title, center-align, checkbox, chip, circle, dark, field, fill, flush, gap-top, group-title, l, label, left, left-align, link, list, m, max, medium, muted, no-border, no-elevate, no-space, overline-label, page-title, prefix, price, primary-container, radio, responsive, right-align, round, row, s, section-title, small, small-space, small-text, snackbar, space, suffix, surface-container-high, surface-container-highest, switch, tertiary-container, textarea, top-align, transparent, vertical, vertical-padding, wrap
+active, badge, bold, border, bottom, brand, brand-mark, brand-name, button, card-title, center-align, checkbox, chip, circle, dark, field, fill, flush, gap-top, group-title, l, label, left, left-align, link, list, m, max, medium, muted, no-border, no-elevate, no-space, overline-label, page-title, prefix, price, primary-container, radio, responsive, right-align, round, row, s, section-title, small, small-space, small-text, snackbar, space, suffix, surface-container-high, surface-container-highest, switch, tertiary-container, textarea, top-align, transparent, vertical, vertical-padding, wrap, light
 
 Adding a class to this list is a theme change: it needs a recorded decision and a commit that updates this file and `tools/check.py` together.

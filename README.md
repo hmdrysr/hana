@@ -15,12 +15,16 @@ Hamid Yasir & Co. assumes no responsibility for anything. All transactions and r
 This is the first working version. The app:
 
 - lists restaurants alphabetically, with typo-tolerant search across restaurants and dishes;
-- matches restaurants to your area: the whole Chittagong City Corporation (CCC), one of its 15 police Stations or one of its 41 wards;
+- matches restaurants to your zone (thana), with an optional ward at checkout;
+- offers delivery or pickup, with the delivery fee fixed by the business and capped;
+- counts an order only once the business confirms it, with a signed confirmation for claimed listings;
 - keeps one basket for one restaurant at a time;
 - prepares the order message, which you send from your own phone; and
 - works offline after the first visit.
 
-Not built yet: the owner onboarding page, the courier card, photos, signature checks and drawn area boundaries. The three listings (Meal Master, Sliced and Tava Restaurant) were entered by a volunteer from menu images and are **not yet confirmed by the businesses**. The full design, including every open item, is in `SPEC.md`.
+Businesses use the business tools page (`business.html`) to list or claim a listing, confirm orders and publish price changes. Claims are verified by two community members (`CLAIMS.md`).
+
+Not built yet: the courier card, photos and drawn area boundaries. The three listings (Meal Master, Sliced and Tava Restaurant) were entered by a volunteer from menu images and are **not yet confirmed by the businesses**. The full design, including every open item, is in `SPEC.md`.
 
 ## Why Hana exists
 
@@ -41,7 +45,10 @@ This explains why the project exists. It is not an audit: Hana has not measured 
 7. **Open and portable.** Open-source code, open file formats, signed menus that any host can serve, and one-tap download of your own data.
 8. **Problems go to the proper public bodies.** The app points customers to the consumer rights authority, the police and others. See `SPEC.md` section 9.
 9. **Every price change is public.** Changes to prices, delivery fees and minimum orders are announced inside the menu file and kept in its history. See `SPEC.md` section 5.4.
-10. **One delivery charge, set by the restaurant.** Hana adds no fee of its own and has no surge or distance pricing. An order is for one restaurant at a time.
+10. **One delivery charge, set by the business and capped.** Hana adds no fee of its own and has no surge or distance pricing. An order is for one restaurant at a time.
+11. **Cash on delivery only.** Pay on delivery or at pickup, in cash, by Bangla QR, by card on a POS terminal or by mobile wallet transfer. No business may ask for payment in advance.
+12. **All charges included.** Every price includes VAT and every other charge; the delivery fee is the only addition.
+13. **Orders are confirmed by the business.** An order counts only once the business confirms it.
 
 These promises are protected by `GOVERNANCE.md`. A change that adds fees, paid placement, tracking or lock-in is not accepted.
 
@@ -53,7 +60,10 @@ Read `CONTRIBUTING.md`. You can list a restaurant, report a wrong listing, fix a
 
 | Path | What it holds |
 |---|---|
-| `index.html`, `app.js`, `sw.js`, `site.json`, `manifest.webmanifest`, `icon*` | The app itself. Plain files, no build step |
+| `index.html`, `core.js`, `app.js`, `sw.js`, `site.json`, `manifest.webmanifest`, `icon*` | The customer app. Plain files, no build step |
+| `business.html`, `business.js` | Business tools: list or claim, confirm orders, update prices |
+| `rules.json` | Rules every listing follows: cash on delivery only, all-inclusive prices, the delivery fee limit |
+| `CLAIMS.md`, `claims/` | How claims are verified by the community, and the claim records |
 | `SPEC.md` | The full design, with open items and what is still unverified |
 | `SETUP.md` | How to put this on GitHub, step by step |
 | `LICENSE` | MIT licence |
@@ -61,7 +71,7 @@ Read `CONTRIBUTING.md`. You can list a restaurant, report a wrong listing, fix a
 | `menus/` | Menus hosted in this repo by volunteers (signed by the owners) |
 | `vouches/`, `vouchers.json` | Signed vouch notes and the list of approved vouchers |
 | `theme/` | The one fixed look: Beer CSS, the Hana theme and the uniformity rules (`theme/UNIFORMITY.md`) |
-| `tools/` | `check.py` (the check every pull request must pass), `selftest.py`, `order_line.py`, `verify_images.py`, `unpack.py`, `autofill.py` |
+| `tools/` | `check.py` (the check every pull request must pass), `selftest.py`, `browser_test.py`, `order_line.py`, `hana_sign.py`, `ed25519.py`, `verify_images.py`, `unpack.py`, `autofill.py` |
 | `.github/` | Issue forms, the pull request template and the check workflow |
 | `AUTHORS.md`, `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `VOLUNTEERS.md` | People, rules and contacts |
 

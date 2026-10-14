@@ -17,7 +17,12 @@ These come from the reasons Hana exists (see `README.md`):
 7. Open source and open formats only.
 8. The creator is credited (`AUTHORS.md`).
 9. Every price change is public, announced inside the menu file and kept in its history.
-10. One delivery charge per zone, fixed by the restaurant. The app adds no fee, surge or distance pricing.
+10. One delivery charge per area, fixed by the business and within the limit in `rules.json`. The app adds no fee, surge or distance pricing.
+11. Cash on delivery only. Prepayment is never allowed.
+12. Every price includes VAT and every other charge.
+13. An order is valid only when the business confirms it.
+
+The community verifies claimed listings and reviews them regularly (`CLAIMS.md`).
 
 A pull request that breaks one of these is closed. Changing a commitment needs all maintainers to agree and a public notice open for 30 days.
 
