@@ -16,33 +16,39 @@ concurrency:
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       contents: read
       pages: write
       id-token: write
 
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
-      - name: Verify app files
+      - name: Verify site files
         run: |
-          test -f index.html || {
-            echo "::error::index.html not found in repository root."
+          if [ ! -f index.html ]; then
+            echo "::error::index.html is missing from the repository root."
             exit 1
-          }
+          fi
+
+          echo "Hana site files found."
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: false
 
       - name: Upload site artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: .
 
