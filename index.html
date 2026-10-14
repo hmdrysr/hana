@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; connect-src 'self' https:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#9a3412">
+<meta name="description" content="Hana is a free, open food directory and order formatter for Chittagong.">
+<title>Hana: Food in Chittagong</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="theme/beer.min.css">
+<link rel="stylesheet" href="theme/theme.css">
+</head>
+<body>
+<nav class="left m l" aria-label="Main" id="nav-rail">
+  <a href="#/" data-nav="list"><i data-icon="storefront"></i><span>Restaurants</span></a>
+  <a href="#/basket" data-nav="basket"><i data-icon="shopping_bag"></i><span>Basket</span></a>
+  <a href="#/orders" data-nav="orders"><i data-icon="receipt_long"></i><span>Orders</span></a>
+  <a href="#/about" data-nav="about"><i data-icon="info"></i><span>About</span></a>
+</nav>
+<nav class="bottom s" aria-label="Main" id="nav-bar">
+  <a href="#/" data-nav="list"><i data-icon="storefront"></i><span>Restaurants</span></a>
+  <a href="#/basket" data-nav="basket"><i data-icon="shopping_bag"></i><span>Basket</span></a>
+  <a href="#/orders" data-nav="orders"><i data-icon="receipt_long"></i><span>Orders</span></a>
+  <a href="#/about" data-nav="about"><i data-icon="info"></i><span>About</span></a>
+</nav>
+<header class="responsive">
+  <nav>
+    <a href="#/" class="brand" aria-label="Hana home"><span class="brand-mark" aria-hidden="true">🥡</span><span class="brand-name">Hana</span></a>
+  </nav>
+</header>
+<main class="responsive" id="main" tabindex="-1">
+  <p>Loading Hana. This page requires JavaScript.</p>
+</main>
+<footer class="responsive">
+  <p class="small-text center-align muted">
+    Built by <a class="link" href="https://hamidyasir.com" rel="noopener">Hamid Yasir &amp; Co.</a> for the people of Chittagong.
+    Managed by the <a class="link" href="https://github.com/hmdrysr/hana" id="repo-link" rel="noopener">Hana Community</a>.
+  </p>
+</footer>
+<div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
+<dialog id="dialog" aria-labelledby="dialog-title">
+  <h5 id="dialog-title"></h5>
+  <p id="dialog-text"></p>
+  <nav class="right-align">
+    <button class="border" type="button" id="dialog-cancel">Cancel</button>
+    <button type="button" id="dialog-ok">OK</button>
+  </nav>
+</dialog>
+<script src="app.js" defer></script>
+</body>
+</html>

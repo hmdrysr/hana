@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Reference implementation of the Hana order check line (SPEC.md section 6.4).
+Standard library only. The app's own code must produce and read exactly this format.
+
+The check line is the last line of the order message the customer sends:
+
+    CHECK hana1 H=<first 12 hex of menu hash> Z=<zone id> I=<items> S=<subtotal> F=<fee or ?> C=<code>
+
+    I = item-id[.option-id]*qty, comma separated, sorted, for example  dahi-bara*2,kulcha*1
+    S = items subtotal in whole taka, F = the zone's delivery fee in whole taka (? if not stated)
+    C = first 8 characters of the Crockford base32 of SHA-256 over
+        hana1|<full menu hash>|<zone id>|<items>|<S>|<F>
+
+What this protects, and what it does not
+- The restaurant's tool decodes the line and works out the items and prices again
+  from the restaurant's own signed menu. It ignores any total the customer typed.
+- The code catches slips and edits made by someone who did not recompute it.
+- The code is not secret. Someone who edits the line and recomputes the code gets
+  a valid line, but the decoder still prices the items from the signed menu, so the
+  price cannot be changed this way. The restaurant must read the decoded view.
+
+Command line:
+    python3 tools/order_line.py decode MENU_VERSIONS_DIR "CHECK hana1 ..."
+"""
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+LINE = re.compile(
+    r"^CHECK hana1 H=(?P<h>[0-9a-f]{12}) Z=(?P<z>[a-z0-9-]+) I=(?P<i>[a-z0-9.*,-]+) "
+    r"S=(?P<s>\d+) F=(?P<f>\d+|\?) C=(?P<c>[0-9A-HJKMNP-TV-Z]{8})$")
+MAX_QTY = 99
+
+
+class OrderError(ValueError):
+    pass
+
+
+def b32(data):
+    n = int.from_bytes(data, "big")
+    bits = len(data) * 8
+    out = []
+    pad = (-bits) % 5
+    n <<= pad
+    for shift in range(bits + pad - 5, -1, -5):
+        out.append(CROCKFORD[(n >> shift) & 31])
+    return "".join(out)
+
+
+def menu_hash(menu_bytes):
+    return hashlib.sha256(menu_bytes).hexdigest()
+
+
+def price_table(menu):
+    """item key (item-id or item-id.option-id) -> whole-taka price"""
+    t = {}
+    for it in menu["items"]:
+        if "price" in it:
+            t[it["id"]] = it["price"]
+        for op in it.get("options") or []:
+            t[f"{it['id']}.{op['id']}"] = op["price"]
+    return t
+
+
+def zone_fee(menu, zone_id):
+    for z in menu["delivery"]["zones"]:
+        if z["id"] == zone_id:
+            return z.get("fee")
+    raise OrderError(f"unknown zone '{zone_id}'")
+
+
+def canonical(full_hash, zone_id, items, sub, fee):
+    return f"hana1|{full_hash}|{zone_id}|{items}|{sub}|{fee}"
+
+
+def make_code(full_hash, zone_id, items, sub, fee):
+    digest = hashlib.sha256(canonical(full_hash, zone_id, items, sub, fee).encode("utf-8")).digest()
+    return b32(digest)[:8]
+
+
+def build(menu_bytes, menu, lines, zone_id):
+    """lines: {item_key: qty}. Returns the check line. Prices come from the menu only."""
+    prices = price_table(menu)
+    parts = []
+    sub = 0
+    for key in sorted(lines):
+        qty = lines[key]
+        if key not in prices:
+            raise OrderError(f"'{key}' is not on this menu")
+        if not isinstance(qty, int) or isinstance(qty, bool) or not (1 <= qty <= MAX_QTY):
+            raise OrderError(f"quantity for '{key}' must be a whole number from 1 to {MAX_QTY}")
+        parts.append(f"{key}*{qty}")
+        sub += prices[key] * qty
+    if not parts:
+        raise OrderError("an order needs at least one item")
+    items = ",".join(parts)
+    fee = zone_fee(menu, zone_id)
+    fee_text = "?" if fee is None else str(fee)
+    h = menu_hash(menu_bytes)
+    code = make_code(h, zone_id, items, sub, fee_text)
+    return f"CHECK hana1 H={h[:12]} Z={zone_id} I={items} S={sub} F={fee_text} C={code}"
+
+
+def decode(line, known_menus):
+    """known_menus: list of (menu_bytes, menu_dict) for every version the restaurant has published.
+    Returns what the restaurant should read: items and prices from the signed menu, plus flags."""
+    m = LINE.match(line.strip())
+    if not m:
+        raise OrderError("not a valid check line")
+    found = [(b, d) for b, d in known_menus if menu_hash(b).startswith(m["h"])]
+    if not found:
+        raise OrderError("this order uses a menu version the restaurant has not published")
+    menu_bytes, menu = found[0]
+    full = menu_hash(menu_bytes)
+    prices = price_table(menu)
+    out_lines, flags, sub = [], [], 0
+    for part in m["i"].split(","):
+        key, _, qty_text = part.partition("*")
+        if not qty_text.isdigit() or not (1 <= int(qty_text) <= MAX_QTY):
+            raise OrderError(f"bad quantity in '{part}'")
+        if key not in prices:
+            raise OrderError(f"'{key}' is not on menu version {menu['version']}")
+        qty = int(qty_text)
+        out_lines.append({"item": key, "qty": qty, "price": prices[key], "line_total": prices[key] * qty})
+        sub += prices[key] * qty
+    fee = zone_fee(menu, m["z"])
+    fee_text = "?" if fee is None else str(fee)
+    if int(m["s"]) != sub:
+        flags.append(f"subtotal in the message is Tk {m['s']} but the signed menu gives Tk {sub}")
+    if m["f"] != fee_text:
+        flags.append(f"delivery fee in the message is {m['f']} but the signed menu gives {fee_text}")
+    expected = make_code(full, m["z"], m["i"], m["s"], m["f"])
+    if m["c"] != expected:
+        flags.append("the check code does not match: the line was edited or mistyped")
+    newest = max(d["version"] for _, d in known_menus)
+    if menu["version"] != newest:
+        flags.append(f"order uses menu version {menu['version']}; the current version is {newest}. "
+                     "Compare prices in the price history before deciding.")
+    return {"menu_version": menu["version"], "zone": m["z"], "lines": out_lines,
+            "subtotal_from_menu": sub, "delivery_fee": fee_text, "flags": flags, "ok": not flags}
+
+
+def _load_versions(folder):
+    out = []
+    for p in sorted(Path(folder).glob("*.json"), key=lambda p: int(p.stem)):
+        b = p.read_bytes()
+        out.append((b, json.loads(b.decode("utf-8"))))
+    return out
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 4 and sys.argv[1] == "decode":
+        try:
+            res = decode(sys.argv[3], _load_versions(sys.argv[2]))
+        except OrderError as e:
+            print("INVALID:", e)
+            sys.exit(2)
+        print(json.dumps(res, indent=2))
+        sys.exit(0 if res["ok"] else 1)
+    print(__doc__)
+    sys.exit(64)

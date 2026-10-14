@@ -1,0 +1,316 @@
+{
+  "id": "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7",
+  "claimed": false,
+  "version": 1,
+  "name": "Tava Restaurant",
+  "kind": "Restaurant",
+  "neighbourhood": "station-khulshi",
+  "address": "4 Zakir Hossain Road, Chittagong 4000",
+  "plus_code": "7MJH9R66+7MF",
+  "location": {
+    "lat": 22.360688,
+    "lon": 91.811672
+  },
+  "business_phone": "+8801729298282",
+  "listing_note": "Entered by a volunteer on October 15, 2026, from photographs of the restaurant's printed Indian menu. The restaurant has not confirmed this listing. Prices are as printed and may have changed. Items with prices that could not be read clearly are omitted, and the Oriental menu has not been entered. The delivery fee, minimum order, delivery time and opening hours are not stated. Delivery is limited to the Khulshi Station area, as reported by a regular customer.",
+  "hours": null,
+  "delivery": {
+    "zones": [
+      {
+        "id": "khulshi",
+        "shape": "named",
+        "areas": [
+          "station-khulshi"
+        ],
+        "fee": null,
+        "min_order": null,
+        "eta_min": null
+      }
+    ]
+  },
+  "contact": [
+    {
+      "app": "whatsapp",
+      "id": "8801729298282",
+      "preferred": true
+    },
+    {
+      "app": "phone",
+      "id": "8801729298282"
+    }
+  ],
+  "links": {
+    "osm": "https://www.openstreetmap.org/?mlat=22.360688&mlon=91.811672#map=18/22.360688/91.811672",
+    "geo": "geo:22.360688,91.811672"
+  },
+  "pledges": {
+    "rider_identity": {
+      "signed": false
+    },
+    "data_handling": {
+      "signed": false
+    }
+  },
+  "items": [
+    {
+      "id": "dahi-bara",
+      "name": "Dahi Bara (2 pieces)",
+      "section": "Indian",
+      "category": "Starters",
+      "price": 220
+    },
+    {
+      "id": "paan-chicken",
+      "name": "Paan Chicken",
+      "section": "Indian",
+      "category": "Starters",
+      "price": 450
+    },
+    {
+      "id": "chicken-papri",
+      "name": "Chicken Papri",
+      "section": "Indian",
+      "category": "Starters",
+      "price": 450
+    },
+    {
+      "id": "dry-chili-paneer",
+      "name": "Dry Chili Paneer",
+      "section": "Indian",
+      "category": "Starters",
+      "price": 650
+    },
+    {
+      "id": "kachumber",
+      "name": "Kachumber",
+      "section": "Indian",
+      "category": "Salads",
+      "price": 200
+    },
+    {
+      "id": "sambar-vegetable-curry",
+      "name": "Sambar Vegetable Curry",
+      "section": "Indian",
+      "category": "Chef's specials",
+      "price": 310
+    },
+    {
+      "id": "pigeon-kebab",
+      "name": "Pigeon Kebab",
+      "section": "Indian",
+      "category": "Chef's specials",
+      "price": 550
+    },
+    {
+      "id": "grilled-lamb-chops",
+      "name": "Grilled Lamb Chops",
+      "section": "Indian",
+      "category": "Chef's specials",
+      "options": [
+        {
+          "id": "2-pieces",
+          "label": "2 pieces",
+          "price": 880
+        },
+        {
+          "id": "4-pieces",
+          "label": "4 pieces",
+          "price": 1290
+        }
+      ]
+    },
+    {
+      "id": "mughal-e-azam-thali",
+      "name": "Mughal-E-Azam (Thali)",
+      "section": "Indian",
+      "category": "Tava specials",
+      "price": 3900
+    },
+    {
+      "id": "chicken-roast-whole",
+      "name": "Chicken Roast (Whole)",
+      "section": "Indian",
+      "category": "Tava specials",
+      "price": 900
+    },
+    {
+      "id": "chicken-hariyali-kebab",
+      "name": "Chicken Hariyali Kebab",
+      "section": "Indian",
+      "category": "Mains, grilled",
+      "price": 420
+    },
+    {
+      "id": "tava-special-mixed-kebab",
+      "name": "Tava Special Mixed Kebab",
+      "section": "Indian",
+      "category": "Mains, grilled",
+      "price": 1190
+    },
+    {
+      "id": "chicken-butter-masala",
+      "name": "Chicken Butter Masala",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 700
+    },
+    {
+      "id": "chicken-reshmi-masala",
+      "name": "Chicken Reshmi Masala",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 700
+    },
+    {
+      "id": "chicken-tikka-masala",
+      "name": "Chicken Tikka Masala",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 700
+    },
+    {
+      "id": "mutton-karai",
+      "name": "Mutton Karai",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 950
+    },
+    {
+      "id": "mutton-rogan-josh",
+      "name": "Mutton Rogan Josh",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 950
+    },
+    {
+      "id": "aloo-achari",
+      "name": "Aloo Achari",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 350
+    },
+    {
+      "id": "vegetable-korma",
+      "name": "Vegetable Korma",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 420
+    },
+    {
+      "id": "vegetable-kofta-curry",
+      "name": "Vegetable Kofta Curry",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 420
+    },
+    {
+      "id": "vegetable-dopiaza",
+      "name": "Vegetable Dopiaza",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 420
+    },
+    {
+      "id": "paneer-butter-masala",
+      "name": "Paneer Butter Masala",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 650
+    },
+    {
+      "id": "palak-paneer",
+      "name": "Palak Paneer",
+      "section": "Indian",
+      "category": "Mains, curries",
+      "price": 650
+    },
+    {
+      "id": "kulcha",
+      "name": "Kulcha",
+      "section": "Indian",
+      "category": "Sides",
+      "price": 220
+    },
+    {
+      "id": "tava-special-naan",
+      "name": "Tava Special Naan",
+      "section": "Indian",
+      "category": "Sides",
+      "price": 350
+    },
+    {
+      "id": "paratha",
+      "name": "Paratha",
+      "section": "Indian",
+      "category": "Sides",
+      "options": [
+        {
+          "id": "plain",
+          "label": "Plain",
+          "price": 95
+        },
+        {
+          "id": "sheka",
+          "label": "Sheka",
+          "price": 95
+        }
+      ]
+    },
+    {
+      "id": "crispy-battered-potato-slices-with-raita",
+      "name": "Crispy Battered Potato Slices with Raita",
+      "section": "Indian",
+      "category": "Kids menu",
+      "price": 190
+    },
+    {
+      "id": "stuffed-keema-naan",
+      "name": "Stuffed Keema Naan",
+      "section": "Indian",
+      "category": "Kids menu",
+      "price": 200
+    },
+    {
+      "id": "chicken-lollipop-2-pieces",
+      "name": "Chicken Lollipop (2 pieces)",
+      "section": "Indian",
+      "category": "Kids menu",
+      "price": 220
+    },
+    {
+      "id": "chicken-and-vegetable-chowmein",
+      "name": "Chicken & Vegetable Chowmein",
+      "section": "Indian",
+      "category": "Kids menu",
+      "price": 250
+    },
+    {
+      "id": "chicken-fried-rice",
+      "name": "Chicken Fried Rice",
+      "section": "Indian",
+      "category": "Kids menu",
+      "price": 250
+    },
+    {
+      "id": "house-fries-and-chicken-fingers",
+      "name": "House Fries & Chicken Fingers",
+      "section": "Indian",
+      "category": "Kids menu",
+      "price": 400
+    },
+    {
+      "id": "steamed-rice-dal-butter-fry-and-reshmi-kebab",
+      "name": "Steamed Rice, Dal Butter Fry & Reshmi Kebab",
+      "section": "Indian",
+      "category": "Kids menu",
+      "price": 400
+    }
+  ],
+  "announcement": {
+    "published": "2026-10-15T01:10:00+06:00",
+    "summary": "First listing, entered by a volunteer. Not yet confirmed by the business.",
+    "changes": []
+  },
+  "price_history": [],
+  "signature": null
+}

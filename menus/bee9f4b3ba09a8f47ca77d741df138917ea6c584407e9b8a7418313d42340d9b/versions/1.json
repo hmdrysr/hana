@@ -1,0 +1,490 @@
+{
+  "id": "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b",
+  "claimed": false,
+  "version": 1,
+  "name": "Meal Master",
+  "kind": "Delivery-only kitchen",
+  "neighbourhood": "ccc",
+  "address": "Plus Code 9R3F+GQ, Chittagong (street address not entered yet)",
+  "plus_code": "7MJH9R3F+GQ",
+  "location": {
+    "lat": 22.353813,
+    "lon": 91.824437
+  },
+  "business_phone": "+8801961551122",
+  "listing_note": "Entered by a volunteer on October 15, 2026, from the kitchen's menu images. The business has not confirmed this listing. Prices are as printed and may have changed. WhatsApp is the only confirmed ordering channel. Opening hours are as printed (7 p.m. to 4 a.m.); the days are not stated, so every day is shown. Delivery covers the Chittagong City Corporation (CCC) area. The delivery fee, minimum order and delivery time are not stated.",
+  "hours": {
+    "mon": [
+      [
+        "19:00",
+        "04:00"
+      ]
+    ],
+    "tue": [
+      [
+        "19:00",
+        "04:00"
+      ]
+    ],
+    "wed": [
+      [
+        "19:00",
+        "04:00"
+      ]
+    ],
+    "thu": [
+      [
+        "19:00",
+        "04:00"
+      ]
+    ],
+    "fri": [
+      [
+        "19:00",
+        "04:00"
+      ]
+    ],
+    "sat": [
+      [
+        "19:00",
+        "04:00"
+      ]
+    ],
+    "sun": [
+      [
+        "19:00",
+        "04:00"
+      ]
+    ]
+  },
+  "delivery": {
+    "zones": [
+      {
+        "id": "ccc",
+        "shape": "named",
+        "areas": [
+          "ccc"
+        ],
+        "fee": null,
+        "min_order": null,
+        "eta_min": null
+      }
+    ]
+  },
+  "contact": [
+    {
+      "app": "whatsapp",
+      "id": "8801961551122",
+      "preferred": true
+    }
+  ],
+  "links": {
+    "osm": "https://www.openstreetmap.org/?mlat=22.353813&mlon=91.824437#map=18/22.353813/91.824437",
+    "geo": "geo:22.353813,91.824437"
+  },
+  "pledges": {
+    "rider_identity": {
+      "signed": false
+    },
+    "data_handling": {
+      "signed": false
+    }
+  },
+  "items": [
+    {
+      "id": "chicken-popcorn",
+      "name": "Chicken Popcorn",
+      "section": "Popcorn",
+      "price": 230
+    },
+    {
+      "id": "dynamite-popcorn",
+      "name": "Dynamite Popcorn",
+      "section": "Popcorn",
+      "price": 300
+    },
+    {
+      "id": "strips",
+      "name": "Strips",
+      "section": "Popcorn",
+      "options": [
+        {
+          "id": "4-pieces",
+          "label": "4 pieces",
+          "price": 220
+        },
+        {
+          "id": "6-pieces",
+          "label": "6 pieces",
+          "price": 315
+        },
+        {
+          "id": "12-pieces",
+          "label": "12 pieces",
+          "price": 630
+        }
+      ]
+    },
+    {
+      "id": "fried-chicken",
+      "name": "Fried Chicken",
+      "section": "Fried chicken",
+      "options": [
+        {
+          "id": "2-pieces",
+          "label": "2 pieces",
+          "price": 230
+        },
+        {
+          "id": "4-pieces",
+          "label": "4 pieces",
+          "price": 455
+        },
+        {
+          "id": "6-pieces",
+          "label": "6 pieces",
+          "price": 685
+        },
+        {
+          "id": "8-pieces",
+          "label": "8 pieces",
+          "price": 910
+        },
+        {
+          "id": "12-pieces",
+          "label": "12 pieces",
+          "price": 1360
+        }
+      ]
+    },
+    {
+      "id": "french-fries",
+      "name": "French Fries",
+      "section": "Fries",
+      "price": 120
+    },
+    {
+      "id": "cashew-nut-salad",
+      "name": "Cashew Nut Salad",
+      "section": "Salad",
+      "price": 355
+    },
+    {
+      "id": "chicken-feast-pizza",
+      "name": "Chicken Feast Pizza",
+      "section": "Pizza",
+      "options": [
+        {
+          "id": "9-inch",
+          "label": "9 inch",
+          "price": 529
+        },
+        {
+          "id": "12-inch",
+          "label": "12 inch",
+          "price": 645
+        }
+      ]
+    },
+    {
+      "id": "heart-attack-pizza",
+      "name": "Heart Attack Pizza",
+      "section": "Pizza",
+      "options": [
+        {
+          "id": "9-inch",
+          "label": "9 inch",
+          "price": 619
+        },
+        {
+          "id": "12-inch",
+          "label": "12 inch",
+          "price": 749
+        }
+      ]
+    },
+    {
+      "id": "beef-bomb-pizza",
+      "name": "Beef Bomb Pizza",
+      "section": "Pizza",
+      "options": [
+        {
+          "id": "9-inch",
+          "label": "9 inch",
+          "price": 699
+        },
+        {
+          "id": "12-inch",
+          "label": "12 inch",
+          "price": 845
+        }
+      ]
+    },
+    {
+      "id": "bbq-pizza",
+      "name": "BBQ Pizza",
+      "section": "Pizza",
+      "options": [
+        {
+          "id": "9-inch",
+          "label": "9 inch",
+          "price": 589
+        },
+        {
+          "id": "12-inch",
+          "label": "12 inch",
+          "price": 719
+        }
+      ]
+    },
+    {
+      "id": "meat-monster-pizza",
+      "name": "Meat Monster Pizza",
+      "section": "Pizza",
+      "options": [
+        {
+          "id": "9-inch",
+          "label": "9 inch",
+          "price": 655
+        },
+        {
+          "id": "12-inch",
+          "label": "12 inch",
+          "price": 789
+        }
+      ]
+    },
+    {
+      "id": "wild-fire-pop-chicken-pizza",
+      "name": "Wild Fire Pop Chicken Pizza",
+      "section": "Pizza",
+      "options": [
+        {
+          "id": "9-inch",
+          "label": "9 inch",
+          "price": 779
+        },
+        {
+          "id": "12-inch",
+          "label": "12 inch",
+          "price": 895
+        }
+      ]
+    },
+    {
+      "id": "margarita-pizza-12-inch",
+      "name": "Margarita Pizza (12 inch)",
+      "section": "Pizza",
+      "description": "Sold in 12 inch only.",
+      "price": 495
+    },
+    {
+      "id": "baked-pop-chicken-pizza",
+      "name": "Baked Pop Chicken Pizza",
+      "section": "Pizza",
+      "options": [
+        {
+          "id": "9-inch",
+          "label": "9 inch",
+          "price": 729
+        },
+        {
+          "id": "12-inch",
+          "label": "12 inch",
+          "price": 849
+        }
+      ]
+    },
+    {
+      "id": "chicken-tornado",
+      "name": "Chicken Tornado",
+      "section": "Combos",
+      "description": "A 12-inch Chicken Feast pizza, 2 pieces of fried chicken and 1 What A Burger.",
+      "price": 1050
+    },
+    {
+      "id": "chicken-getaway",
+      "name": "Chicken Getaway",
+      "section": "Combos",
+      "description": "A 12-inch Chicken Feast pizza, 4 pieces of fried chicken and a 1-litre Coke.",
+      "price": 1120
+    },
+    {
+      "id": "frizza-party",
+      "name": "Frizza Party",
+      "section": "Combos",
+      "description": "A 9-inch Chicken Feast pizza, 2 pieces of fried chicken and two 250 mL Cokes.",
+      "price": 780
+    },
+    {
+      "id": "creamy-burger-fusion",
+      "name": "Creamy Burger Fusion",
+      "section": "Combos",
+      "description": "Cream Pasta, What A Burger and 2 small Coke.",
+      "price": 650
+    },
+    {
+      "id": "ocean-fusion-delight",
+      "name": "Ocean Fusion Delight",
+      "section": "Combos",
+      "description": "Fish and Chips (Lite), Cream Pasta and BBQ Bonanza.",
+      "price": 960
+    },
+    {
+      "id": "fish-n-chips",
+      "name": "Fish N Chips",
+      "section": "Fish N Chips",
+      "options": [
+        {
+          "id": "lite",
+          "label": "Lite",
+          "price": 349
+        },
+        {
+          "id": "regular",
+          "label": "Regular",
+          "price": 499
+        }
+      ]
+    },
+    {
+      "id": "dory-with-glory",
+      "name": "Dory With Glory",
+      "section": "Fish N Chips",
+      "options": [
+        {
+          "id": "lite",
+          "label": "Lite",
+          "price": 365
+        },
+        {
+          "id": "regular",
+          "label": "Regular",
+          "price": 515
+        }
+      ]
+    },
+    {
+      "id": "dynamite-shrimp",
+      "name": "Dynamite Shrimp",
+      "section": "Fish N Chips",
+      "price": 350
+    },
+    {
+      "id": "oven-baked-chicken-pasta",
+      "name": "Oven Baked Chicken Pasta",
+      "section": "Pasta",
+      "price": 385
+    },
+    {
+      "id": "oven-baked-beef-pasta",
+      "name": "Oven Baked Beef Pasta",
+      "section": "Pasta",
+      "price": 449
+    },
+    {
+      "id": "chicken-cream-pasta",
+      "name": "Chicken Cream Pasta",
+      "section": "Pasta",
+      "price": 395
+    },
+    {
+      "id": "what-a-burger-chicken",
+      "name": "What A Burger Chicken",
+      "section": "Burger",
+      "price": 220
+    },
+    {
+      "id": "beef-burger",
+      "name": "Beef Burger",
+      "section": "Burger",
+      "price": 299
+    },
+    {
+      "id": "crispy-chicken-burger",
+      "name": "Crispy Chicken Burger",
+      "section": "Burger",
+      "price": 250
+    },
+    {
+      "id": "fire-house-burger-chicken",
+      "name": "Fire House Burger Chicken",
+      "section": "Burger",
+      "price": 250
+    },
+    {
+      "id": "bbq-bonanza-burger-chicken",
+      "name": "BBQ Bonanza Burger Chicken",
+      "section": "Burger",
+      "price": 250
+    },
+    {
+      "id": "mushroom-maniac-burger-chicken",
+      "name": "Mushroom Maniac Burger Chicken",
+      "section": "Burger",
+      "price": 255
+    },
+    {
+      "id": "spicy-crispy-chicken-burger",
+      "name": "Spicy Crispy Chicken Burger",
+      "section": "Burger",
+      "price": 275
+    },
+    {
+      "id": "crispy-wings",
+      "name": "Crispy Wings",
+      "section": "Wings",
+      "description": "Golden fried to perfection and packed with crunch. Quantity not stated on the menu.",
+      "price": 249
+    },
+    {
+      "id": "saucy-wings",
+      "name": "Saucy Wings",
+      "section": "Wings",
+      "description": "Tossed in the kitchen's signature sauce. Quantity not stated on the menu.",
+      "price": 269
+    },
+    {
+      "id": "bbq-wings",
+      "name": "BBQ Wings",
+      "section": "Wings",
+      "description": "Smoky BBQ glaze. Quantity not stated on the menu.",
+      "price": 299
+    },
+    {
+      "id": "naga-wings",
+      "name": "Naga Wings",
+      "section": "Wings",
+      "description": "Spicy naga sauce. Quantity not stated on the menu.",
+      "price": 299
+    },
+    {
+      "id": "meat-box",
+      "name": "Meat Box",
+      "section": "Meat box",
+      "description": "Quantity not stated on the menu.",
+      "price": 299
+    },
+    {
+      "id": "bbq-meat-box",
+      "name": "BBQ Meat Box",
+      "section": "Meat box",
+      "description": "Smoky BBQ flavour. Quantity not stated on the menu.",
+      "price": 319
+    },
+    {
+      "id": "naga-meat-box",
+      "name": "Naga Meat Box",
+      "section": "Meat box",
+      "description": "Spicy naga flavour. Quantity not stated on the menu.",
+      "price": 319
+    }
+  ],
+  "announcement": {
+    "published": "2026-10-15T01:10:00+06:00",
+    "summary": "First listing, entered by a volunteer. Not yet confirmed by the business.",
+    "changes": []
+  },
+  "price_history": [],
+  "signature": null
+}
