@@ -2,7 +2,7 @@
 
 Hana is the Chittagonian word for food. Hana is a free, open directory of restaurants in Chittagong, Bangladesh, and a tool for preparing orders. It lists restaurants, shows which ones deliver to your area, and prepares an order message that you send yourself, by WhatsApp, text message, phone call or whichever app the business uses. You pay the business directly, in cash or by Bangla QR.
 
-Created by **Hamid Yasir**. Built by [Hamid Yasir & Co.](https://hamidyasir.com) for the people of Chittagong. Managed by the [Hana Community](https://github.com/hmdrysr/hana). See `AUTHORS.md`.
+Created by [Hamid Yasir & Co.](https://hamidyasir.com) for the people of Chittagong. Managed by the [Hana Community](https://github.com/hmdrysr/hana). See `AUTHORS.md`.
 
 Live site (once GitHub Pages is turned on; see `SETUP.md`): https://hmdrysr.github.io/hana/
 
