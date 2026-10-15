@@ -26,7 +26,7 @@ Check each menu file against `menu_hash` in `index.json` (SHA-256 of the file's 
 5. **Listings marked `"claimed": false`** were entered by volunteers and are not confirmed by the business. Tell the customer that prices may have changed.
 6. **Check opening hours** in the customer's local time (Asia/Dhaka). Order from a closed business only if the listing has `"scheduled_orders": true`, and say when the order is for.
 7. **Use the customer's own channel and details.** Send only from the customer's own account, with the name and address they gave. Do not invent details.
-8. **Wait for confirmation.** The business must reply `CONFIRMED <order code>` (or a signed `CONFIRMED hana1 ...` line) within `confirmation_window_minutes` (15). Otherwise the order is cancelled and the customer owes nothing.
+8. **Wait for confirmation.** The business must reply `CONFIRMED <order code>` (or a signed `CONFIRMED hana1 ...` line) within `confirmation_window_minutes` (15). Otherwise the order is cancelled and the customer owes nothing. Volunteer-entered listings (`"claimed": false`) have no order code: the customer and the business agree on prices, the delivery charge and the total in their chat.
 
 ## Preparing the order message
 

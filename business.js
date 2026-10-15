@@ -690,7 +690,7 @@ function viewSite() {
 function decodeOrder(text, versions) {
   const m = CHECK_LINE.exec(text || "");
   if (!m) return { error: "No check line found. Paste the whole order message, including the last line that starts with CHECK." };
-  const code = (/Order ([0-9A-HJKMNP-TV-Z]{6})/.exec(text) || [])[1];
+  const code = (/(?:CONFIRMED|Order reference|Order) ([0-9A-HJKMNP-TV-Z]{6})/.exec(text) || [])[1];
   if (!code) return { error: "The order code is missing from the message." };
   const v = versions.find((x) => x.hash.startsWith(m[1]));
   if (!v) return { error: "This order uses a menu version that is not published for this listing." };
@@ -851,7 +851,7 @@ async function takeMessage(m) {
     if (!opened || !opened.order || !CHECK_LINE.test(opened.order.message || "")) return false;
     list.unshift({ id: m.id, time: m.time, code: opened.order.code, text: opened.order.message, reply: opened.order.reply, keyRaw: opened.keyRaw, status: "new" });
   } else if (CHECK_LINE.test(text)) {
-    list.unshift({ id: m.id, time: m.time, code: (/Order ([0-9A-HJKMNP-TV-Z]{6})/.exec(text) || [])[1] || "?", text, status: "new" });
+    list.unshift({ id: m.id, time: m.time, code: (/(?:CONFIRMED|Order reference|Order) ([0-9A-HJKMNP-TV-Z]{6})/.exec(text) || [])[1] || "?", text, status: "new" });
   } else if (/^HANA1R /.test(text)) {
     const o = list.find((x) => x.reply && x.reply.endsWith("/" + m.topic));
     if (!o) return false;

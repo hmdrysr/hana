@@ -61,7 +61,7 @@ async function saleFromOrder(d, text) {
     source: "hana", order_code: d.code, type: d.zone === "pickup" ? "pickup" : "delivery",
     items: d.lines.map((l) => ({ name: l.label, qty: l.qty, price: l.total === null ? null : l.total / l.qty })),
     subtotal: d.sub, delivery_fee: d.fee === "?" ? 0 : Number(d.fee), payment: "unpaid", status: "open",
-    customer: { name: pick(/^Name: (.+)$/m), address: pick(/^Delivery to: (.+)$/m), zone: pick(/^Zone: (.+)$/m) },
+    customer: { name: pick(/^Name: (.+)$/m), address: pick(/^Delivery address: (.+)$/m), phone: pick(/^Phone: (.+)$/m) },
   });
 }
 

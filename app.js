@@ -659,8 +659,8 @@ async function buildOrder(r, f) {
   for (const k of keys) {
     const q = state.basket.lines[k], p = prices[k].price;
     parts.push(k + "*" + q);
-    if (p === null || p === undefined) { unpriced++; text.push(q + " × " + prices[k].label + ": price not listed"); }
-    else { sub += p * q; text.push(q + " × " + prices[k].label + " at " + money(p) + " = " + money(p * q)); }
+    if (p === null || p === undefined) { unpriced++; text.push(q + " × " + prices[k].label); }
+    else { sub += p * q; text.push(q + " × " + prices[k].label + ": " + money(p * q)); }
   }
   const pickup = f.mode === "pickup";
   const zone = pickup ? null : f.deliveryZone;
@@ -670,19 +670,32 @@ async function buildOrder(r, f) {
   const items = parts.join(",");
   const code = newCode();
   const check = "CHECK hana1 H=" + r.hash.slice(0, 12) + " Z=" + zoneId + " I=" + items + " S=" + sub + " F=" + feeStr + " C=" + await checkCode(r.hash, zoneId, items, sub, feeStr);
-  const where = pickup ? ["Pickup: I will collect the order"] :
-    ["Delivery to: " + f.address, "Zone: " + areaName(f.zone) + (f.ward ? ", " + areaName(f.ward) : "")];
-  const lines = ["Order " + code + " (sent with Hana)", "To: " + menu.name,
-    f.scheduled ? "Scheduled for: " + longDate(f.scheduled.slice(0, 10)) + ", " + clock(f.scheduled.slice(11, 16)) : null, "", ...text, "",
-    unpriced ? (sub ? "Subtotal of listed prices: " + money(sub) : null) : "Subtotal (items): " + money(sub),
-    pickup ? "Pickup: no delivery fee" : (fee === null ? "Delivery fee: not stated; please confirm" : "Delivery fee: " + money(fee)),
-    unpriced ? "Please tell me the price of each item and the total, including the delivery fee, when you confirm."
-      : fee === null ? null : "Total, including delivery: " + money(sub + fee),
-    "Payment: cash on delivery" + (pickup ? " (at pickup)" : "") + ". I will not pay in advance.", "",
-    "Name: " + f.name, f.phone ? "Phone: " + f.phone : null, ...where,
+  /* A plain, polite message. Claimed listings also get a short reference and the check line
+     the business tools read; volunteer-entered listings get none of that. */
+  const formal = menu.claimed === true;
+  const zoneName = pickup ? "" : areaName(f.zone) + (f.ward ? " (" + areaName(f.ward) + ")" : "");
+  const ask = [];
+  if (unpriced) ask.push(keys.length - unpriced ? "the prices of the items without a listed price" : "the item prices");
+  else if (!formal) ask.push("the item prices");
+  if (!pickup && fee === null) ask.push("the delivery charge to " + zoneName);
+  else if (!pickup && !formal) ask.push("the delivery charge to " + zoneName);
+  if (ask.length) ask.push("the total amount");
+  const askLine = ask.length ? "Could you please confirm " + ask.slice(0, -1).join(", ") + " and " + ask[ask.length - 1] + "?" : null;
+  const lines = ["Hello, I'd like to order from " + menu.name + ".", "",
+    "Order:", ...text, "",
+    sub && (!unpriced || keys.length - unpriced) ? (unpriced ? "Subtotal of listed prices: " : "Subtotal: ") + money(sub) : null,
+    !pickup && fee !== null ? "Delivery charge to " + zoneName + ": " + money(fee) : null,
+    !unpriced && fee !== null ? "Total: " + money(sub + fee) : null,
+    askLine ? "" : null, askLine, "",
+    "Name: " + f.name, f.phone ? "Phone: " + f.phone : null,
+    pickup ? "Pickup: I'll collect the order myself." : "Delivery address: " + f.address + ", " + zoneName,
+    f.scheduled ? (pickup ? "Pickup time: " : "Delivery time: ") + longDate(f.scheduled.slice(0, 10)) + ", " + clock(f.scheduled.slice(11, 16)) : null,
     f.note ? "Note: " + f.note : null, "",
-    "To confirm, reply: CONFIRMED " + code, "", check].filter((l) => l !== null);
-  const message = lines.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
+    pickup ? "I'll pay at pickup. No advance payment, please." : "I'll pay by cash on delivery. No advance payment, please.", "",
+    formal ? "To confirm, please reply: CONFIRMED " + code : null,
+    "Thank you!",
+    formal ? "" : null, formal ? "Order reference " + code + " (Hana): " + check : null].filter((l) => l !== null);
+  const message = lines.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n").trim();
   return { code, message, check, sub, fee, keys, zoneId, prices, unpriced };
 }
 
@@ -841,7 +854,7 @@ function viewBasket() {
     if (!channels.length) errors.push("This listing has no way to send a written order.");
     if (os.closed && !os.canOrder) errors.push("This business is closed and does not take scheduled orders.");
     if (os.closed && os.canOrder && !when.value) errors.push("Choose a time for your scheduled order.");
-    const waiting = store.get("hana.orders", []).filter((x) => x.status === "awaiting");
+    const waiting = store.get("hana.orders", []).filter((x) => x.status === "awaiting" && !x.informal);
     if (waiting.some((x) => x.restaurant_id === r.id)) errors.push("You already have an order waiting for this business's reply. Wait for it, or cancel it on the Orders page.");
     else if (waiting.length >= 3) errors.push("You have three orders waiting for replies. Wait for them, or cancel one, before placing another.");
     if (errors.length) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, errors.join(" ")))); return; }
@@ -864,11 +877,11 @@ function viewBasket() {
     const windowStart = os.closed && os.next ? os.next.toISOString() : created;
     const orders = store.get("hana.orders", []);
     orders.unshift({ code: o.code, status: "awaiting", created, restaurant_id: r.id, restaurant: menu.name,
-      claimed: menu.claimed === true, public_key: menu.owner && menu.owner.public_key ? menu.owner.public_key : null,
+      claimed: menu.claimed === true && !!(menu.owner && menu.owner.public_key), public_key: menu.owner && menu.owner.public_key ? menu.owner.public_key : null,
       menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
       items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price })), subtotal: o.sub, fee: o.fee,
       message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
-      window_start: windowStart, scheduled, business_phone: menu.business_phone,
+      window_start: windowStart, scheduled, business_phone: menu.business_phone, informal: menu.claimed !== true,
       order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
       arrive_at: b.mode === "pickup" ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
       feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
@@ -937,7 +950,7 @@ function expireOrders() {
     if (!o.status) { o.status = o.confirmation ? "confirmed_unsigned" : "awaiting"; changed = true; }
     const age = now - new Date(o.created || o.at).getTime();
     const sinceStart = now - new Date(o.window_start || o.created || o.at).getTime();
-    if (o.status === "awaiting" && sinceStart > win * 60000) {
+    if (o.status === "awaiting" && !o.informal && sinceStart > win * 60000) {
       o.status = "expired";
       o.closed_at = new Date().toISOString();
       changed = true;
@@ -1019,12 +1032,12 @@ function orderCard(o, orders) {
   }
   const phoneOf = o.business_phone || ((restaurantById(o.restaurant_id) || {}).lite || {}).business_phone;
   if (phoneOf && o.status !== "cancelled" && o.status !== "expired") kids.push(h("nav", null, h("a", { href: "tel:" + phoneOf, class: "button border" }, icon("call"), h("span", null, "Call the business"))));
-  const cancelOpen = o.status === "awaiting" || (o.status.startsWith("confirmed") && Date.now() < deadline.getTime() && !(o.progress || []).some((p) => p.step === "out" || p.step === "delivered" || p.step === "picked"));
+  const cancelOpen = !o.informal && (o.status === "awaiting" || (o.status.startsWith("confirmed") && Date.now() < deadline.getTime() && !(o.progress || []).some((p) => p.step === "out" || p.step === "delivered" || p.step === "picked")));
   const cancelButton = cancelOpen ? h("button", { type: "button", class: "border", on: { click: async () => {
     const ch = CHANNELS[o.channel];
     const how = ch && ch.direct ? "The cancellation is sent to the business automatically." : "Your messaging app opens with the cancellation filled in; send it in the same chat as the order.";
     if (!(await ask("Cancel order " + o.code + "?", "You can cancel within " + win + " minutes of ordering. " + how, "Cancel order"))) return;
-    const text = "Please cancel order " + o.code + ". I no longer want it.\nCANCEL " + o.code;
+    const text = "Hello, I'd like to cancel order " + o.code + ", please. Sorry for the trouble, and thank you.\nCANCEL " + o.code;
     if (o.channel === "hana" && o.order_topic) { try { await postSealed(o.order_topic, o.order_key, { from: "c", t: "cancel", code: o.code }); snackbar("Cancellation sent to the business."); } catch (e) { snackbar("Could not send the cancellation. Check your connection and try again."); return; } }
     else if (ch && ch.direct) { try { await sendDirect(o.channel_id, text); snackbar("Cancellation sent to the business."); } catch (e) { copy(text); snackbar("Could not send it directly. The cancellation was copied; send it to the business."); } }
     else if (ch && o.channel_id) { if (!ch.prefill) copy(text); window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener"); }
@@ -1035,7 +1048,19 @@ function orderCard(o, orders) {
     log("Cancelled order " + o.code + " for " + o.restaurant + ".");
     viewOrders();
   } } }, icon("close"), h("span", null, "Cancel order")) : null;
-  if (o.status === "awaiting" || o.status === "expired") {
+  if (o.informal && o.status === "awaiting") {
+    /* Volunteer-entered listings: no codes or timers. The customer and the business arrange
+       the order in their chat, and the customer notes the outcome here. */
+    const ch = CHANNELS[o.channel];
+    kids.push(h("p", { class: "small-text" }, "Arrange the details with " + o.restaurant + " in your chat. When it confirms, note it here."),
+      h("nav", { class: "wrap" },
+        h("button", { type: "button", on: { click: () => { Object.assign(o, { status: "confirmed_unsigned", confirmed_at: new Date().toISOString(), confirmation: "Confirmed in the chat" }); save(); viewOrders(); } } }, icon("check_circle"), h("span", null, "The business confirmed")),
+        h("button", { type: "button", class: "border", on: { click: () => {
+          const text = "Hello, I'd like to cancel my order, please. Sorry for the trouble, and thank you.";
+          if (ch && o.channel_id && !ch.direct) { if (!ch.prefill) copy(text); window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener"); }
+          Object.assign(o, { status: "cancelled", closed_at: new Date().toISOString() }); save(); viewOrders();
+        } } }, icon("close"), h("span", null, "Cancel the order"))));
+  } else if (o.status === "awaiting" || o.status === "expired") {
     const reply = h("textarea", { id: "reply-" + o.code, rows: 3, placeholder: " " });
     const left = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / 60000));
     kids.push(

@@ -126,27 +126,39 @@ def cmd_order(args):
     sub = sum((prices[k] or 0) * q for k, q in lines.items())
     unpriced = any(prices[k] is None for k in lines)
     code = order_line.b32(secrets.token_bytes(4))[:6]
-    where = (["Pickup: I will collect the order"] if args.pickup else
-             ["Delivery to: " + args.address,
-              "Zone: " + areas[args.zone]["name"] + (", " + areas[args.ward]["name"] if args.ward in areas else "")])
-    msg = [f"Order {code} (sent with Hana)", "To: " + m["name"], ""]
-    msg += [f"{q} × {labels[k]}: price not listed" if prices[k] is None else f"{q} × {labels[k]} at {money(prices[k])} = {money(prices[k] * q)}"
-            for k, q in sorted(lines.items())]
-    msg.append("")
-    if not unpriced:
-        msg.append("Subtotal (items): " + money(sub))
-    elif sub:
-        msg.append("Subtotal of listed prices: " + money(sub))
-    msg.append("Pickup: no delivery fee" if args.pickup else ("Delivery fee: not stated; please confirm" if fee is None else "Delivery fee: " + money(fee)))
+    formal = m.get("claimed") is True
+    zone_name = "" if args.pickup else areas[args.zone]["name"] + (" (" + areas[args.ward]["name"] + ")" if args.ward in areas else "")
+    priced = [k for k in lines if prices[k] is not None]
+    ask = []
     if unpriced:
-        msg.append("Please tell me the price of each item and the total, including the delivery fee, when you confirm.")
-    elif fee is not None:
-        msg.append("Total, including delivery: " + money(sub + fee))
-    msg += ["Payment: cash on delivery" + (" (at pickup)" if args.pickup else "") + ". I will not pay in advance.", "",
-            "Name: " + args.name] + where
+        ask.append("the prices of the items without a listed price" if priced else "the item prices")
+    elif not formal:
+        ask.append("the item prices")
+    if not args.pickup and (fee is None or not formal):
+        ask.append("the delivery charge to " + zone_name)
+    msg = [f"Hello, I'd like to order from {m['name']}.", "", "Order:"]
+    msg += [f"{q} × {labels[k]}" if prices[k] is None else f"{q} × {labels[k]}: {money(prices[k] * q)}" for k, q in sorted(lines.items())]
+    msg.append("")
+    if sub and priced:
+        msg.append(("Subtotal of listed prices: " if unpriced else "Subtotal: ") + money(sub))
+    if not args.pickup and fee is not None:
+        msg.append(f"Delivery charge to {zone_name}: {money(fee)}")
+    if not unpriced and fee is not None:
+        msg.append("Total: " + money(sub + fee))
+    if ask:
+        ask.append("the total amount")
+        msg.append("")
+        msg.append("Could you please confirm " + ", ".join(ask[:-1]) + " and " + ask[-1] + "?")
+    msg += ["", "Name: " + args.name]
+    msg.append("Pickup: I'll collect the order myself." if args.pickup else f"Delivery address: {args.address}, {zone_name}")
     if args.note:
         msg.append("Note: " + args.note)
-    msg += ["", "To confirm, reply: CONFIRMED " + code, "", check]
+    msg += ["", "I'll pay at pickup. No advance payment, please." if args.pickup else "I'll pay by cash on delivery. No advance payment, please.", ""]
+    if formal:
+        msg.append("To confirm, please reply: CONFIRMED " + code)
+    msg.append("Thank you!")
+    if formal:
+        msg += ["", f"Order reference {code} (Hana): {check}"]
     text = "\n".join(msg)
     print(text)
     print("\n--- How to send it (the customer's own account) ---")

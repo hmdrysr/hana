@@ -15,6 +15,7 @@ Checks, at 320, 360, 768 and 1280 pixels wide, in light and dark mode:
 Prints PASS or FAIL for each check and exits 1 on any failure.
 """
 import json
+import re
 from datetime import datetime
 import sys
 from pathlib import Path
@@ -95,7 +96,17 @@ with sync_playwright() as p:
                 ok(f"no sideways scroll, {scheme}, {width}px, {screen.replace(ROOT_URL, '')}", normal <= 0 and large <= 0, (normal, large))
                 page.close()
 
-    page = browser.new_page(viewport={"width": 360, "height": 800})
+    # The full order protocol (code, check line, confirmation window) applies to claimed listings.
+    # No listing is claimed yet, so this page sees Tava as claimed, through a stand-in list.
+    import hashlib
+    claimed_bytes = (HERE.parent / "menus" / TAVA / "menu.json").read_text().replace('"claimed": false', '"claimed": true', 1).encode()
+    stand_in = json.loads((HERE.parent / "list.json").read_text())
+    for L in stand_in["listings"]:
+        if L["id"] == TAVA:
+            L["claimed"], L["menu_hash"] = True, hashlib.sha256(claimed_bytes).hexdigest()
+    page = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block").new_page()
+    page.route("**/list.json", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(stand_in)))
+    page.route("**/menus/" + TAVA + "/menu.json", lambda r: r.fulfill(status=200, content_type="application/json", body=claimed_bytes))
     page.on("pageerror", lambda e: errors.append(str(e)))
     # Fix the clock at 8 p.m. on a Thursday, when every listed business is open.
     page.clock.install(time=datetime(2026, 10, 15, 20, 0, 0))
@@ -175,12 +186,13 @@ with sync_playwright() as p:
     page.wait_for_selector("pre")
     message = page.inner_text("pre").strip()
     line = message.splitlines()[-1]
-    menu_bytes = (HERE.parent / "menus" / TAVA / "menu.json").read_bytes()
+    menu_bytes = claimed_bytes
+    line = line.split(": ", 1)[1] if line.startswith("Order reference") else line
     res = order_line.decode(line, [(menu_bytes, json.loads(menu_bytes))])
     ok("order check line is accepted by tools/order_line.py", res["ok"] and res["subtotal_from_menu"] == 0, res)
-    ok("an order without listed prices asks the business for each price and the total", "tell me the price of each item and the total" in message, message[:300])
+    ok("the order message is polite and asks for the prices and the total", message.startswith("Hello, I'd like to order from Tava Restaurant.") and "Could you please confirm the item prices" in message and "No advance payment, please." in message, message[:300])
     ok("no courier slip is prepared", "DELIVERY SLIP" not in page.inner_text("main"))
-    code = message.split()[1]
+    code = re.search(r"CONFIRMED ([0-9A-Z]{6})", message).group(1)
     page.goto(BASE + "#/orders")
     page.wait_for_selector("textarea")
     ok("a new order waits for confirmation", "Waiting for the business to confirm" in page.inner_text("article"))
@@ -250,11 +262,33 @@ with sync_playwright() as p:
     page.goto(BASE + "#/@sliced")
     page.wait_for_timeout(1500)
     ok("an @handle opens that listing", "Sliced" in page.inner_text("main .page-title"), page.inner_text("main")[:120])
-    page.goto(BIZ + "#/update")
-    page.fill("#listing-phone", "+8801729298282")
-    page.click("text=Find my listing")
-    page.wait_for_timeout(800)
-    ok("the menu editor refuses an unclaimed listing", "not claimed yet" in page.inner_text("main"))
+    # Volunteer-entered listings skip the protocol: a plain, polite message and a manual note.
+    ip = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block").new_page()
+    ip.goto(BASE + "#/r/" + TAVA)
+    ip.wait_for_selector(".page-title")
+    ip.click("button[aria-label^='Add Dahi Bara']")
+    ip.goto(BASE + "#/basket")
+    ip.wait_for_selector("#zone")
+    ip.select_option("#zone", "khulshi")
+    ip.fill("#name", "Test")
+    ip.fill("#address", "House 1, Road 2")
+    ip.click("button[type=submit]")
+    ip.wait_for_selector("pre")
+    plain = ip.inner_text("pre").strip()
+    ok("a volunteer listing gets a plain message with no codes", plain.startswith("Hello, I'd like to order from Tava Restaurant.") and "CHECK" not in plain and "CONFIRMED" not in plain and plain.endswith("Thank you!"), plain[-200:])
+    ip.goto(BASE + "#/orders")
+    ip.wait_for_selector("text=The business confirmed")
+    ip.click("text=The business confirmed")
+    ip.wait_for_timeout(300)
+    ok("the customer notes a volunteer listing's confirmation", "not signed" in ip.inner_text("main"), ip.inner_text("main")[:200])
+    ip.close()
+    up = browser.new_page(viewport={"width": 360, "height": 800})
+    up.goto(BIZ + "#/update")
+    up.fill("#listing-phone", "+8801729298282")
+    up.click("text=Find my listing")
+    up.wait_for_timeout(800)
+    ok("the menu editor refuses an unclaimed listing", "not claimed yet" in up.inner_text("main"))
+    up.close()
     page.goto(BIZ + "#/join")
     page.wait_for_selector(".menu-editor")
     page.locator(".edit-section input").first.fill("Starters")
