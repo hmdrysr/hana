@@ -7,7 +7,7 @@ const main = document.getElementById("main");
 const B = {
   site: { repo_url: "", company_url: "https://hamidyasir.com" },
   rules: { max_delivery_fee: 150, payment_methods_on_delivery: { cash: "Cash" } },
-  areas: [], areaById: new Map(), index: [], menus: new Map(), key: null, loaded: false,
+  areas: [], areaById: new Map(), index: [], menus: new Map(), key: null, vault: null, loaded: false,
 };
 const KINDS = ["Restaurant", "Delivery-only kitchen", "Café", "Bakery", "Sweet shop", "Grocery store", "Supermarket"];
 const PLEDGES = {
@@ -172,7 +172,7 @@ async function signMenu(menu, key) {
 
 /* Every update on an order sent in Hana is signed with the listing key (SPEC.md, section 21). */
 async function postUpdate(o, obj) {
-  if (!B.key) throw new Error("Load your key under Connections first.");
+  if (!B.key) throw new Error("Sign in under Connections first.");
   obj = Object.assign({ from: "b", at: new Date().toISOString() }, obj);
   await signUpdate(B.key.jwk, o.code, obj);
   await postSealed(o.reply, o.keyRaw, obj);
@@ -182,34 +182,101 @@ function keyFileText(key) {
   return JSON.stringify({ about: "Hana business key. Keep this file private and keep a backup. Anyone with it can sign as your business. Hana never asks for it.", key_id: key.id, created: new Date().toISOString(), jwk: key.jwk, enc: key.enc }, null, 2) + "\n";
 }
 
+/* Sign-in: the key is unlocked from the listing's vault with a passkey or the recovery phrase
+   (vault.js, SPEC.md section 22). A key file still works, under "Other ways". */
 function keyBox(onReady) {
-  const status = h("p", { class: "small-text muted" }, B.key ? "Key loaded: " + B.key.id : "No key loaded.");
+  const box = h("div", { class: "stack", "aria-live": "polite" });
+  const keep = h("input", { type: "checkbox", id: "keepkey", checked: B.keyRemembered || !B.key });
+  const remember = async () => { if (keep.checked && B.key) { await KEYSTORE.set(B.key); B.keyRemembered = true; } };
+  const say = (tone, text) => notice(tone, h("p", { class: "flush" }, text));
+  const label = () => "Hana: " + ((store.get("hana.biz.menu", null) || {}).name || "my business");
+  const busy = async (e, fn) => {
+    const b = e.currentTarget; b.disabled = true;
+    try { await fn(); } catch (err) { draw(say("warn", err.name === "NotAllowedError" ? "The passkey request was cancelled." : err.message)); }
+    b.disabled = false;
+  };
+  const signedIn = async (opened, vault) => {
+    const key = await loadKey(new TextEncoder().encode(opened.keyText));
+    if (vault.key_id && vault.key_id !== key.id) throw new Error("This vault holds a different key from the one it names.");
+    B.key = key; B.vault = { doc: vault, dek: opened.dek };
+    await remember();
+    draw(say("info", "Signed in."));
+    if (onReady) onReady();
+  };
+  const vaultFor = async (phone) => {
+    const found = await findListingByPhone(phone, false);
+    if (found.error) throw new Error(found.error);
+    try { localStorage.setItem("hana.biz.phone", phone); } catch (e) { /* ignore */ }
+    const v = await fetchVault(found.row);
+    if (!v) throw new Error("Sign-in has not been set up for this listing yet. Load your key file under Other ways, then set up sign-in.");
+    return v;
+  };
+  const vaultFiles = (extra) => {
+    const text = vaultText(B.vault.doc);
+    return h("div", { class: "stack" },
+      extra || null,
+      h("p", { class: "small-text muted" }, "Publish vault.json next to menu.json in your repository. It is encrypted and opens only with your passkey or recovery phrase."),
+      h("nav", { class: "wrap" }, publishButton([{ path: "vault.json", text }], "Hana sign-in for key " + B.key.id),
+        h("button", { type: "button", class: "border", on: { click: () => download("vault.json", text) } }, icon("download"), h("span", null, "Download vault.json"))));
+  };
+  const addPk = (e) => busy(e, async () => {
+    B.vault.doc = await addPasskey(B.vault.doc, B.vault.dek, label());
+    draw(vaultFiles(say("info", "Passkey added for this device. Publish the updated vault.json so it works next time.")));
+  });
+  function draw(top) {
+    const kids = [top || null];
+    if (B.key) {
+      kids.push(h("p", { class: "small-text muted" }, "Signed in with key " + B.key.id + "."));
+      if (B.vault) {
+        kids.push(h("nav", { class: "wrap" },
+          passkeySupported() ? h("button", { type: "button", class: "border", on: { click: addPk } }, icon("fingerprint"), h("span", null, "Add a passkey on this device")) : null));
+      } else {
+        kids.push(h("p", { class: "small-text" }, "Set up sign-in, so you never need to carry the key file: you get a five-word recovery phrase, and you can add your phone's fingerprint, face or screen lock as a passkey."),
+          h("nav", { class: "wrap" }, h("button", { type: "button", on: { click: (e) => busy(e, async () => {
+            const phrase = await newPhrase();
+            B.vault = await makeVault(keyFileText(B.key), B.key.id, phrase);
+            B.vault = { doc: B.vault.vault, dek: B.vault.dek };
+            draw(vaultFiles(h("div", { class: "stack" },
+              notice("warn", h("p", { class: "flush" }, "Your recovery phrase:"), h("p", { class: "bold flush", id: "recovery-phrase" }, phrase),
+                h("p", { class: "flush" }, "Write these five words on paper and keep them somewhere safe. Anyone with them can sign as your business, and Hana cannot recover them.")),
+              passkeySupported() ? h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: addPk } }, icon("fingerprint"), h("span", null, "Add a passkey on this device"))) : null)));
+          }) } }, icon("key"), h("span", null, "Set up sign-in"))));
+      }
+    } else {
+      let phone0 = ""; try { phone0 = localStorage.getItem("hana.biz.phone") || ""; } catch (e) { /* ignore */ }
+      const ph = input("si-phone", { inputmode: "tel", value: phone0 });
+      const words = input("si-words", { autocomplete: "off", autocapitalize: "none", spellcheck: "false" });
+      kids.push(textField("si-phone", "Business phone", ph),
+        passkeySupported() ? h("nav", { class: "wrap" }, h("button", { type: "button", on: { click: (e) => busy(e, async () => { const v = await vaultFor(ph.value); await signedIn(await unlockWithPasskey(v), v); }) } }, icon("fingerprint"), h("span", null, "Sign in with passkey"))) : null,
+        textField("si-words", "Recovery phrase (five words)", words),
+        h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: (e) => busy(e, async () => { const v = await vaultFor(ph.value); await signedIn(await unlockWithPhrase(v, words.value), v); }) } }, icon("key"), h("span", null, "Sign in with recovery phrase"))),
+        h("details", null, h("summary", null, "Other ways"),
+          h("div", { class: "stack" },
+            h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: (e) => busy(e, async () => {
+              try { B.key = await createKey(); } catch (err) { throw new Error("This browser cannot create Ed25519 keys. Use an up-to-date Chrome, Firefox or Safari."); }
+              B.vault = null;
+              await remember();
+              draw(say("info", "New key created: " + B.key.id + ". Now set up sign-in."));
+              if (onReady) onReady();
+            }) } }, icon("add"), h("span", null, "Create a new key (new business)"))),
+            file,
+            h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Load my key file"))))));
+    }
+    if (B.key) kids.push(h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => download("hana-key-" + B.key.id + ".json", keyFileText(B.key)) } }, icon("download"), h("span", null, "Download a backup key file"))));
+    kids.push(h("div", { class: "row" }, h("label", { class: "switch" }, keep, h("span")), h("label", { for: "keepkey", class: "max" }, "Stay signed in on this device")));
+    box.replaceChildren(...kids.filter(Boolean));
+  }
   const file = h("input", { type: "file", id: "keyfile", accept: ".json,application/json", hidden: true, on: { change: async () => {
     try {
       B.key = await loadKey(await readFile(file));
-      status.textContent = "Key loaded: " + B.key.id + "." + (B.key.encAdded ? " An encryption key for orders sent in Hana was added, and your updated key file was downloaded. Keep it instead of the old one." : "");
-      if (B.key.encAdded) download("hana-key-" + B.key.id + ".json", keyFileText(B.key));
+      B.vault = null;
       await remember();
+      draw(say("info", "Key loaded: " + B.key.id + "." + (B.key.encAdded ? " An encryption key for orders sent in Hana was added; set up sign-in or download the backup key file again." : "")));
       if (onReady) onReady();
-    } catch (e) { status.textContent = e.message; }
+    } catch (e) { draw(say("warn", e.message)); }
   } } });
-  const keep = h("input", { type: "checkbox", id: "keepkey", checked: !!B.keyRemembered });
-  const remember = async () => { if (keep.checked && B.key) { await KEYSTORE.set(B.key); B.keyRemembered = true; } };
-  return h("div", { class: "stack" },
-    status,
-    h("nav", { class: "wrap" },
-      h("button", { type: "button", class: "border", on: { click: async () => {
-        try {
-          B.key = await createKey();
-          download("hana-key-" + B.key.id + ".json", keyFileText(B.key));
-          status.textContent = "New key created and downloaded: " + B.key.id + ". Keep the file private and keep a backup. Without it you cannot sign updates.";
-          await remember();
-          if (onReady) onReady();
-        } catch (e) { status.textContent = "This browser cannot create Ed25519 keys. Use an up-to-date Chrome, Firefox or Safari."; }
-      } } }, icon("key"), h("span", null, "Create a new key"))),
-    file,
-    h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Load my key file"))),
-    h("div", { class: "row" }, h("label", { class: "switch" }, keep, h("span")), h("label", { for: "keepkey", class: "max" }, "Keep my key on this device, so I do not need the file each time")));
+  draw();
+  return box;
 }
 
 /* ---------------------------------------------------------------- loading */
@@ -478,8 +545,8 @@ function viewJoin() {
     sectionTitle("6. Pledges"),
     h("nav", { class: "vertical left-align" }, Object.entries(PLEDGES).map(([k, text]) => check("pledge-" + k, text, false))),
 
-    sectionTitle("7. Your key"),
-    h("p", { class: "small-text muted" }, "Your key signs your menu and your order confirmations, so customers and the community can tell they really came from you. It stays on your device."),
+    sectionTitle("7. Sign-in"),
+    h("p", { class: "small-text muted" }, "Your key signs your menu and your order confirmations, so customers and the community can tell they really came from you. Create it here, then set up sign-in: a five-word recovery phrase and, if your phone supports it, a passkey."),
     keyBox(),
     h("div", { class: "space" }),
     h("nav", null, h("button", { type: "submit", class: "responsive" }, icon("verified"), h("span", null, "Prepare my listing and claim"))));
@@ -778,7 +845,7 @@ async function orderPanel(text, found, onDone, direct) {
       h("li", null, h("div", { class: "max bold" }, "Items"), h("span", { class: "price bold" }, money(d.sub))),
       h("li", null, h("div", { class: "max" }, d.zone === "pickup" ? "Pickup" : "Delivery fee (" + areaName(d.zone) + ")"), h("span", { class: "price" }, d.fee === "?" ? "Not stated" : money(d.fee)))),
     textField("eta-" + d.code, direct ? "Preparation time in minutes (you are reminded when it runs out)" : "Minutes until delivery or pickup (optional)", eta),
-    owner && !B.key ? h("p", { class: "small-text muted" }, "Load your key under Connections to sign the confirmation.") : null,
+    owner && !B.key ? h("p", { class: "small-text muted" }, "Sign in under Connections to sign the confirmation.") : null,
     !owner ? h("p", { class: "small-text muted" }, "This listing has no key yet, so the confirmation is not signed. Claim the listing to sign confirmations.") : null,
     h("nav", { class: "wrap" },
       h("button", { type: "button", on: { click: confirm } }, icon("check_circle"), h("span", null, "Confirm")),
@@ -853,7 +920,7 @@ async function takeMessage(m) {
   const text = m.message || "";
   if (list.some((o) => o.id === m.id)) return false;
   if (/^HANA1 /.test(text)) {
-    if (!B.key || !B.key.enc) { snackbar("A new order arrived. Load your key under Connections to open it."); return false; }
+    if (!B.key || !B.key.enc) { snackbar("A new order arrived. Sign in under Connections to open it."); return false; }
     let opened = null;
     try { opened = await openOrder(B.key.enc.priv, text); } catch (e) { return false; }
     if (!opened || !opened.order || !CHECK_LINE.test(opened.order.message || "")) return false;
@@ -1047,7 +1114,7 @@ function viewUpdate() {
       if (isNaN(z.fee) || isNaN(z.min_order) || isNaN(z.eta_min)) errors.push("Enter every delivery fee, minimum order and delivery time as a whole number.");
       else if (z.fee > B.rules.max_delivery_fee) errors.push("A delivery fee is above the limit of " + money(B.rules.max_delivery_fee) + ".");
     }
-    if (!B.key) errors.push("Load your key.");
+    if (!B.key) errors.push("Sign in first.");
     else if (!next.owner || next.owner.public_key !== B.key.publicB64) errors.push("This key does not belong to this listing.");
     const changes = errors.length ? [] : diffMoney(prev, next);
     const otherChange = JSON.stringify(prev.items) !== JSON.stringify(next.items) || prev.pickup !== next.pickup || JSON.stringify(prev.direct || null) !== JSON.stringify(next.direct || null);
@@ -1263,7 +1330,7 @@ function viewConnect() {
   const c = conn();
   const prov = h("select", { id: "c-provider" }, [["", "Not connected"], ["github", "GitHub"], ["forgejo", "Codeberg, Forgejo or Gitea"]].map(([v, t]) => h("option", { value: v, selected: c.provider === v }, t)));
   const out = h("div", { "aria-live": "polite" });
-  const keyStatus = h("p", { class: "small-text muted" }, B.keyRemembered ? "Your key is kept on this device: " + (B.key && B.key.id) + "." : "Your key is not kept on this device.");
+  const keyStatus = h("p", { class: "small-text muted" }, B.keyRemembered ? "You stay signed in on this device (key " + (B.key && B.key.id) + ")." : "You are not kept signed in on this device.");
   show("more", "Connections", pageHeader("Connections", "#/more"),
     h("p", { class: "muted" }, "Optional. Everything here is kept on this device only. With these set up, the tools publish your menu and handle orders with one tap. Without them, you download files and upload them yourself."),
     sectionTitle("Orders sent in Hana"),
@@ -1302,10 +1369,10 @@ function viewConnect() {
       } } }, h("span", null, "Test the connection")),
       h("button", { type: "button", class: "border", on: { click: () => { store.set("hana.biz.connections", null); viewConnect(); snackbar("Connections removed from this device."); } } }, h("span", null, "Remove all"))),
     out,
-    sectionTitle("Your key"),
+    sectionTitle("Sign-in"),
     keyStatus,
     keyBox(() => viewConnect()),
-    B.keyRemembered ? h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => { await KEYSTORE.clear(); B.keyRemembered = false; B.key = null; viewConnect(); } } }, h("span", null, "Forget my key on this device"))) : null);
+    B.key ? h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => { await KEYSTORE.clear(); B.keyRemembered = false; B.key = null; B.vault = null; viewConnect(); } } }, icon("logout"), h("span", null, "Sign out on this device"))) : null);
 }
 
 /* ---------------------------------------------------------------- more tools */
