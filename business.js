@@ -585,7 +585,7 @@ function viewJoin() {
     sectionTitle("1. Your business"),
     textField("name", "Business name", input("name", { maxlength: 80 })),
     textField("handle", "Handle, for your web address", input("handle", { maxlength: 30, autocapitalize: "off", spellcheck: "false" })),
-    hint("Lowercase letters and numbers, for example mealmaster. Your page will be at …/restaurants/mealmaster and customers can find you as @mealmaster."),
+    hint("Lowercase letters and numbers, for example mybusiness. Your page will be at …/restaurants/mybusiness and customers can find you as @mybusiness."),
     select("kind", "Type of business", KINDS.map((k) => [k, k]), KINDS[0]),
     select("cuisine", "Main cuisine", [["", "Other or mixed"]].concat(FOOD.filter((f) => !["sides", "drink", "combo"].includes(f[0])).map((f) => [f[1], f[1]])), ""),
     hint("Used to choose a stock cover photo until you add your own."),

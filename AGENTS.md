@@ -35,8 +35,8 @@ The message must match the app's format exactly, ending with the check line that
 
 ```
 python3 tools/place_order.py --site https://hmdrysr.github.io/hana/ list --zone khulshi --search pizza
-python3 tools/place_order.py --site https://hmdrysr.github.io/hana/ menu "Sliced"
-python3 tools/place_order.py --site https://hmdrysr.github.io/hana/ order "Sliced" --item <item key>*2 --zone khulshi --name "<name>" --address "<address>"
+python3 tools/place_order.py --site https://hmdrysr.github.io/hana/ menu "TONG"
+python3 tools/place_order.py --site https://hmdrysr.github.io/hana/ order "TONG" --item <item key>*2 --zone khulshi --name "<name>" --address "<address>"
 ```
 
 It prints the message, a link for each of the business's channels (WhatsApp, text message, email and others) that opens the customer's app with the message filled in, and an app link.

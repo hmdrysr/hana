@@ -9,8 +9,8 @@ checkout with the basket filled in. It never sends anything by itself, except to
 own order address (channel "endpoint") when --send is given.
 
     python3 tools/place_order.py list [--zone khulshi] [--search pizza]
-    python3 tools/place_order.py menu "Sliced"
-    python3 tools/place_order.py order "Sliced" --item burger-classic-chicken*2 --zone khulshi \\
+    python3 tools/place_order.py menu "TONG"
+    python3 tools/place_order.py order "TONG" --item cha.milk*2 --zone khulshi \\
         --name "Customer name" --address "House, road, landmark" [--ward ward-14] [--pickup] [--note "..."] [--send]
 
 Rules an assistant must follow are in AGENTS.md: show the customer the items, fee and total,

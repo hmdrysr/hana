@@ -90,7 +90,7 @@ Every copy of Hana carries the full directory and acts as a backup. See `MIRRORI
 
 ## Listing addresses
 
-Every listing can have a handle, such as @mealmaster, and a clean address: https://hmdrysr.github.io/hana/restaurants/mealmaster/. Run `python3 tools/build.py` after changing a listing to rebuild these pages and the feed.
+Every listing can have a handle, such as @tong, and a clean address: https://hmdrysr.github.io/hana/restaurants/tong/ (grocery stores: https://hmdrysr.github.io/hana/groceries/duwan/). Run `python3 tools/build.py` after changing a listing to rebuild these pages and the feed.
 
 ## How to help
 

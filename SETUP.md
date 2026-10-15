@@ -28,4 +28,4 @@ Put the same files on any static host. Then edit `repo_url` in `site.json` to yo
 
 ## What you still need to decide
 
-See open items in `SPEC.md` section 12. The first ones for a launch: confirm the three listings with the restaurants, fill in `VOLUNTEERS.md` and `vouchers.json`, draw the area boundaries, and take legal advice on the Responsibility notice.
+See open items in `SPEC.md` section 12. The first ones for a launch: list the first real businesses and confirm them with their owners (the directory now starts with two demo listings, TONG and DUWAN), fill in `VOLUNTEERS.md` and `vouchers.json`, draw the area boundaries, and take legal advice on the Responsibility notice.

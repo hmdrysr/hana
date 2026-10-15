@@ -230,7 +230,7 @@ Fast-changing data such as "sold out" is not stored in the menu file. The restau
     "data_handling": {"signed": true, "date": "YYYY-MM-DD"}
   },
   "items": [
-    {"id": "dahi-bara", "name": "Dahi Bara (2 pieces)", "section": "South Asian", "category": "Starters",
+    {"id": "singara", "name": "Singara", "section": "Snacks", "category": "Snacks",
      "description": "optional plain text", "price": 220},
     {"id": "margherita", "name": "Margherita Pizza", "options": [
       {"id": "9-inch", "label": "9 inch", "price": 500},
@@ -241,12 +241,12 @@ Fast-changing data such as "sold out" is not stored in the menu file. The restau
     "published": "2026-10-15T09:00:00+06:00",
     "summary": "Plain-text reason or note from the owner.",
     "changes": [
-      {"key": "item:dahi-bara", "label": "Dahi Bara (2 pieces)", "old": 200, "new": 220}
+      {"key": "item:singara", "label": "Singara", "old": 10, "new": 12}
     ]
   },
   "price_history": [
     {"version": 12, "published": "2026-10-15T09:00:00+06:00", "summary": "...",
-     "changes": [{"key": "item:dahi-bara", "label": "Dahi Bara (2 pieces)", "old": 200, "new": 220}]}
+     "changes": [{"key": "item:singara", "label": "Singara", "old": 10, "new": 12}]}
   ],
   "signature": "..."
 }
@@ -659,7 +659,7 @@ The project lives in an open git repo that anyone can fork or mirror. Full rules
 23. Decide the notice period before a price increase takes effect (proposed 24 hours, decreases immediately), and how clients show an upcoming change.
 24. Check ImgBB and any other free image host the owner tool lists: terms, retention, direct-link behaviour, and whether the app can read files (CORS).
 25. Build the restaurant's "Check an order" page on top of `tools/order_line.py` (offline, static).
-26. Confirm Tava Restaurant's, Meal Master's and Sliced's listings with the owners, claim them with the owners' keys, and have the owners sign the pledges.
+26. List the first real businesses: enter them, confirm them with the owners, claim them with the owners' keys, and have the owners sign the pledges. (The first volunteer listings were withdrawn on October 16, 2026; see section 25.)
 27. Draw boundaries for the city, the 15 zones and the 41 wards, from a source with a clear licence, and have two local reviewers confirm them. The OpenStreetMap lookup service blocked automated requests, so this needs a proper data download or manual drawing.
 28. Confirm the ward-to-zone assignments in `areas.json` against Chittagong Metropolitan Police and City Corporation records, including the wards now in the Sadarghat and EPZ thanas.
 29. ~~Decide what "whole Chittagong" means.~~ Decided: it means the Chittagong City Corporation area, which every listing covers by default.

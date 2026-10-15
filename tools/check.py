@@ -665,7 +665,7 @@ def check_menu(menu_path, root, area_ids):
         elif not (isinstance(ek, dict) and ek.get("kty") == "EC" and ek.get("crv") == "P-256" and set(ek) == {"kty", "crv", "x", "y"}):
             err(rel, "direct.enc_key must be a public P-256 key (kty, crv, x, y only)")
     if "handle" in data and not (isinstance(data["handle"], str) and HANDLE.match(data["handle"])):
-        err(rel, "handle must be 3 to 30 lowercase letters or numbers, for example mealmaster")
+        err(rel, "handle must be 3 to 30 lowercase letters or numbers, for example mybusiness")
     check_image(data.get("cover"), "cover", rel)
     for i, it in enumerate(data.get("items") or []):
         if isinstance(it, dict):

@@ -4,7 +4,7 @@
     restaurants/<handle>/index.html   (restaurants, cafés, kitchens and other food businesses)
     groceries/<handle>/index.html     (grocery stores and supermarkets)
 
-so @mealmaster is at https://<site>/restaurants/mealmaster/. Each page is the app itself
+so @tong is at https://<site>/restaurants/tong/. Each page is the app itself
 (opening straight onto that listing) with the listing's details and menu written into the
 page, so it can be read without JavaScript, by search engines and by AI assistants.
 
