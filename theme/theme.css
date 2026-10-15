@@ -1273,3 +1273,22 @@ canvas.map-pin {
   touch-action: manipulation;
   margin-block: 0.5rem;
 }
+/* Anything marked hidden stays hidden, whatever display a component sets. */
+[hidden] {
+  display: none !important;
+}
+/* A found item: name above the place, both wrapping by word, never squeezed by the price. */
+a.dish-hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-inline-size: 0;
+  flex: 1 1 auto;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+ul.list > li > .price {
+  flex: 0 0 auto;
+  max-inline-size: 45%;
+  text-align: end;
+}
