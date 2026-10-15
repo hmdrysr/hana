@@ -223,13 +223,21 @@ async function locateZone(onFound) {
   snackbar("Finding your zone…");
   const pos = await new Promise((res) => navigator.geolocation.getCurrentPosition(res, () => res(null), { timeout: 15000, maximumAge: 600000 }));
   if (!pos) { snackbar("Your location was not shared. Choose your zone from the list."); return; }
-  const lat = pos.coords.latitude.toFixed(3), lon = pos.coords.longitude.toFixed(3);
+  const zone = await zoneAt(pos.coords.latitude, pos.coords.longitude);
+  if (zone === undefined) { snackbar("Your zone could not be looked up just now. Choose it from the list."); return; }
+  if (!zone) { snackbar("Your location could not be matched to a zone. Choose it from the list."); return; }
+  onFound(zone.id);
+  snackbar("Zone set to " + zone.name + ". You can change it at any time.");
+}
+/* The zone at a position: the zone, null (no match) or undefined (lookup unavailable). */
+async function zoneAt(latitude, longitude) {
+  const lat = Number(latitude).toFixed(3), lon = Number(longitude).toFixed(3);
   let addr = null;
   try {
     const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&addressdetails=1&accept-language=en&lat=" + lat + "&lon=" + lon);
     addr = (await r.json()).address || null;
   } catch (e) { /* offline or unavailable */ }
-  if (!addr) { snackbar("Your zone could not be looked up just now. Choose it from the list."); return; }
+  if (!addr) return undefined;
   const words = Object.values(addr).map((v) => norm(String(v)).replace(/\b(thana|police station|ward no|ward)\b/g, "").trim()).filter(Boolean);
   const named = (name) => { const n = norm(name).replace(/\(.*\)/, "").trim(); return words.some((w) => w === n || w.includes(n) || (w.length > 4 && n.includes(w))); };
   let zone = zones().find((z) => named(z.name));
@@ -237,9 +245,7 @@ async function locateZone(onFound) {
     const ward = state.areas.find((a) => a.kind === "ward" && named(a.name.replace(/^Ward \d+,\s*/, "")));
     if (ward) zone = state.areaById.get((ward.part_of || [])[0]);
   }
-  if (!zone || zone.kind !== "zone") { snackbar("Your location could not be matched to a zone. Choose it from the list."); return; }
-  onFound(zone.id);
-  snackbar("Zone set to " + zone.name + ". You can change it at any time.");
+  return zone && zone.kind === "zone" ? zone : null;
 }
 
 function viewList() {
@@ -377,7 +383,7 @@ function viewList() {
     h("div", { class: "zone-row" },
       zoneSelect("area", state.area, setZone, "Choose your zone"),
       h("button", { type: "button", class: "border", on: { click: () => locateZone(setZone) } }, icon("location_on"), h("span", null, "Use my location"))),
-    h("div", { class: "field prefix round fill" }, icon("search"), search),
+    h("div", { class: "field prefix round fill has-clear" }, icon("search"), search, clearButton(search)),
     tabs,
     catHead,
     strip,
@@ -605,7 +611,9 @@ function viewRestaurant(id) {
       if (tabs) tabs.hidden = !!q;
     };
     box.addEventListener("input", filter);
-    nodes.push(textField("menu-search", "Search this menu", box), none);
+    const tf = textField("menu-search", "Search this menu", box);
+    const fieldEl = tf.querySelector(".field"); fieldEl.classList.add("has-clear"); fieldEl.append(clearButton(box));
+    nodes.push(tf, none);
   }
   if (sections.size > 1) {
     nodes.push(h("nav", { class: "dish-tabs", "aria-label": "Menu sections" },
@@ -752,36 +760,20 @@ function newCode() {
     .map((x) => Object.assign(x, { items: Array.isArray(x.items) ? x.items.filter((i) => i && typeof i === "object") : [] }));
   if (!Array.isArray(o) || c.length !== o.length || c.some((x, i) => x !== o[i])) store.set("hana.orders", c);
 })();
-/* A small map of the pin, drawn from OpenStreetMap tiles (no key, no account). Tapping the map
-   moves the pin there. */
+/* A small map of the pin: OpenStreetMap's own embeddable map (free, no key, attribution
+   included). A transparent layer on top takes taps, so a tap moves the pin there. */
 function pinMap(pin, onMove) {
-  const W = 640, H = 320, Z = 17, T = 256, N = T * Math.pow(2, Z);
-  const cv = h("canvas", { class: "map-pin", width: W, height: H, role: "img", "aria-label": "Map with your pin. Tap the map to move the pin." });
-  const toPx = (p) => ({ x: (p.lon + 180) / 360 * N, y: (1 - Math.log(Math.tan(p.lat * Math.PI / 180) + 1 / Math.cos(p.lat * Math.PI / 180)) / Math.PI) / 2 * N });
-  const toLL = (x, y) => ({ lat: Number((Math.atan(Math.sinh(Math.PI * (1 - 2 * y / N))) * 180 / Math.PI).toFixed(5)), lon: Number((x / N * 360 - 180).toFixed(5)) });
-  const draw = () => {
-    const c = cv.getContext("2d"), g = toPx(pin), left = g.x - W / 2, top = g.y - H / 2;
-    c.fillStyle = "#e5e3df"; c.fillRect(0, 0, W, H);
-    const pinDraw = () => {
-      c.fillStyle = "#b3261e"; c.strokeStyle = "#fff"; c.lineWidth = 3;
-      c.beginPath(); c.arc(W / 2, H / 2 - 22, 13, Math.PI, 0); c.lineTo(W / 2, H / 2); c.closePath(); c.fill(); c.stroke();
-      c.fillStyle = "#fff"; c.beginPath(); c.arc(W / 2, H / 2 - 22, 5, 0, 2 * Math.PI); c.fill();
-    };
-    for (let tx = Math.floor(left / T); tx * T < left + W; tx++) for (let ty = Math.floor(top / T); ty * T < top + H; ty++) {
-      const img = new Image();
-      img.onload = () => { c.drawImage(img, tx * T - left, ty * T - top); pinDraw(); };
-      img.src = "https://tile.openstreetmap.org/" + Z + "/" + tx + "/" + ty + ".png";
-    }
-    pinDraw();
-  };
-  cv.addEventListener("click", (e) => {
-    const r = cv.getBoundingClientRect(), g = toPx(pin);
-    const x = g.x + ((e.clientX - r.left) * W / r.width - W / 2), y = g.y + ((e.clientY - r.top) * H / r.height - H / 2);
-    pin = toLL(x, y); draw(); onMove(pin);
-  });
-  draw();
-  return h("div", null, cv, h("p", { class: "small-text muted flush" }, "Tap the map to move the pin to your door. Map © ",
-    h("a", { href: "https://www.openstreetmap.org/copyright", class: "link", target: "_blank", rel: "noopener" }, "OpenStreetMap contributors"), "."));
+  const DLON = 0.0045, DLAT = 0.0022;
+  const frame = h("iframe", { class: "map-frame", title: "Map with your pin", loading: "lazy", referrerpolicy: "strict-origin-when-cross-origin" });
+  const set = () => { frame.src = "https://www.openstreetmap.org/export/embed.html?bbox=" + [pin.lon - DLON, pin.lat - DLAT, pin.lon + DLON, pin.lat + DLAT].map((x) => x.toFixed(5)).join("%2C") + "&layer=mapnik&marker=" + pin.lat + "%2C" + pin.lon; };
+  const tap = h("button", { type: "button", class: "map-tap", "aria-label": "Tap the map to move the pin", on: { click: (e) => {
+    const r = tap.getBoundingClientRect();
+    pin = { lat: Number((pin.lat + DLAT - (e.clientY - r.top) / r.height * 2 * DLAT).toFixed(5)), lon: Number((pin.lon - DLON + (e.clientX - r.left) / r.width * 2 * DLON).toFixed(5)) };
+    set(); onMove(pin);
+  } } });
+  set();
+  return h("div", null, h("div", { class: "map-box" }, frame, tap),
+    h("p", { class: "small-text muted flush" }, "Tap the map to move the pin to your door."));
 }
 function pinLink(p) { return "https://www.openstreetmap.org/?mlat=" + p.lat + "&mlon=" + p.lon + "#map=18/" + p.lat + "/" + p.lon; }
 /* Saved delivery addresses, on this phone only (up to five). */
@@ -958,16 +950,22 @@ function viewBasket() {
   let pin = b.pin || null;
   const pinBox = h("div");
   const drawPin = () => pinBox.replaceChildren(pin
-    ? h("div", null, pinMap(pin, (p2) => { pin = p2; b.pin = pin; saveBasket(); }),
+    ? h("div", null, pinMap(pin, (p2) => { pin = p2; b.pin = pin; saveBasket(); zoneFromPin(); }),
       h("nav", { class: "wrap" }, h("a", { href: pinLink(pin), target: "_blank", rel: "noopener", class: "button border" }, icon("open_in_new"), h("span", null, "Open in a map app")),
         h("button", { type: "button", class: "border", on: { click: () => { pin = null; b.pin = null; saveBasket(); drawPin(); } } }, icon("close"), h("span", null, "Remove the pin"))))
     : h("nav", null, h("button", { type: "button", class: "border", on: { click: () => {
         if (!navigator.geolocation) { snackbar("This browser cannot share your location."); return; }
         navigator.geolocation.getCurrentPosition((p) => {
           pin = { lat: Number(p.coords.latitude.toFixed(5)), lon: Number(p.coords.longitude.toFixed(5)) };
-          b.pin = pin; saveBasket(); drawPin();
+          b.pin = pin; saveBasket(); drawPin(); zoneFromPin();
         }, () => snackbar("Your location could not be read. Type your address instead."), { timeout: 15000, maximumAge: 60000, enableHighAccuracy: true });
       } } }, icon("location_on"), h("span", null, "Add a map pin for the rider"))));
+  /* The zone follows the pin, so the customer does not have to pick it as well. */
+  const zoneFromPin = async () => {
+    if (!pin) return;
+    const z = await zoneAt(pin.lat, pin.lon);
+    if (z && z.id !== b.zone) { b.zone = z.id; b.ward = ""; state.area = z.id; store.set("hana.area", z.id); saveBasket(); renderDelivery(); refresh(); snackbar("Zone set to " + z.name + " from your pin."); }
+  };
   drawPin();
   const useSaved = (a) => { address.value = a.address; b.zone = a.zone; b.ward = a.ward || ""; pin = a.pin || null; b.pin = pin; label.value = a.label; saveBasket(); renderDelivery(); refresh(); };
 

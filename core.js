@@ -640,7 +640,7 @@ document.addEventListener("click", (e) => {
 });
 
 function textField(id, label, input) {
-  return h("div", null,
+  return h("div", { class: "field-wrap" },
     h("label", { for: id, class: "field-label" }, label),
     h("div", { class: "field border round" + (input.tagName === "TEXTAREA" ? " textarea" : "") }, input));
 }
@@ -664,8 +664,15 @@ function renderMarkdown(text) {
 }
 
 /* Labels sit above their fields, never inside them, so a long label or large text wraps instead of being cut off. */
+/* An x button that empties a search box and puts the cursor back in it. */
+function clearButton(input) {
+  const b = h("button", { type: "button", class: "circle transparent small clear-search", "aria-label": "Clear the search", hidden: !input.value,
+    on: { pointerdown: (e) => e.preventDefault(), click: () => { input.value = ""; input.dispatchEvent(new Event("input", { bubbles: true })); input.focus(); } } }, icon("close"));
+  input.addEventListener("input", () => { b.hidden = !input.value; });
+  return b;
+}
 function selectField(id, label, selectEl) {
-  return h("div", null,
+  return h("div", { class: "field-wrap" },
     h("label", { for: id, class: "field-label" }, label),
     h("div", { class: "field suffix border round" }, selectEl, icon("arrow_drop_down")));
 }

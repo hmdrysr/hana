@@ -996,7 +996,7 @@ def check_text_files(root):
 
 # ---------------------------------------------------------------- interface uniformity (theme/UNIFORMITY.md)
 
-UI_CLASSES = set("""qr map-pin dish-hit active badge bold border bottom brand brand-mark brand-name button card-title center-align checkbox
+UI_CLASSES = set("""qr map-pin field-wrap map-box map-frame map-tap clear-search has-clear dish-hit active badge bold border bottom brand brand-mark brand-name button card-title center-align checkbox
 chip circle dark field fill flush gap-top group-title l label left left-align link list m max medium muted no-border
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
