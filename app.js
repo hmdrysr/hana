@@ -226,13 +226,13 @@ async function locateZone(onFound) {
 }
 
 function viewList() {
-  const results = h("div", { id: "results", "aria-live": "polite" });
+  const results = h("div", { id: "results", class: "stack", "aria-live": "polite" });
   const strip = h("nav", { class: "cat-strip", "aria-label": "Categories" });
   const catHead = sectionTitle("Categories");
-  const listHead = h("div");
+  const listHead = h("div", { class: "stack" });
   const tabs = h("nav", { class: "kind-tabs", "aria-label": "Type of business" });
   const search = h("input", {
-    type: "search", id: "q", placeholder: "Search food, groceries or places", autocomplete: "off", value: state.query,
+    type: "search", id: "q", placeholder: "Search Hana", autocomplete: "off", value: state.query,
     "aria-label": "Search food, groceries or places",
     on: {
       input: (e) => { state.query = e.target.value; state.page = 0; state.allDishes = false; render(); },
@@ -290,7 +290,7 @@ function viewList() {
       const delivers = !state.area || !m || !!zone;
       if (!delivers && !state.showAll) { hidden++; continue; }
       if (state.cat && !(r.cats && r.cats.has(state.cat))) continue;
-      const nameHit = fuzzyMatches(state.query, r.name + " " + (m ? m.kind || "" : ""));
+      const nameHit = fuzzyMatches(state.query.replace(/^@/, ""), r.name + " " + (m ? (m.kind || "") + " " + (m.handle || "") : ""));
       const hits = m && q ? (m.items || []).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
       if (q && !nameHit && !hits.length) continue;
       cards.push(restaurantCard(r, zone, delivers, !q && state.cat && m ? (m.items || []).filter((it) => itemCat(it, m) === state.cat) : []));
@@ -393,7 +393,7 @@ function restaurantCard(r, zone, delivers, dishHits) {
     return h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, r.name), h("p", { class: "muted" }, r.problem || "This menu is not available."));
   }
   const chips = [statusChip(m)];
-  if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
+  if (m.claimed === false) chips.push(chip("Unconfirmed listing", "warn"));
   if (!delivers) chips.push(chip("Does not deliver to " + areaName(state.area), "warn"));
   const body = [
     h("h2", { class: "card-title" }, h("a", { href: "#/r/" + r.id }, r.name)),
@@ -474,14 +474,16 @@ function viewRestaurant(id) {
   const cover = coverFor(m);
 
   const chips = [os.closed && os.next ? chip("Closed · opens " + whenText(os.next)) : statusChip(m)];
-  if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
+  if (m.claimed === false) chips.push(chip("Unconfirmed listing", "warn"));
   if (state.area && !zoneFor(m, state.area)) chips.push(chip("Does not list delivery to " + areaName(state.area), "warn"));
   const nodes = [
     pageHeader(m.name, "#/"),
     h("figure", { class: "flush hero" }, picture(cover, "cover", "", cuisineKey(m)), cover ? h("figcaption", { class: "credit" }, cover.page ? h("a", { href: cover.page, class: "link", rel: "noopener", target: "_blank" }, cover.credit) : cover.credit) : null),
-    h("p", { class: "muted flush" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
+    h("div", { class: "row" },
+      h("p", { class: "muted flush max" }, (m.handle ? "@" + m.handle + " · " : "") + (m.kind || "Restaurant") + " · " + locatedIn(m)),
+      m.handle ? h("button", { type: "button", class: "circle transparent", "aria-label": "Share this listing", title: "Share", on: { click: () => shareListing(m) } }, icon("share")) : null),
     h("nav", { class: "wrap small-space" }, chips),
-    h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup === true ? " Pickup is available." : "") +
+    h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup !== false ? " Pickup is available." : "") +
       " Pay on delivery or at pickup, never in advance." + (os.closed && os.canOrder ? " You can schedule an order for when it opens." : "")),
   ];
   nodes.push(restaurantInfo(m));
@@ -513,6 +515,14 @@ function viewRestaurant(id) {
   updateBasketBar();
 }
 
+/* The clean web address of a listing, built from its handle. */
+function listingUrl(m) { return m.handle ? new URL((isGrocery(m) ? "groceries/" : "restaurants/") + m.handle + "/", document.baseURI).href : null; }
+async function shareListing(m) {
+  const url = listingUrl(m);
+  if (navigator.share) { try { await navigator.share({ title: m.name + " on Hana", url }); return; } catch (e) { if (e.name === "AbortError") return; } }
+  copy(url);
+}
+
 function updateBasketBar() {
   const bar = document.getElementById("basket-bar");
   if (!bar) return;
@@ -529,7 +539,7 @@ function restaurantInfo(m) {
   kids.push(h("h3", { class: "overline-label" }, "Delivery"),
     h("ul", { class: "list border" }, zones.map((z) => h("li", null, icon("location_on"),
       h("div", { class: "max" }, h("div", null, zoneLabel(z)), h("div", { class: "small-text muted" }, feeSummary(z)))))),
-    h("p", { class: "small-text muted" }, "The business sets one fixed delivery charge for each area, up to the Hana limit of " + money(state.rules.max_delivery_fee) + ". Hana adds no fees. " + (m.pickup === true ? "Pickup is available." : m.pickup === false ? "Pickup is not offered." : "The business has not said whether it offers pickup.")));
+    h("p", { class: "small-text muted" }, "The business sets one fixed delivery charge for each area, up to the Hana limit of " + money(state.rules.max_delivery_fee) + ". Hana adds no fees. " + (m.pickup !== false ? "Pickup is available." : "Pickup is not offered.")));
   kids.push(h("h3", { class: "overline-label" }, "Payment"),
     h("p", { class: "small-text" }, "All prices include VAT and every other charge. The delivery fee is the only addition. Pay on delivery or at pickup only: " + paymentText(m) + ". If a business asks you to pay before delivery, do not pay, and report the listing."));
   kids.push(h("h3", { class: "overline-label" }, "Contact"),
@@ -715,7 +725,7 @@ function viewBasket() {
   function renderDelivery() {
     if (b.mode === "pickup") {
       deliveryBox.replaceChildren(
-        menu.pickup === null || menu.pickup === undefined ? notice("info", h("p", { class: "flush" }, "This business has not stated whether it offers pickup. Ask when it confirms your order.")) : "",
+        null,
         h("p", { class: "small-text muted" }, "Address: " + menu.address));
       return;
     }
@@ -1052,7 +1062,7 @@ function viewAbout() {
       "Payment is on delivery only. You pay the business when you receive the order, or at pickup: in cash, by Bangla QR, by card on a POS terminal or by mobile wallet transfer, as the business accepts. No business may ask for payment in advance.",
       "Every price includes VAT and every other charge. The delivery fee is the only addition.",
       "Each business sets one fixed delivery fee for each area it serves, up to " + money(state.rules.max_delivery_fee) + ".",
-      "A business may offer pickup, with no delivery fee.",
+      "Every business offers pickup, with no delivery fee, unless its listing says otherwise.",
       "Businesses confirm or decline each order within " + state.rules.confirmation_window_minutes + " minutes. Otherwise the order is cancelled automatically.",
       "Businesses keep all order communications for at least " + state.rules.record_retention_months + " months, or " + state.rules.record_retention_months_when_disputed + " months if there is a dispute.",
       "Claimed listings are checked by community members when claimed and reviewed regularly after that.",
@@ -1144,10 +1154,8 @@ function viewSettings() {
         }
       } } }, icon("delete"), h("span", null, "Delete everything"))),
     sectionTitle("Download the directory"),
-    h("p", { class: "small-text muted" }, "Every listing with its menu, contact details, hours and delivery fees, as data or as a printable book."),
-    h("nav", { class: "wrap small-space" },
-      h("button", { type: "button", class: "border", on: { click: () => { downloadText("hana-directory.json", JSON.stringify(directoryData(), null, 2), "application/json"); snackbar("Directory downloaded as JSON."); } } }, icon("download"), h("span", null, "JSON")),
-      h("button", { type: "button", class: "border", on: { click: downloadPhoneBook } }, icon("download"), h("span", null, "PDF book"))),
+    h("p", { class: "small-text muted" }, "Choose which businesses and which details to include, as data (JSON) or as a printable book (PDF)."),
+    h("nav", null, h("a", { href: "#/download", class: "button border" }, icon("download"), h("span", null, "Download the directory"))),
     sectionTitle("Offline copy"),
     h("p", { class: "small-text muted" }, "Download Hana as a single file. Open it from your phone's files at any time; it works without a connection and brings itself up to date whenever you are online."),
     h("nav", null, h("button", { type: "button", class: "border", on: { click: async (e) => {
@@ -1172,7 +1180,7 @@ function findRegion() {
     try { regions = (await fetchJson("regions.json")).regions || []; } catch (e) { /* none listed */ }
     const { latitude: lat, longitude: lon } = pos.coords;
     const hit = regions.find((r) => Array.isArray(r.bbox) && lon >= r.bbox[0] && lat >= r.bbox[1] && lon <= r.bbox[2] && lat <= r.bbox[3]);
-    const here = new URL(".", location.href).href;
+    const here = new URL(".", document.baseURI).href;
     if (!hit) out.replaceChildren(notice("info", h("p", { class: "flush" }, "No Hana directory covers your position yet. ADOPTING.md explains how a community can start one.")));
     else if (!/^https:\/\//.test(hit.url) || hit.url === here) out.replaceChildren(notice("info", h("p", { class: "flush" }, "You are in the " + hit.name + " area, which this directory covers.")));
     else out.replaceChildren(notice("info", h("p", { class: "flush" }, "You are in the " + hit.name + " area. "), h("a", { class: "link", href: hit.url, rel: "noopener" }, "Open Hana " + hit.name)));
@@ -1192,57 +1200,92 @@ function hoursSummary(hours) {
   return groups.map((g) => DAY_NAMES[g.from].slice(0, 3) + (g.to !== g.from ? " to " + DAY_NAMES[g.to].slice(0, 3) : "") + ": " + g.t).join("; ");
 }
 
-/* The whole directory as one JSON document, for people, programs and AI assistants. */
-function directoryData() {
+/* What a directory download contains. Name, type and zone are always included. */
+const DL_PARTS = [["contact", "Phone, ordering apps and web address"], ["address", "Address"], ["cuisine", "Cuisine"],
+  ["hours", "Opening hours"], ["delivery", "Delivery areas, fees and minimum orders"], ["menu", "Menu or products, with prices"]];
+const DL_PRESETS = [["Names and phone numbers", ["contact"]], ["Contact details and hours", ["contact", "address", "cuisine", "hours"]], ["Everything", DL_PARTS.map((p) => p[0])]];
+
+function downloadOptions() {
+  return Object.assign({ format: "pdf", type: "all", zone: "", cat: "", parts: ["contact", "address", "cuisine", "hours", "delivery", "menu"] }, store.get("hana.download", {}));
+}
+
+function chosenListings(o) {
+  return state.restaurants.filter((r) => {
+    const m = r.menu;
+    if (!m) return false;
+    if (o.type !== "all" && (o.type === "grocery") !== isGrocery(m)) return false;
+    if (o.zone && !zoneFor(m, o.zone)) return false;
+    if (o.cat && !(r.cats && r.cats.has(o.cat))) return false;
+    return true;
+  });
+}
+
+/* One listing as plain data, with only the parts asked for. */
+function listingRecord(r, parts) {
+  const m = r.menu, has = (p) => parts.includes(p);
+  const out = { id: r.id, name: m.name, handle: m.handle || undefined, kind: m.kind || "Restaurant", type: isGrocery(m) ? "grocery" : "food", zone: locatedIn(m), claimed: m.claimed !== false };
+  if (has("contact")) Object.assign(out, { business_phone: m.business_phone, contact: m.contact || [], url: listingUrl(m) || undefined });
+  if (has("address")) out.address = m.address;
+  if (has("cuisine")) out.cuisine = (FOOD_BY_KEY[cuisineKey(m)] || [0, null])[1];
+  if (has("hours")) Object.assign(out, { hours: m.hours || null, hours_text: hoursSummary(m.hours), scheduled_orders: m.scheduled_orders === true });
+  if (has("delivery")) Object.assign(out, { pickup: m.pickup !== false, delivery: ((m.delivery && m.delivery.zones) || []).map((z) => ({ id: z.id, areas: zoneLabel(z), fee: z.fee, min_order: z.min_order, eta_min: z.eta_min })) });
+  if (has("menu")) out.items = priceLines(m).map((l) => ({ key: l.key, name: l.item.name, option: l.option || undefined, section: l.item.section, category: l.item.category, price: l.price }));
+  return out;
+}
+
+function directoryData(o) {
+  o = o || downloadOptions();
   return {
     format: "hana-directory-1",
     region: "Chittagong",
     generated: new Date().toISOString(),
-    source: new URL(".", location.href).href,
+    source: new URL(".", document.baseURI).href,
+    selection: { type: o.type, delivers_to_zone: o.zone || null, category: o.cat || null, parts: o.parts },
     how_to_order: "See AGENTS.md in the project repository. Orders are messages sent by the customer; payment is on delivery or at pickup only.",
     rules: { prices_include_all_charges: true, prepayment_allowed: false, max_delivery_fee: state.rules.max_delivery_fee, confirmation_window_minutes: state.rules.confirmation_window_minutes },
-    zones: zones().map((z) => ({ id: z.id, name: z.name })),
-    listings: state.restaurants.filter((r) => r.menu).map((r) => {
-      const m = r.menu;
-      return {
-        id: r.id, menu_hash: r.hash, name: m.name, kind: m.kind || "Restaurant", type: isGrocery(m) ? "grocery" : "food",
-        claimed: m.claimed !== false, zone: locatedIn(m), address: m.address, business_phone: m.business_phone,
-        contact: m.contact || [], hours: m.hours || null, scheduled_orders: m.scheduled_orders === true, pickup: m.pickup,
-        delivery: ((m.delivery && m.delivery.zones) || []).map((z) => ({ id: z.id, areas: zoneLabel(z), fee: z.fee, min_order: z.min_order, eta_min: z.eta_min })),
-        items: priceLines(m).map((l) => ({ key: l.key, name: l.item.name, option: l.option || undefined, section: l.item.section, category: l.item.category, price: l.price })),
-      };
-    }),
+    listings: chosenListings(o).map((r) => listingRecord(r, o.parts)),
   };
 }
 
-async function downloadPhoneBook() {
+async function downloadPhoneBook(o) {
+  o = o || downloadOptions();
   try {
     if (typeof makePhoneBookPdf !== "function") {
       await new Promise((res, rej) => { const sc = h("script", { src: "phonebook.js" }); sc.onload = res; sc.onerror = () => rej(new Error("the PDF maker could not be loaded")); document.head.append(sc); });
     }
+    const has = (p) => o.parts.includes(p);
     const today = longDate(new Date().toISOString().slice(0, 10));
-    const entries = state.restaurants.filter((r) => r.menu).map((r) => {
+    const entries = chosenListings(o).map((r) => {
       const m = r.menu;
-      const lines = [{ text: (m.kind || "Restaurant") + " · " + locatedIn(m) }, { text: "Phone: " + m.business_phone, weight: "bold" }];
-      for (const c of m.contact || []) lines.push({ text: (CHANNELS[c.app] ? CHANNELS[c.app].label : c.app) + ": " + contactText(c.app, c.id) + (c.preferred ? " (preferred)" : "") });
-      if (m.address) lines.push({ text: m.address });
-      lines.push({ text: hoursSummary(m.hours) });
-      for (const z of (m.delivery && m.delivery.zones) || []) lines.push({ text: "Delivery to " + zoneLabel(z) + ". " + feeSummary(z) });
-      lines.push({ text: (m.pickup === true ? "Pickup is available. " : m.pickup === false ? "Pickup is not offered. " : "") + "Pay on delivery or at pickup: " + paymentText(m) + "." });
-      if (m.claimed === false) lines.push({ text: "Not confirmed by the business. Prices are as printed and may have changed.", weight: "italic" });
+      const lines = [{ text: (m.handle ? "@" + m.handle + " · " : "") + (m.kind || "Restaurant") + " · " + locatedIn(m) + (has("cuisine") && FOOD_BY_KEY[cuisineKey(m)] ? " · " + FOOD_BY_KEY[cuisineKey(m)][1] : "") }];
+      if (has("contact")) {
+        lines.push({ text: "Phone: " + m.business_phone, weight: "bold" });
+        for (const c of m.contact || []) lines.push({ text: (CHANNELS[c.app] ? CHANNELS[c.app].label : c.app) + ": " + contactText(c.app, c.id) + (c.preferred ? " (preferred)" : "") });
+        if (listingUrl(m)) lines.push({ text: listingUrl(m) });
+      }
+      if (has("address") && m.address) lines.push({ text: m.address });
+      if (has("hours")) lines.push({ text: hoursSummary(m.hours) });
+      if (has("delivery")) {
+        for (const z of (m.delivery && m.delivery.zones) || []) lines.push({ text: "Delivery to " + zoneLabel(z) + ". " + feeSummary(z) });
+        lines.push({ text: (m.pickup !== false ? "Pickup is available. " : "Pickup is not offered. ") + "Pay on delivery or at pickup: " + paymentText(m) + "." });
+      }
+      if (m.claimed === false) lines.push({ text: "Not confirmed by the business." + (has("menu") ? " Prices are as printed and may have changed." : ""), weight: "italic" });
       const secs = new Map();
-      for (const l of priceLines(m)) {
+      if (has("menu")) for (const l of priceLines(m)) {
         const sec = l.item.section || "Menu";
         if (!secs.has(sec)) secs.set(sec, []);
         secs.get(sec).push({ name: l.option ? l.item.name + ", " + l.option : l.item.name, price: money(l.price) });
       }
       return { name: m.name, letter: norm(m.name).charAt(0).toUpperCase() || "#", lines, sections: Array.from(secs, ([name, items]) => ({ name, items })) };
     });
+    if (!entries.length) { snackbar("No business matches these choices."); return; }
+    const scope = [o.type === "grocery" ? "Grocery stores" : o.type === "food" ? "Restaurants" : "Food and groceries",
+      o.zone ? "delivering to " + areaName(o.zone) : "", o.cat && FOOD_BY_KEY[o.cat] ? "(" + FOOD_BY_KEY[o.cat][1] + ")" : ""].filter(Boolean).join(" ");
     const pdf = makePhoneBookPdf({
-      title: "Hana Directory", subtitle: "Food and groceries in Chittagong", generated: "Printed " + today,
+      title: "Hana Directory", subtitle: scope + " in Chittagong", generated: "Printed " + today,
       intro: [
         "Listings are in alphabetical order. No listing is featured or paid for. Prices include VAT and every other charge; the delivery fee is the only addition, and it is never more than " + money(state.rules.max_delivery_fee) + ".",
-        "To order, send your order in writing to the business. Pay on delivery or at pickup only, and never in advance. The business must confirm within " + state.rules.confirmation_window_minutes + " minutes; otherwise, the order is cancelled. The live directory, with current prices, is at " + new URL(".", location.href).href + ".",
+        "To order, send your order in writing to the business. Pay on delivery or at pickup only, and never in advance. The business must confirm within " + state.rules.confirmation_window_minutes + " minutes; otherwise, the order is cancelled. The live directory, with current prices, is at " + new URL(".", document.baseURI).href + ".",
       ],
       entries,
     });
@@ -1252,6 +1295,48 @@ async function downloadPhoneBook() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     snackbar("Directory downloaded as a PDF book.");
   } catch (e) { snackbar("The PDF could not be made: " + e.message); }
+}
+
+function viewDownload() {
+  availableCategories();
+  const o = downloadOptions();
+  const radios = (name, list, value) => h("nav", { class: "vertical left-align" }, list.map(([v, t]) =>
+    h("label", { class: "radio" }, h("input", { type: "radio", name, value: v, checked: v === value }), h("span", null, t))));
+  const partBoxes = DL_PARTS.map(([k, t]) => h("label", { class: "checkbox" }, h("input", { type: "checkbox", name: "part", value: k, checked: o.parts.includes(k) }), h("span", null, t)));
+  const cats = FOOD.concat(GROCERY.filter((g) => !FOOD.some((f) => f[0] === g[0])));
+  const count = h("p", { class: "small-text muted" });
+  const read = () => {
+    const q = (sel) => (document.querySelector(sel) || {}).value || "";
+    return { format: q('input[name="dl-format"]:checked'), type: q('input[name="dl-type"]:checked'), zone: q("#dl-zone"), cat: q("#dl-cat"),
+      parts: Array.from(document.querySelectorAll('input[name="part"]:checked')).map((x) => x.value) };
+  };
+  const update = () => { const n = chosenListings(read()).length; count.textContent = n + (n === 1 ? " business matches." : " businesses match."); };
+  show("settings", "Download the directory", pageHeader("Download the directory", "#/settings"),
+    h("p", { class: "muted" }, "Choose the businesses and the details you want. Every file lists businesses alphabetically, with their name, type and zone."),
+    sectionTitle("Format"),
+    radios("dl-format", [["pdf", "PDF, laid out like a telephone book, for printing"], ["json", "JSON, for spreadsheets, programs and AI assistants"]], o.format),
+    sectionTitle("Which businesses"),
+    radios("dl-type", [["all", "All"], ["food", "Restaurants only"], ["grocery", "Grocery stores only"]], o.type),
+    zoneSelect("dl-zone", o.zone, () => update(), "Any zone", "Delivers to"),
+    selectField("dl-cat", "Category", h("select", { id: "dl-cat" }, [h("option", { value: "" }, "Any category")].concat(cats.map((f) => h("option", { value: f[0], selected: f[0] === o.cat }, f[1]))))),
+    count,
+    sectionTitle("Details to include"),
+    h("nav", { class: "wrap small-space" }, DL_PRESETS.map(([t, parts]) => h("button", { type: "button", class: "chip small border", on: { click: () => {
+      for (const b of document.querySelectorAll('input[name="part"]')) b.checked = parts.includes(b.value);
+    } } }, t))),
+    h("nav", { class: "vertical left-align" }, partBoxes),
+    h("nav", { class: "gap-top" }, h("button", { type: "button", class: "responsive", on: { click: async () => {
+      const n = read();
+      store.set("hana.download", n);
+      if (n.format === "json") {
+        const data = directoryData(n);
+        if (!data.listings.length) { snackbar("No business matches these choices."); return; }
+        downloadText("hana-directory.json", JSON.stringify(data, null, 2), "application/json");
+        snackbar("Directory downloaded as JSON.");
+      } else await downloadPhoneBook(n);
+    } } }, icon("download"), h("span", null, "Download"))));
+  for (const el of main.querySelectorAll("input, select")) el.addEventListener("change", update);
+  update();
 }
 
 function downloadText(name, text, type) {
@@ -1270,6 +1355,11 @@ function route() {
   }
   const hash = location.hash || "#/";
   if (hash.startsWith("#/order?")) return openOrderLink(hash.slice(8));
+  const hm = hash.match(/^#\/@([a-z0-9]{3,30})$/);
+  if (hm) { const r = state.restaurants.find((x) => x.menu && x.menu.handle === hm[1]); return r ? viewRestaurant(r.id) : show("list", "Not found", pageHeader("No listing is called @" + hm[1], "#/")); }
+  const own = document.querySelector('meta[name="hana-listing"]');
+  if (own && (hash === "#/" || hash === "")) return viewRestaurant(own.content);
+  if (hash === "#/download") return viewDownload();
   const m = hash.match(/^#\/r\/([0-9a-f]{64})$/);
   if (m) return viewRestaurant(m[1]);
   if (hash === "#/basket") return viewBasket();

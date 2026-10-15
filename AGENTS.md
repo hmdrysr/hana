@@ -13,6 +13,8 @@ Published copy: https://hmdrysr.github.io/hana/ (the same files are in the repos
 | `areas.json` | Zones (thanas) and wards. A customer's zone id is needed for delivery |
 | `rules.json` | Rules every listing follows, such as the delivery fee limit and the confirmation window |
 
+Listings with a `handle` also have a readable page at `https://hmdrysr.github.io/hana/restaurants/<handle>/` (grocery stores: `groceries/<handle>/`), which includes the menu as plain HTML.
+
 Check each menu file against `menu_hash` in `index.json` (SHA-256 of the file's bytes). Do not use a menu that does not match. A person can also download everything as one file from the app: Settings, then Download the directory, then JSON.
 
 ## Rules an assistant must follow

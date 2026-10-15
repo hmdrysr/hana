@@ -3,6 +3,7 @@
   "claimed": false,
   "version": 1,
   "name": "Meal Master",
+  "handle": "mealmaster",
   "kind": "Delivery-only kitchen",
   "neighbourhood": "ccc",
   "address": "Plus Code 9R3F+GQ, Chittagong (street address not entered yet)",

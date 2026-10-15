@@ -30,7 +30,7 @@ BIZ = ROOT_URL + "/business.html"
 TAVA = "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7"
 MEAL = "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b"
 SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BASE + "#/about", BASE + "#/terms", BASE + "#/settings",
-           BIZ, BIZ + "#/join", BIZ + "#/claim", BIZ + "#/confirm", BIZ + "#/update", BIZ + "#/site"]
+           BIZ, BIZ + "#/join", BIZ + "#/claim", BIZ + "#/confirm", BIZ + "#/update", BIZ + "#/site", BIZ + "#/connect", ROOT_URL + "/index.html#/download", ROOT_URL + "/restaurants/tava/"]
 failed = 0
 
 # Finds text that is cut off: any text whose box extends past an ancestor that clips its overflow.
@@ -41,7 +41,7 @@ CLIPPED_TEXT = r"""(() => {
   while ((n = walker.nextNode())) {
     if (!n.nodeValue.trim()) continue;
     const el = n.parentElement;
-    if (!el || el.closest("dialog:not([open]), .snackbar:not(.active), script, style, option, select, textarea")) continue;
+    if (!el || el.closest("dialog:not([open]), .snackbar:not(.active), script, style, option, select, textarea") || (el.closest("details:not([open])") && !el.closest("summary"))) continue;
     const st = getComputedStyle(el);
     if (st.visibility === "hidden" || st.display === "none" || el.getClientRects().length === 0) continue;
     const r = document.createRange();
@@ -220,16 +220,43 @@ with sync_playwright() as p:
     page.goto(BASE + "#/order?r=" + TAVA + "&items=dahi-bara*2&mode=pickup")
     page.wait_for_selector("text=Total to pay at pickup")
     ok("an order link fills the basket", "BDT 440" in page.inner_text("main"), page.inner_text("main")[:200])
-    page.goto(BASE + "#/settings")
-    page.wait_for_selector("text=PDF book")
+    page.goto(BASE + "#/download")
+    page.wait_for_selector("text=Details to include")
+    page.check("input[name=dl-format][value=json]", force=True)
+    page.click("button:has-text('Names and phone numbers')")
     with page.expect_download() as dl:
-        page.click("button:has-text('JSON')")
+        page.click("main button:has-text('Download')")
     data = json.loads(Path(dl.value.path()).read_text())
-    ok("the directory downloads as JSON with every listing", data.get("format") == "hana-directory-1" and len(data.get("listings", [])) == 3)
+    first = data.get("listings", [{}])[0]
+    ok("the directory downloads as JSON with only the chosen details", data.get("format") == "hana-directory-1" and len(data["listings"]) == 3
+       and "business_phone" in first and "items" not in first, list(first))
+    page.select_option("#dl-zone", "khulshi")
+    page.check("input[name=dl-format][value=pdf]", force=True)
+    page.click("button:has-text('Everything')")
     with page.expect_download() as dl:
-        page.click("text=PDF book")
+        page.click("main button:has-text('Download')")
     pdf = Path(dl.value.path()).read_bytes()
-    ok("the directory downloads as a PDF book", pdf.startswith(b"%PDF-1.4") and pdf.rstrip().endswith(b"%%EOF") and b"Tava Restaurant" in pdf)
+    ok("the directory downloads as a PDF book with menus", pdf.startswith(b"%PDF-1.4") and pdf.rstrip().endswith(b"%%EOF") and b"Tava Restaurant" in pdf and b"Dahi Bara" in pdf)
+    page.goto(ROOT_URL + "/restaurants/tava/")
+    page.wait_for_selector(".page-title")
+    ok("a clean listing address opens that listing", "Tava Restaurant" in page.inner_text("main .page-title") and "@tava" in page.inner_text("main"))
+    page.goto(BASE + "#/@sliced")
+    page.wait_for_timeout(1500)
+    ok("an @handle opens that listing", "Sliced" in page.inner_text("main .page-title"), page.inner_text("main")[:120])
+    page.goto(BIZ + "#/update")
+    page.fill("#listing-phone", "+8801729298282")
+    page.click("text=Find my listing")
+    page.wait_for_timeout(800)
+    ok("the menu editor refuses an unclaimed listing", "not claimed yet" in page.inner_text("main"))
+    page.goto(BIZ + "#/join")
+    page.wait_for_selector(".menu-editor")
+    page.locator(".edit-section input").first.fill("Starters")
+    page.click("text=Add an item")
+    page.locator(".edit-item input").first.fill("Samosa")
+    page.locator(".edit-item input[type=number]").first.fill("40")
+    page.click("summary:has-text('Paste or copy the menu as text')")
+    page.click("text=Show the current menu as text")
+    ok("the visual menu editor produces the menu", "Starters | Samosa | 40" in page.input_value(".menu-editor textarea"), page.input_value(".menu-editor textarea"))
     ctx = browser.new_context(geolocation={"latitude": 22.3601, "longitude": 91.8098}, permissions=["geolocation"], viewport={"width": 360, "height": 800})
     gp = ctx.new_page()
     gp.route("https://nominatim.openstreetmap.org/**", lambda r: r.fulfill(status=200, content_type="application/json",

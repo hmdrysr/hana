@@ -35,7 +35,8 @@ def values(repo):
 def run(root, repo):
     vals = values(repo)
     changed = []
-    for rel in FILES:
+    pages = [str(q.relative_to(root)) for d in ("restaurants", "groceries") for q in Path(root).glob(d + "/*/index.html")]
+    for rel in FILES + pages:
         p = Path(root) / rel
         if not p.is_file():
             continue

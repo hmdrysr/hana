@@ -3,6 +3,7 @@
   "claimed": false,
   "version": 1,
   "name": "Tava Restaurant",
+  "handle": "tava",
   "kind": "Restaurant",
   "neighbourhood": "khulshi",
   "address": "4 Zakir Hossain Road, Chittagong 4000",

@@ -61,7 +61,7 @@ New listings and price changes are published as an Atom feed, `feed.xml` (https:
 - **From Mastodon or another Fediverse app:** look up the feed address at RSS Parrot (https://rss-parrot.net), a free bridge that gives every feed its own followable account, then follow that account from the account you already have.
 - **From a feed reader:** add the feed address.
 
-The feed is rebuilt with `python3 tools/build_feed.py`; `tools/check.py` reports when it is out of date. Businesses need nothing beyond the GitHub account they already use for their listing.
+The feed is rebuilt with `python3 tools/build.py`; `tools/check.py` reports when it is out of date. Businesses need nothing beyond the GitHub account they already use for their listing.
 
 ## Ordering through an AI assistant
 
@@ -69,7 +69,11 @@ An AI assistant can find businesses, read menus and prepare an order from the pu
 
 ## Downloading the directory
 
-In the app, Settings, then Download the directory, saves every listing and menu as JSON, or as a PDF laid out like a telephone book, ready to print.
+In the app, Settings, then Download the directory, saves the directory as JSON or as a PDF laid out like a telephone book. You choose which businesses (all, restaurants or grocery stores; a delivery zone; a category) and which details (contact details, address, cuisine, hours, delivery fees, menus).
+
+## Listing addresses
+
+Every listing can have a handle, such as @mealmaster, and a clean address: https://hmdrysr.github.io/hana/restaurants/mealmaster/. Run `python3 tools/build.py` after changing a listing to rebuild these pages and the feed.
 
 ## How to help
 

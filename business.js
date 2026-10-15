@@ -169,8 +169,17 @@ function keyFileText(key) {
 
 function keyBox(onReady) {
   const status = h("p", { class: "small-text muted" }, B.key ? "Key loaded: " + B.key.id : "No key loaded.");
-  const file = h("input", { type: "file", id: "keyfile", accept: ".json,application/json" });
-  return h("div", null,
+  const file = h("input", { type: "file", id: "keyfile", accept: ".json,application/json", hidden: true, on: { change: async () => {
+    try {
+      B.key = await loadKey(await readFile(file));
+      status.textContent = "Key loaded: " + B.key.id + ".";
+      await remember();
+      if (onReady) onReady();
+    } catch (e) { status.textContent = e.message; }
+  } } });
+  const keep = h("input", { type: "checkbox", id: "keepkey", checked: !!B.keyRemembered });
+  const remember = async () => { if (keep.checked && B.key) { await KEYSTORE.set(B.key); B.keyRemembered = true; } };
+  return h("div", { class: "stack" },
     status,
     h("nav", { class: "wrap" },
       h("button", { type: "button", class: "border", on: { click: async () => {
@@ -178,17 +187,13 @@ function keyBox(onReady) {
           B.key = await createKey();
           download("hana-key-" + B.key.id + ".json", keyFileText(B.key));
           status.textContent = "New key created and downloaded: " + B.key.id + ". Keep the file private and keep a backup. Without it you cannot sign updates.";
+          await remember();
           if (onReady) onReady();
         } catch (e) { status.textContent = "This browser cannot create Ed25519 keys. Use an up-to-date Chrome, Firefox or Safari."; }
       } } }, icon("key"), h("span", null, "Create a new key"))),
-    textField("keyfile", "Key file", file),
-    h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: async () => {
-      try {
-        B.key = await loadKey(await readFile(file));
-        status.textContent = "Key loaded: " + B.key.id + ".";
-        if (onReady) onReady();
-      } catch (e) { status.textContent = e.message; }
-    } } }, icon("upload"), h("span", null, "Load my key file"))));
+    file,
+    h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Load my key file"))),
+    h("div", { class: "row" }, h("label", { class: "switch" }, keep, h("span")), h("label", { for: "keepkey", class: "max" }, "Keep my key on this device, so I do not need the file each time")));
 }
 
 /* ---------------------------------------------------------------- loading */
@@ -252,12 +257,15 @@ function viewHome() {
     h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Claim a listing"),
       h("p", null, "If a volunteer has already listed your business, look it up with your business phone and claim it."),
       h("nav", null, h("a", { href: "#/claim", class: "button border" }, icon("verified"), h("span", null, "Claim a listing")))),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Confirm an order"),
-      h("p", null, "Paste a customer's order. The page checks the prices against your published menu and prepares your confirmation reply."),
-      h("nav", null, h("a", { href: "#/confirm", class: "button" }, icon("check_circle"), h("span", null, "Confirm an order")))),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Update prices and delivery fees"),
-      h("p", null, "Change prices, fees or minimum orders. The change is announced publicly in your menu file automatically."),
-      h("nav", null, h("a", { href: "#/update", class: "button" }, icon("edit_note"), h("span", null, "Update prices")))),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Orders"),
+      h("p", null, "Check each order against your published menu, then confirm or decline it with one tap. With an order topic set up, new orders appear by themselves."),
+      h("nav", null, h("a", { href: "#/confirm", class: "button" }, icon("inbox"), h("span", null, "Open orders")))),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Edit your menu"),
+      h("p", null, "Add, remove and reorder items, change prices, sizes and delivery fees, and publish a signed new version. Price changes are announced publicly."),
+      h("nav", null, h("a", { href: "#/update", class: "button" }, icon("edit_note"), h("span", null, "Edit my menu")))),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Connections (optional)"),
+      h("p", null, "Connect your repository and an order topic to publish and receive orders without downloading or uploading files. Everything stays on this device."),
+      h("nav", null, h("a", { href: "#/connect", class: "button border" }, icon("tune"), h("span", null, "Set up connections")))),
     h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Your own website"),
       h("p", null, "Make a one-file website for your business that you can put on your own hosting. It stays in step with your Hana listing and carries the line \u201cCreated using Hana by Hamid Yasir & Co.\u201d"),
       h("nav", null, h("a", { href: "#/site", class: "button border" }, icon("storefront"), h("span", null, "Make my website")))),
@@ -321,6 +329,7 @@ function textToItems(text, oldItems) {
 function viewJoin() {
   const zones = zonesList();
   const out = h("div", { "aria-live": "polite" });
+  const itemsEditor = menuEditor([], []);
   const feeTable = h("div");
   let existing = null; // the unclaimed listing being claimed or merged, if any
   const mergeBox = h("div", { "aria-live": "polite" });
@@ -369,12 +378,12 @@ function viewJoin() {
   function fill(m) {
     existing = m;
     const set = (id, v) => { const e = document.getElementById(id); if (e && v !== undefined && v !== null) e.value = v; };
-    set("name", m.name); set("kind", m.kind); set("phone", m.business_phone); set("address", m.address);
+    set("name", m.name); set("handle", m.handle || ""); set("kind", m.kind); set("phone", m.business_phone); set("address", m.address);
     set("zone", (B.areaById.get(m.neighbourhood) || {}).kind === "zone" ? m.neighbourhood : "");
     set("plus", m.plus_code || "");
     const wa = (m.contact || []).find((c) => c.app === "whatsapp");
     set("whatsapp", wa ? "+" + wa.id : "");
-    set("items", itemsToText(m.items));
+    itemsEditor.load(m.items);
     set("cuisine", (FOOD_BY_KEY[cuisineKey(m)] || [0, ""])[1]);
     renderFees();
     snackbar("Filled in from the existing listing. Check every detail.");
@@ -384,6 +393,8 @@ function viewJoin() {
     claimTarget ? notice("info", h("p", { class: "flush" }, "Claiming the existing listing for " + claimTarget.name + ". Its details are filled in below; check every one.")) : null,
     sectionTitle("1. Your business"),
     textField("name", "Business name", input("name", { maxlength: 80 })),
+    textField("handle", "Handle, for your web address", input("handle", { maxlength: 30, autocapitalize: "off", spellcheck: "false" })),
+    hint("Lowercase letters and numbers, for example mealmaster. Your page will be at …/restaurants/mealmaster and customers can find you as @mealmaster."),
     select("kind", "Type of business", KINDS.map((k) => [k, k]), KINDS[0]),
     select("cuisine", "Main cuisine", [["", "Other or mixed"]].concat(FOOD.filter((f) => !["sides", "drink", "combo"].includes(f[0])).map((f) => [f[1], f[1]])), ""),
     hint("Used to choose a stock cover photo until you add your own."),
@@ -428,8 +439,8 @@ function viewJoin() {
     h("nav", { class: "vertical left-align" }, Object.entries(B.rules.payment_methods_on_delivery || {}).map(([k, label]) => check("pay-" + k, label, k === "cash"))),
 
     sectionTitle("4. Menu"),
-    h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description (optional) | Picture address (optional). Items without a picture show a food icon. To add a category, put it after the section with a slash, for example South Asian / Starters. For sizes, write the prices as in 8 inch: 529; 12 inch: 749. Prices are whole taka and include VAT and every other charge."),
-    textField("items", "Menu items", h("textarea", { id: "items", rows: 10 })),
+    h("p", { class: "small-text muted" }, "Add your items section by section, for example Starters, Pizza and Drinks. Prices are whole taka and include VAT and every other charge. For an item sold in more than one size, add each size with its price."),
+    itemsEditor,
 
     sectionTitle("5. Where your menu file will live"),
     h("p", { class: "small-text muted" }, "A claimed listing is edited from the business's own account on GitHub, Codeberg, GitLab or another open forge, so that only the business can change it. Create a free account and a public repository first."),
@@ -485,7 +496,7 @@ function viewJoin() {
     }
     const pay = Object.keys(B.rules.payment_methods_on_delivery || {}).filter((k) => checked("pay-" + k));
     if (!pay.length) errors.push("Choose at least one way to pay at delivery.");
-    const parsed = textToItems(document.getElementById("items").value, existing && existing.items);
+    const parsed = itemsEditor.read();
     errors.push(...parsed.errors);
     const account = val("account"), source = val("source"), raw = val("raw");
     if (!/^https:\/\/\S+$/.test(account) || !/^https:\/\/\S+$/.test(source)) errors.push("Enter your account page and repository as https addresses.");
@@ -499,6 +510,9 @@ function viewJoin() {
     if (val("ch-endpoint") && !/^https:\/\/\S+$/.test(val("ch-endpoint"))) errors.push("The order endpoint must start with https://.");
     if (val("ch-feed") && !/^https:\/\/\S+$/.test(val("ch-feed"))) errors.push("The confirmation feed must start with https://.");
     if (val("cover") && !safeImageUrl(val("cover"))) errors.push("The cover picture must be a JPEG, PNG or WebP file on one of the listed hosts.");
+    const hd = val("handle").replace(/^@/, "").toLowerCase();
+    if (hd && !/^[a-z0-9]{3,30}$/.test(hd)) errors.push("The handle must be 3 to 30 lowercase letters or numbers.");
+    if (hd && B.index.some((r) => r.handle === hd && (!existing || r.id !== existing.id))) errors.push("The handle @" + hd + " is already taken.");
     if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); out.scrollIntoView({ block: "start" }); return; }
 
     const hours = {};
@@ -524,6 +538,7 @@ function viewJoin() {
       items: parsed.items,
     });
     if (val("cuisine")) menu.cuisine = val("cuisine");
+    if (val("handle")) menu.handle = val("handle").replace(/^@/, "").toLowerCase();
     if (val("cover")) menu.cover = { src: safeImageUrl(val("cover")) };
     if (val("ch-feed")) menu.confirmation_feed = val("ch-feed");
     let changes = [];
@@ -555,7 +570,8 @@ function viewJoin() {
         h("li", null, "Submit the verification request. It contains no private information."),
         h("li", null, "Two community members check your claim (see CLAIMS.md). When they approve, your listing is added and the volunteer-entered listing, if any, is replaced.")),
       h("nav", { class: "wrap" },
-        h("button", { type: "button", on: { click: () => download("menu.json", new TextDecoder().decode(bytes)) } }, icon("download"), h("span", null, "Download menu.json")),
+        publishButton([{ path: "menu.json", text: new TextDecoder().decode(bytes) }], "Hana listing for " + menu.name),
+        h("button", { type: "button", class: "border", on: { click: () => download("menu.json", new TextDecoder().decode(bytes)) } }, icon("download"), h("span", null, "Download menu.json")),
         issueUrl ? h("a", { class: "button border", href: issueUrl, target: "_blank", rel: "noopener" }, icon("open_in_new"), h("span", null, "Submit on GitHub")) : null,
         h("button", { type: "button", class: "border", on: { click: () => copy(issue) } }, icon("content_copy"), h("span", null, "Copy the request"))),
       h("p", { class: "small-text muted" }, "No GitHub account? Copy the request and send it to a volunteer listed in VOLUNTEERS.md, or open it on any mirror of the project."),
@@ -685,92 +701,131 @@ function decodeOrder(text, versions) {
   return { check: m[0], code, checkCode: m[6], zone: m[2], lines, sub, fee, menu, flags, fields: m, hash: v.hash };
 }
 
-function viewConfirm() {
-  const out = h("div", { "aria-live": "polite" });
-  const msg = h("textarea", { id: "order-text", rows: 8, placeholder: " " });
-  show("confirm", "Confirm an order", pageHeader("Confirm an order", "#/"),
-    h("p", { class: "muted" }, "Paste the customer's whole message. Nothing leaves this device."),
-    textField("listing-phone", "Your business phone", input("listing-phone", { inputmode: "tel", maxlength: 14, value: (() => { try { return localStorage.getItem("hana.biz.phone") || ""; } catch (e) { return ""; } })() })),
-    textField("order-text", "Customer's order message", msg),
-    h("nav", null, h("button", { type: "button", on: { click: async () => {
-      const found = await findListingByPhone(val("listing-phone"), false);
-      if (found.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, found.error))); return; }
-      try { localStorage.setItem("hana.biz.phone", val("listing-phone")); } catch (e) { /* ignore */ }
-      const versions = found.versions;
-      const d = decodeOrder(msg.value, versions);
-      if (d.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, d.error))); return; }
-      const expected = await checkCode(d.hash, d.fields[2], d.fields[3], d.fields[4], d.fields[5]);
-      if (expected !== d.checkCode) d.flags.push("The check code does not match: the message was edited or mistyped. Use the items and prices shown here.");
-      const eta = input("eta-min", { type: "number", min: 0, max: 999 });
-      const reply = h("pre");
-      const owner = d.menu.owner && d.menu.owner.public_key;
-      const makeReply = async () => {
-        const e = /^\d{1,3}$/.test(eta.value) ? eta.value : "?";
-        let k = "-", s = "-";
-        if (B.key) {
-          if (owner && B.key.publicB64 !== owner) { snackbar("This key does not belong to this listing."); return; }
-          k = B.key.id;
-        }
-        const minute = unixMinutes();
-        if (B.key) s = b64u(await signBytes(B.key, confirmMessage(d.check, d.code, e, minute)));
-        reply.textContent = "Order " + d.code + " is confirmed." + (e !== "?" ? " Expected in about " + e + " minutes." : "") + "\nCONFIRMED hana1 O=" + d.code + " C=" + d.checkCode + " E=" + e + " T=" + minute + " K=" + k + " S=" + s;
-      };
-      out.replaceChildren(
-        sectionTitle("Order " + d.code),
-        d.flags.length ? notice("warn", h("ul", null, d.flags.map((f) => h("li", null, f)))) : notice("info", h("p", { class: "flush" }, "The order matches your published menu.")),
-        h("ul", { class: "list border" }, d.lines.map((l) => h("li", null, h("div", { class: "max" }, l.qty + " × " + l.label), h("span", { class: "price" }, money(l.total)))),
-          h("li", null, h("div", { class: "max bold" }, "Items"), h("span", { class: "price bold" }, money(d.sub))),
-          h("li", null, h("div", { class: "max" }, d.zone === "pickup" ? "Pickup" : "Delivery fee (" + areaName(d.zone) + ")"), h("span", { class: "price" }, d.fee === "?" ? "Not stated" : money(d.fee)))),
-        textField("eta-min", "Minutes until delivery or pickup (optional)", eta),
-        owner ? h("div", null, h("p", { class: "small-text muted" }, "Load your key to sign the confirmation."), keyBox(makeReply)) :
-          h("p", { class: "small-text muted" }, "This listing has no key yet, so the confirmation is not signed. Claim the listing to sign confirmations."),
-        h("nav", { class: "wrap" },
-          h("button", { type: "button", on: { click: makeReply } }, icon("check_circle"), h("span", null, "Prepare a confirmation")),
-          h("button", { type: "button", class: "border", on: { click: () => { reply.textContent = "Sorry, we cannot take order " + d.code + " right now.\nDECLINED " + d.code; } } }, icon("close"), h("span", null, "Prepare a decline"))),
-        reply,
-        h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => reply.textContent ? copy(reply.textContent) : snackbar("Prepare the reply first.") } }, icon("content_copy"), h("span", null, "Copy reply")),
-          d.menu.confirmation_feed ? h("button", { type: "button", class: "border", on: { click: async () => {
-            if (!/S=[A-Za-z0-9_-]{86}/.test(reply.textContent)) { snackbar("Prepare a signed confirmation first."); return; }
-            try { await sendDirect(d.menu.confirmation_feed, reply.textContent); snackbar("Published. The customer's phone will pick it up."); } catch (err) { snackbar("Could not publish: " + err.message); }
-          } } }, icon("send"), h("span", null, "Publish to my confirmation feed")) : null),
-        h("p", { class: "small-text muted" }, "Send the reply in the same chat as the order. The customer pastes it into Hana, and only then does the order count. Take payment only on delivery or at pickup."));
-    } } }, icon("check_circle"), h("span", null, "Check the order"))),
-    out);
+/* The check, the decoded order and the reply, for one order message. */
+async function orderPanel(text, found, onDone) {
+  const d = decodeOrder(text, found.versions);
+  if (d.error) return notice("warn", h("p", { class: "flush" }, d.error));
+  const expected = await checkCode(d.hash, d.fields[2], d.fields[3], d.fields[4], d.fields[5]);
+  if (expected !== d.checkCode) d.flags.push("The check code does not match: the message was edited or mistyped. Use the items and prices shown here.");
+  const eta = input("eta-" + d.code, { type: "number", min: 0, max: 999 });
+  const reply = h("pre", { hidden: true });
+  const owner = d.menu.owner && d.menu.owner.public_key;
+  const feed = d.menu.confirmation_feed;
+  const finish = async (textOut, label) => {
+    reply.hidden = false;
+    reply.textContent = textOut;
+    if (feed && (/S=[A-Za-z0-9_-]{86}/.test(textOut) || /^DECLINED/m.test(textOut))) {
+      try { await sendDirect(feed, textOut); snackbar(label + " and published. The customer's phone will pick it up."); } catch (err) { snackbar("Could not publish: " + err.message); }
+    } else snackbar(label + ". Copy the reply and send it in the customer's chat.");
+    if (onDone) onDone();
+  };
+  const confirm = async () => {
+    const e = /^\d{1,3}$/.test(eta.value) ? eta.value : "?";
+    let k = "-", s = "-";
+    if (B.key) {
+      if (owner && B.key.publicB64 !== owner) { snackbar("This key does not belong to this listing."); return; }
+      k = B.key.id;
+    }
+    const minute = unixMinutes();
+    if (B.key) s = b64u(await signBytes(B.key, confirmMessage(d.check, d.code, e, minute)));
+    finish("Order " + d.code + " is confirmed." + (e !== "?" ? " Expected in about " + e + " minutes." : "") + "\nCONFIRMED hana1 O=" + d.code + " C=" + d.checkCode + " E=" + e + " T=" + minute + " K=" + k + " S=" + s, "Confirmed");
+  };
+  return h("div", { class: "order-panel" },
+    d.flags.length ? notice("warn", h("ul", null, d.flags.map((f) => h("li", null, f)))) : notice("info", h("p", { class: "flush" }, "The order matches your published menu.")),
+    h("ul", { class: "list border" }, d.lines.map((l) => h("li", null, h("div", { class: "max" }, l.qty + " × " + l.label), h("span", { class: "price" }, money(l.total)))),
+      h("li", null, h("div", { class: "max bold" }, "Items"), h("span", { class: "price bold" }, money(d.sub))),
+      h("li", null, h("div", { class: "max" }, d.zone === "pickup" ? "Pickup" : "Delivery fee (" + areaName(d.zone) + ")"), h("span", { class: "price" }, d.fee === "?" ? "Not stated" : money(d.fee)))),
+    textField("eta-" + d.code, "Minutes until delivery or pickup (optional)", eta),
+    owner && !B.key ? h("p", { class: "small-text muted" }, "Load your key under Connections to sign the confirmation.") : null,
+    !owner ? h("p", { class: "small-text muted" }, "This listing has no key yet, so the confirmation is not signed. Claim the listing to sign confirmations.") : null,
+    h("nav", { class: "wrap" },
+      h("button", { type: "button", on: { click: confirm } }, icon("check_circle"), h("span", null, "Confirm")),
+      h("button", { type: "button", class: "border", on: { click: () => finish("Sorry, we cannot take order " + d.code + " right now.\nDECLINED " + d.code, "Declined") } }, icon("close"), h("span", null, "Decline")),
+      h("button", { type: "button", class: "border", on: { click: () => reply.textContent ? copy(reply.textContent) : snackbar("Confirm or decline first.") } }, icon("content_copy"), h("span", null, "Copy reply"))),
+    reply);
 }
 
-/* ---------------------------------------------------------------- update prices */
+function viewConfirm() {
+  const c = conn();
+  const out = h("div", { "aria-live": "polite" });
+  const inbox = h("div", { "aria-live": "polite" });
+  const msg = h("textarea", { id: "order-text", rows: 6, placeholder: " " });
+  const phone = () => { try { return localStorage.getItem("hana.biz.phone") || ""; } catch (e) { return ""; } };
+  const listing = async () => {
+    const found = await findListingByPhone(val("listing-phone"), false);
+    if (!found.error) { try { localStorage.setItem("hana.biz.phone", val("listing-phone")); } catch (e) { /* ignore */ } }
+    return found;
+  };
+  async function refresh() {
+    if (!c.orders || !document.body.contains(inbox)) return;
+    const found = await listing();
+    if (found.error) { inbox.replaceChildren(h("p", { class: "small-text muted" }, "Enter your business phone above to see new orders.")); return; }
+    let msgs = [];
+    try { msgs = await inboxFetch(); } catch (e) { inbox.replaceChildren(notice("warn", h("p", { class: "flush" }, e.message))); return; }
+    const handled = store.get("hana.biz.handled", {});
+    if (!msgs.length) { inbox.replaceChildren(h("p", { class: "muted" }, "No orders in the last 12 hours.")); return; }
+    inbox.replaceChildren(...msgs.map((m) => {
+      const code = (/Order ([0-9A-HJKMNP-TV-Z]{6})/.exec(m.message) || [])[1] || "?";
+      const body = h("div");
+      const det = h("details", { class: "info-list", open: !handled[m.id] },
+        h("summary", { class: "row" }, icon(handled[m.id] ? "check_circle" : "inbox"), h("span", { class: "max" }, "Order " + code + ", " + clock(new Date(m.time * 1000).toTimeString().slice(0, 5))), icon("expand_more")),
+        body);
+      orderPanel(m.message, found, () => { handled[m.id] = true; store.set("hana.biz.handled", handled); }).then((p) => body.replaceChildren(p));
+      return det;
+    }));
+  }
+  show("confirm", "Orders", pageHeader("Orders", "#/"),
+    textField("listing-phone", "Your business phone", input("listing-phone", { inputmode: "tel", maxlength: 14, value: phone() })),
+    c.orders ? [sectionTitle("New orders"), h("nav", null, h("button", { type: "button", class: "border", on: { click: refresh } }, icon("inbox"), h("span", null, "Check for orders"))), inbox]
+      : h("p", { class: "small-text muted" }, "Orders sent directly to your business can appear here by themselves. Set up an order topic under Connections."),
+    sectionTitle("Check a pasted order"),
+    h("p", { class: "small-text muted" }, "Paste the customer's whole message from WhatsApp, text message or email. Nothing leaves this device."),
+    textField("order-text", "Customer's order message", msg),
+    h("nav", null, h("button", { type: "button", on: { click: async () => {
+      const found = await listing();
+      out.replaceChildren(found.error ? notice("warn", h("p", { class: "flush" }, found.error)) : await orderPanel(msg.value, found));
+    } } }, icon("check_circle"), h("span", null, "Check the order"))),
+    out,
+    h("p", { class: "small-text muted" }, "Send each reply in the same chat as the order. Take payment only on delivery or at pickup."));
+  if (c.orders) {
+    refresh();
+    const timer = setInterval(() => { if (!document.body.contains(inbox)) clearInterval(timer); else if (document.visibilityState === "visible") refresh(); }, 30000);
+  }
+}
+
+/* ---------------------------------------------------------------- edit the menu (new version) */
 
 function viewUpdate() {
   const out = h("div", { "aria-live": "polite" });
-  const editor = h("div");
-  const file = h("input", { type: "file", id: "menufile", accept: ".json,application/json" });
-  let prevBytes = null, prev = null;
+  const editorBox = h("div");
+  const file = h("input", { type: "file", id: "menufile", accept: ".json,application/json", hidden: true, on: { change: async () => {
+    try { start(await readFile(file)); } catch (e) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, e.message))); }
+  } } });
+  let prevBytes = null, prev = null, editor = null;
 
   function renderEditor() {
-    const rows = [];
-    for (const it of prev.items || []) {
-      const lines = it.options ? it.options.map((o) => ({ id: "p-" + it.id + "--" + o.id, label: it.name + " (" + o.label + ")", value: o.price })) : [{ id: "p-" + it.id, label: it.name, value: it.price }];
-      for (const l of lines) rows.push(textField(l.id, l.label, input(l.id, { type: "number", min: 0, value: l.value })));
-    }
-    const zrows = ((prev.delivery && prev.delivery.zones) || []).map((z) => h("div", null,
-      textField("zf-" + z.id, "Delivery fee, " + z.areas.map(areaName).join(", "), input("zf-" + z.id, { type: "number", min: 0, max: B.rules.max_delivery_fee, value: z.fee })),
-      textField("zm-" + z.id, "Minimum order, " + z.areas.map(areaName).join(", "), input("zm-" + z.id, { type: "number", min: 0, value: z.min_order }))));
-    editor.replaceChildren(
-      sectionTitle("Prices (BDT, including every charge)"), ...rows,
-      sectionTitle("Delivery fees and minimum orders"), ...zrows,
+    editor = menuEditor(prev.items, prev.items);
+    const zrows = ((prev.delivery && prev.delivery.zones) || []).map((z) => h("div", { class: "size-row" },
+      textField("zf-" + z.id, "Fee, " + z.areas.map(areaName).join(", "), input("zf-" + z.id, { type: "number", min: 0, max: B.rules.max_delivery_fee, value: z.fee })),
+      textField("zm-" + z.id, "Minimum order", input("zm-" + z.id, { type: "number", min: 0, value: z.min_order }))));
+    editorBox.replaceChildren(
+      notice("info", h("p", { class: "flush" }, "Editing " + prev.name + ", version " + prev.version + ". Changes stay on this device until you publish them.")),
+      sectionTitle("Menu"), editor,
+      sectionTitle("Delivery fees and minimum orders (BDT)"), ...zrows,
+      sectionTitle("Pickup"), check("pickup", "Customers can pick up orders", prev.pickup !== false),
+      sectionTitle("Publish"),
       textField("summary", "Short public note about the change", input("summary", { maxlength: 200 })),
-      sectionTitle("Sign"), keyBox(),
+      B.key ? h("p", { class: "small-text muted" }, "Signing with key " + B.key.id + ".") : keyBox(),
       h("nav", null, h("button", { type: "button", class: "responsive", on: { click: publish } }, icon("verified"), h("span", null, "Prepare the new version"))));
   }
 
   async function publish() {
     const next = JSON.parse(new TextDecoder().decode(prevBytes));
     const num = (id) => { const v = val(id); return /^\d+$/.test(v) ? Number(v) : NaN; };
-    const errors = [];
-    for (const it of next.items || []) {
-      if (it.options) for (const o of it.options) { o.price = num("p-" + it.id + "--" + o.id); if (isNaN(o.price)) errors.push(it.name + ": enter a whole number."); }
-      else { it.price = num("p-" + it.id); if (isNaN(it.price)) errors.push(it.name + ": enter a whole number."); }
-    }
+    const read = editor.read();
+    const errors = read.errors.slice();
+    next.items = read.items;
+    next.pickup = checked("pickup");
     for (const z of (next.delivery && next.delivery.zones) || []) {
       z.fee = num("zf-" + z.id); z.min_order = num("zm-" + z.id);
       if (isNaN(z.fee) || isNaN(z.min_order)) errors.push("Enter every delivery fee and minimum order as a whole number.");
@@ -779,9 +834,10 @@ function viewUpdate() {
     if (!B.key) errors.push("Load your key.");
     else if (!next.owner || next.owner.public_key !== B.key.publicB64) errors.push("This key does not belong to this listing.");
     const changes = errors.length ? [] : diffMoney(prev, next);
-    if (!errors.length && !changes.length) errors.push("Nothing has changed.");
-    if (!val("summary") && changes.length) errors.push("Write a short public note about the change.");
-    if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); return; }
+    const otherChange = JSON.stringify(prev.items) !== JSON.stringify(next.items) || prev.pickup !== next.pickup;
+    if (!errors.length && !changes.length && !otherChange) errors.push("Nothing has changed.");
+    if (!val("summary")) errors.push("Write a short public note about the change.");
+    if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); out.scrollIntoView({ block: "nearest" }); return; }
     const stamp = new Date(Date.now() + 6 * 3600 * 1000).toISOString().slice(0, 19) + "+06:00";
     next.version = prev.version + 1;
     next.previous = await sha256Hex(prevBytes);
@@ -792,25 +848,252 @@ function viewUpdate() {
     const text = new TextDecoder().decode(menuBytes(next));
     out.replaceChildren(
       sectionTitle("Version " + next.version + " is ready"),
-      h("ul", { class: "list border" }, changes.map((c) => h("li", null, h("div", { class: "max" }, c.label), h("span", { class: "price" }, (c.old === null ? "new" : money(c.old)) + " to " + (c.new === null ? "removed" : money(c.new)))))),
-      h("p", null, "Upload both files to your repository: versions/" + next.version + ".json and menu.json (they are identical). Keep every older version file. The change is announced to customers automatically."),
+      changes.length ? h("ul", { class: "list border" }, changes.map((c) => h("li", null, h("div", { class: "max" }, c.label), h("span", { class: "price" }, (c.old === null ? "new" : money(c.old)) + " to " + (c.new === null ? "removed" : money(c.new)))))) : null,
+      h("p", null, "Publish both files to your repository: versions/" + next.version + ".json and menu.json (they are identical). Keep every older version file. The change is announced to customers automatically."),
       h("nav", { class: "wrap" },
-        h("button", { type: "button", on: { click: () => download(next.version + ".json", text) } }, icon("download"), h("span", null, "Download versions/" + next.version + ".json")),
+        publishButton([{ path: "versions/" + next.version + ".json", text }, { path: "menu.json", text }], "Hana menu version " + next.version + ": " + val("summary")),
+        h("button", { type: "button", class: "border", on: { click: () => download(next.version + ".json", text) } }, icon("download"), h("span", null, "Download versions/" + next.version + ".json")),
         h("button", { type: "button", class: "border", on: { click: () => download("menu.json", text) } }, icon("download"), h("span", null, "Download menu.json"))));
+    out.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  show("update", "Update prices", pageHeader("Update prices and delivery fees", "#/"),
-    h("p", { class: "muted" }, "For claimed listings. Load your current published menu.json, change what you need and sign the new version with your key. Every change is published in the menu's price history."),
-    textField("menufile", "Current menu.json", file),
-    h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => {
-      try {
-        prevBytes = await readFile(file);
-        prev = JSON.parse(new TextDecoder().decode(prevBytes));
-        if (!prev.claimed) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "This listing is not claimed yet. Claim it first."))); return; }
-        renderEditor();
-      } catch (e) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, e.message))); }
-    } } }, icon("upload"), h("span", null, "Load menu.json"))),
-    editor, out);
+  const start = (bytes) => {
+    prevBytes = bytes;
+    prev = JSON.parse(new TextDecoder().decode(bytes));
+    if (!prev.claimed) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "This listing is not claimed yet. Claim it first."))); return; }
+    out.replaceChildren();
+    renderEditor();
+  };
+  show("update", "Edit your menu", pageHeader("Edit your menu", "#/"),
+    h("p", { class: "muted" }, "For claimed listings. Find your listing, change items, prices, sizes and fees, and sign the new version with your key. Every price change is published in the menu's price history."),
+    textField("listing-phone", "Your business phone", input("listing-phone", { inputmode: "tel", maxlength: 14, value: (() => { try { return localStorage.getItem("hana.biz.phone") || ""; } catch (e) { return ""; } })() })),
+    h("nav", { class: "wrap" },
+      h("button", { type: "button", on: { click: async () => {
+        const found = await findListingByPhone(val("listing-phone"), false);
+        if (found.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, found.error))); return; }
+        try { localStorage.setItem("hana.biz.phone", val("listing-phone")); } catch (e) { /* ignore */ }
+        start(found.versions[0].bytes);
+      } } }, icon("search"), h("span", null, "Find my listing"))),
+    file,
+    h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Or open a menu.json file"))),
+    out, editorBox);
+}
+
+/* ---------------------------------------------------------------- visual menu editor */
+
+/* Edits menu items as sections of rows: name, price or sizes, and optional description,
+   category and picture. Nothing leaves the device. read() returns { items, errors }. */
+function menuEditor(items, oldItems) {
+  const byName = new Map((oldItems || []).map((it) => [norm(it.name), it]));
+  const root = h("div", { class: "menu-editor" });
+  const secBox = h("div");
+  const field = (label, attrs) => h("div", { class: "field label border round small" }, h("input", Object.assign({ placeholder: " " }, attrs)), h("label", null, label));
+  const iconBtn = (name, label, fn) => h("button", { type: "button", class: "circle transparent small", "aria-label": label, title: label, on: { click: fn } }, icon(name));
+
+  function sizeRow(o) {
+    const row = h("div", { class: "size-row" },
+      field("Size or option", { value: (o && o.label) || "", maxlength: 40, "data-k": "label" }),
+      field("Price", { type: "number", min: 0, inputmode: "numeric", value: o && o.price !== undefined ? o.price : "", "data-k": "price" }),
+      iconBtn("close", "Remove this size", () => row.remove()));
+    row._id = o && o.id;
+    return row;
+  }
+  function itemRow(it) {
+    it = it || {};
+    const sizes = h("div", { class: "size-list" }, (it.options || []).map(sizeRow));
+    const price = field("Price (BDT)", { type: "number", min: 0, inputmode: "numeric", value: it.price !== undefined ? it.price : "", "data-k": "price" });
+    const toggle = () => { price.hidden = sizes.children.length > 0; };
+    const li = h("li", { class: "edit-item" },
+      h("div", { class: "edit-main" },
+        field("Item name", { value: it.name || "", maxlength: 80, "data-k": "name" }),
+        price,
+        h("nav", { class: "edit-tools" },
+          iconBtn("arrow_upward", "Move up", () => { if (li.previousElementSibling) li.parentNode.insertBefore(li, li.previousElementSibling); }),
+          iconBtn("arrow_downward", "Move down", () => { if (li.nextElementSibling) li.parentNode.insertBefore(li.nextElementSibling, li); }),
+          iconBtn("delete", "Remove this item", () => li.remove()))),
+      sizes,
+      h("nav", { class: "wrap small-space" },
+        h("button", { type: "button", class: "chip small border", on: { click: () => { sizes.append(sizeRow()); toggle(); } } }, icon("add"), h("span", null, "Add a size or option"))),
+      h("details", null, h("summary", { class: "link small-text" }, "Description, category and picture"),
+        field("Description (optional)", { value: it.description || "", maxlength: 200, "data-k": "description" }),
+        field("Category within the section (optional)", { value: it.category || "", maxlength: 40, "data-k": "category" }),
+        field("Picture address (optional)", { type: "url", value: (it.image && it.image.src) || "", "data-k": "image" })));
+    sizes.addEventListener("click", () => setTimeout(toggle, 0));
+    toggle();
+    li._id = it.id;
+    return li;
+  }
+  function sectionBox(name, list) {
+    const ul = h("ul", { class: "list border" }, (list || []).map(itemRow));
+    const box = h("section", { class: "edit-section" },
+      h("div", { class: "edit-main" },
+        field("Section", { value: name || "", maxlength: 40, "data-k": "section" }),
+        h("nav", { class: "edit-tools" }, iconBtn("delete", "Remove this section", async () => {
+          if (!ul.children.length || await ask("Remove this section?", "The section and every item in it will be removed from the draft.", "Remove")) box.remove();
+        }))),
+      ul,
+      h("nav", null, h("button", { type: "button", class: "border small", on: { click: () => { const r = itemRow(); ul.append(r); r.querySelector("input").focus(); } } }, icon("add"), h("span", null, "Add an item"))));
+    return box;
+  }
+  function load(list) {
+    const secs = new Map();
+    for (const it of list || []) { const s = it.section || "Menu"; if (!secs.has(s)) secs.set(s, []); secs.get(s).push(it); }
+    if (!secs.size) secs.set("", []);
+    secBox.replaceChildren(...Array.from(secs, ([s, l]) => sectionBox(s, l)));
+  }
+  function read() {
+    const out = [], errors = [], ids = new Set();
+    const get = (el, k) => { const e = el.querySelector(':scope > .edit-main [data-k="' + k + '"], :scope > details [data-k="' + k + '"]'); return e ? e.value.trim() : ""; };
+    for (const sec of secBox.querySelectorAll(".edit-section")) {
+      const secName = (sec.querySelector(':scope > .edit-main [data-k="section"]').value || "").trim() || "Menu";
+      for (const li of sec.querySelectorAll(":scope > ul > .edit-item")) {
+        const name = get(li, "name");
+        if (!name) { errors.push("An item in " + secName + " has no name."); continue; }
+        const old = byName.get(norm(name));
+        let id = li._id || (old && old.id) || slug(name);
+        while (ids.has(id)) id += "-2";
+        ids.add(id);
+        const it = { id, name, section: secName };
+        const cat = get(li, "category"), desc = get(li, "description"), pic = get(li, "image");
+        if (cat) it.category = cat;
+        if (desc) it.description = desc;
+        if (pic) { if (safeImageUrl(pic)) it.image = { src: safeImageUrl(pic) }; else errors.push(name + ": the picture must be a JPEG, PNG or WebP file on one of the listed hosts."); }
+        const sizes = Array.from(li.querySelectorAll(".size-row")).map((r) => ({ id: r._id, label: r.querySelector('[data-k="label"]').value.trim(), price: r.querySelector('[data-k="price"]').value.trim() }));
+        if (sizes.length >= 2) {
+          if (sizes.some((s) => !s.label || !/^\d+$/.test(s.price))) { errors.push(name + ": give every size a name and a whole-number price."); continue; }
+          const oids = new Set();
+          it.options = sizes.map((s) => { let oid = s.id || slug(s.label); while (oids.has(oid)) oid += "-2"; oids.add(oid); return { id: oid, label: s.label, price: Number(s.price) }; });
+        } else {
+          const p = sizes.length ? sizes[0].price : get(li, "price");
+          if (!/^\d+$/.test(p)) { errors.push(name + ": enter the price as a whole number of taka."); continue; }
+          it.price = Number(p);
+        }
+        out.push(it);
+      }
+    }
+    if (!out.length && !errors.length) errors.push("Add at least one item.");
+    return { items: out, errors };
+  }
+  const text = h("textarea", { rows: 8, placeholder: " ", "aria-label": "Menu as text" });
+  load(items);
+  root.append(secBox,
+    h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "border", on: { click: () => { const b = sectionBox("", []); secBox.append(b); b.querySelector("input").focus(); } } }, icon("add"), h("span", null, "Add a section"))),
+    h("details", null, h("summary", { class: "link small-text" }, "Paste or copy the menu as text"),
+      h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description | Picture address. For sizes, write 8 inch: 529; 12 inch: 749 as the price."),
+      text,
+      h("nav", { class: "wrap small-space" },
+        h("button", { type: "button", class: "border", on: { click: () => { const p = textToItems(text.value, read().items); if (p.errors.length) snackbar(p.errors[0]); else { load(p.items); snackbar("The menu was replaced with the pasted text."); } } } }, h("span", null, "Use this text")),
+        h("button", { type: "button", class: "border", on: { click: () => { text.value = itemsToText(read().items); } } }, h("span", null, "Show the current menu as text")))));
+  root.read = read;
+  root.load = load;
+  return root;
+}
+
+/* ---------------------------------------------------------------- key memory and connections */
+
+/* The business key can be kept in this browser's own database, so signing needs no file.
+   Anyone using this browser profile could then sign as the business. */
+const KEYSTORE = {
+  db() { return new Promise((res, rej) => { const r = indexedDB.open("hana-business", 1); r.onupgradeneeded = () => r.result.createObjectStore("keys"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  async run(mode, fn) { const db = await this.db(); return new Promise((res) => { const t = db.transaction("keys", mode); const q = fn(t.objectStore("keys")); t.oncomplete = () => res(q && q.result); t.onerror = () => res(null); }); },
+  get() { return this.run("readonly", (s) => s.get("key")).catch(() => null); },
+  set(k) { return this.run("readwrite", (s) => s.put(k, "key")).catch(() => null); },
+  clear() { return this.run("readwrite", (s) => s.delete("key")).catch(() => null); },
+};
+
+function conn() { return store.get("hana.biz.connections", { provider: "", host: "codeberg.org", repo: "", branch: "main", token: "", orders: "", poll: false }); }
+function saveConn(c) { store.set("hana.biz.connections", c); }
+
+function utf8b64(text) {
+  const b = new TextEncoder().encode(text);
+  let s = "";
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+/* Writes files to the business's own repository through its forge's API (GitHub, or Forgejo
+   and Gitea, which Codeberg runs). The token stays on this device. */
+async function forgeWrite(files, message) {
+  const c = conn();
+  if (!c.provider || !c.repo || !c.token) throw new Error("Set up a repository connection first, under Connections.");
+  const gh = c.provider === "github";
+  const base = gh ? "https://api.github.com/repos/" + c.repo + "/contents/" : "https://" + c.host + "/api/v1/repos/" + c.repo + "/contents/";
+  const headers = gh ? { Authorization: "Bearer " + c.token, Accept: "application/vnd.github+json" } : { Authorization: "token " + c.token };
+  for (const f of files) {
+    const url = base + f.path.split("/").map(encodeURIComponent).join("/");
+    let sha = null;
+    const cur = await fetch(url + "?ref=" + encodeURIComponent(c.branch || "main"), { headers, cache: "no-store" });
+    if (cur.ok) sha = (await cur.json()).sha || null;
+    const body = { message, content: utf8b64(f.text), branch: c.branch || "main" };
+    if (sha) body.sha = sha;
+    const r = await fetch(url, { method: gh || sha ? "PUT" : "POST", headers: Object.assign({ "Content-Type": "application/json" }, headers), body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(f.path + ": the forge answered " + r.status + ".");
+  }
+}
+
+function publishButton(files, message) {
+  const c = conn();
+  if (!c.provider || !c.token) return h("p", { class: "small-text muted" }, "To publish with one tap next time, connect your repository under Connections.");
+  return h("button", { type: "button", on: { click: async (e) => {
+    const b = e.currentTarget;
+    b.disabled = true;
+    try { await forgeWrite(files, message); snackbar("Published to " + c.repo + "."); }
+    catch (err) { snackbar(err.message); }
+    b.disabled = false;
+  } } }, icon("cloud_upload"), h("span", null, "Publish to my repository"));
+}
+
+function viewConnect() {
+  const c = conn();
+  const prov = h("select", { id: "c-provider" }, [["", "Not connected"], ["github", "GitHub"], ["forgejo", "Codeberg, Forgejo or Gitea"]].map(([v, t]) => h("option", { value: v, selected: c.provider === v }, t)));
+  const out = h("div", { "aria-live": "polite" });
+  const keyStatus = h("p", { class: "small-text muted" }, B.keyRemembered ? "Your key is kept on this device: " + (B.key && B.key.id) + "." : "Your key is not kept on this device.");
+  show("connect", "Connections", pageHeader("Connections", "#/"),
+    h("p", { class: "muted" }, "Optional. Everything here is kept on this device only. With these set up, the tools publish your menu and handle orders with one tap. Without them, you download files and upload them yourself."),
+    sectionTitle("Your repository"),
+    h("p", { class: "small-text muted" }, "Create a token on your forge that can write to your menu repository only. GitHub: Settings, Developer settings, Fine-grained tokens, with Contents: read and write. Codeberg: Settings, Applications, with repository write access."),
+    selectField("c-provider", "Forge", prov),
+    textField("c-host", "Forge address (Codeberg, Forgejo or Gitea only)", input("c-host", { value: c.host || "codeberg.org" })),
+    textField("c-repo", "Repository, as owner/name", input("c-repo", { value: c.repo || "", placeholder: " " })),
+    textField("c-branch", "Branch", input("c-branch", { value: c.branch || "main" })),
+    textField("c-token", "Access token", input("c-token", { type: "password", value: c.token || "" })),
+    sectionTitle("Orders"),
+    h("p", { class: "small-text muted" }, "An ntfy topic you control receives orders sent directly from customers' phones (add the same address as your order endpoint in your listing). The Orders page then shows new orders by itself."),
+    textField("c-orders", "Order topic address (https)", input("c-orders", { type: "url", value: c.orders || "" })),
+    h("nav", { class: "wrap gap-top" },
+      h("button", { type: "button", on: { click: () => {
+        const n = { provider: prov.value, host: val("c-host").replace(/^https?:\/\//, "").replace(/\/.*$/, ""), repo: val("c-repo").replace(/^\/|\/$/g, ""), branch: val("c-branch") || "main", token: val("c-token"), orders: val("c-orders") };
+        if (n.provider && !/^[\w.-]+\/[\w.-]+$/.test(n.repo)) { snackbar("Write the repository as owner/name."); return; }
+        if (n.orders && !/^https:\/\//.test(n.orders)) { snackbar("The order topic must start with https://."); return; }
+        saveConn(n);
+        snackbar("Saved on this device.");
+      } } }, h("span", null, "Save")),
+      h("button", { type: "button", class: "border", on: { click: async () => {
+        const n = conn();
+        if (!n.provider) { out.replaceChildren(notice("info", h("p", { class: "flush" }, "Choose a forge and save first."))); return; }
+        const url = n.provider === "github" ? "https://api.github.com/repos/" + n.repo : "https://" + n.host + "/api/v1/repos/" + n.repo;
+        try {
+          const r = await fetch(url, { headers: n.provider === "github" ? { Authorization: "Bearer " + n.token } : { Authorization: "token " + n.token } });
+          out.replaceChildren(notice(r.ok ? "info" : "warn", h("p", { class: "flush" }, r.ok ? "Connected to " + n.repo + "." : "The forge answered " + r.status + ". Check the repository name and the token.")));
+        } catch (e) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The forge could not be reached."))); }
+      } } }, h("span", null, "Test the connection")),
+      h("button", { type: "button", class: "border", on: { click: () => { store.set("hana.biz.connections", null); viewConnect(); snackbar("Connections removed from this device."); } } }, h("span", null, "Remove all"))),
+    out,
+    sectionTitle("Your key"),
+    keyStatus,
+    keyBox(() => viewConnect()),
+    B.keyRemembered ? h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => { await KEYSTORE.clear(); B.keyRemembered = false; B.key = null; viewConnect(); } } }, h("span", null, "Forget my key on this device"))) : null);
+}
+
+/* ---------------------------------------------------------------- orders inbox */
+
+async function inboxFetch() {
+  const c = conn();
+  if (!c.orders) return [];
+  const r = await fetch(c.orders.replace(/\/$/, "") + "/json?poll=1&since=12h", { cache: "no-store" });
+  if (!r.ok) throw new Error("The order topic answered " + r.status + ".");
+  return (await r.text()).split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
+    .filter((m) => m && m.event === "message" && CHECK_LINE.test(m.message || "")).reverse();
 }
 
 /* ---------------------------------------------------------------- start */
@@ -823,12 +1106,13 @@ function route() {
   if (hash === "#/update") return viewUpdate();
   if (hash === "#/claim") return viewClaim();
   if (hash === "#/site") return viewSite();
+  if (hash === "#/connect") return viewConnect();
   return viewHome();
 }
 
 for (const i of document.querySelectorAll("i[data-icon]")) i.replaceWith(icon(i.getAttribute("data-icon")));
 window.addEventListener("hashchange", route);
-loadDirectory().then(() => {
+Promise.all([loadDirectory(), ("indexedDB" in window ? KEYSTORE.get() : Promise.resolve(null)).then((k) => { if (k) { B.key = k; B.keyRemembered = true; } })]).then(() => {
   const a = document.getElementById("repo-link");
   const u = repoUrl();
   a.setAttribute("href", u || "index.html#/about");

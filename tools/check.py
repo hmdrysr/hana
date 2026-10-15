@@ -469,6 +469,7 @@ def check_photos(photos, where, rel):
 
 # ---------------------------------------------------------------- pictures in menus
 
+HANDLE = re.compile(r"^[a-z0-9]{3,30}$")
 IMAGE_EXT = re.compile(r"\.(jpe?g|png|webp|avif)$", re.I)
 
 
@@ -649,6 +650,8 @@ def check_menu(menu_path, root, area_ids):
             err(rel, f"{f} must be true, false or null (not stated)")
     if "cuisine" in data and not (isinstance(data["cuisine"], str) and 0 < len(data["cuisine"]) <= 40):
         err(rel, "cuisine must be short text of no more than 40 characters")
+    if "handle" in data and not (isinstance(data["handle"], str) and HANDLE.match(data["handle"])):
+        err(rel, "handle must be 3 to 30 lowercase letters or numbers, for example mealmaster")
     check_image(data.get("cover"), "cover", rel)
     for i, it in enumerate(data.get("items") or []):
         if isinstance(it, dict):
@@ -748,7 +751,7 @@ def check_index(root, area_ids):
     if not isinstance(rs, list):
         err(rel, "'restaurants' must be a list")
         return
-    seen = set()
+    seen, handles = set(), set()
     for i, r in enumerate(rs):
         w = f"restaurants[{i}]"
         if not isinstance(r, dict):
@@ -764,6 +767,13 @@ def check_index(root, area_ids):
             seen.add(rid)
         if not isinstance(r.get("name"), str) or not r["name"].strip():
             err(rel, f"{w}: name is required")
+        hd = r.get("handle")
+        if hd is not None:
+            if not (isinstance(hd, str) and HANDLE.match(hd)):
+                err(rel, f"{w}: handle must be 3 to 30 lowercase letters or numbers")
+            elif hd in handles:
+                err(rel, f"{w}: handle @{hd} is already used by another listing")
+            handles.add(hd)
         if area_ids and r.get("neighbourhood") not in area_ids:
             err(rel, f"{w}: neighbourhood '{r.get('neighbourhood')}' is not in areas.json")
         mh = r.get("menu_hash")
@@ -788,6 +798,8 @@ def check_index(root, area_ids):
                 menu = json.loads(raw.decode("utf-8"))
                 if "claimed" in r and r["claimed"] != menu.get("claimed"):
                     err(rel, f"{w}: 'claimed' does not match the menu file")
+                if r.get("handle") != menu.get("handle"):
+                    err(rel, f"{w}: 'handle' does not match the menu file")
                 if "version" in r and r["version"] != menu.get("version"):
                     err(rel, f"{w}: 'version' does not match the menu file")
             except (ValueError, UnicodeDecodeError):
@@ -864,12 +876,25 @@ def check_peers(root):
                 err("peers.json", f"peers[{i}]: must be an https address")
 
 
+def check_pages(root):
+    """Every listing with a handle has its clean page, and each page matches its listing."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import build_pages
+    want, have = build_pages.build(root), build_pages.existing(root)
+    for rel, text in want.items():
+        if rel not in have or have[rel].read_text(encoding="utf-8") != text:
+            err(rel, "missing or out of date; run python3 tools/build.py")
+    for rel in have:
+        if rel not in want:
+            err(rel, "no listing has this handle any more; run python3 tools/build.py")
+
+
 def check_feed(root):
     """feed.xml must match the listings, so Fediverse followers see every change."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import build_feed
     if not (root / "feed.xml").is_file() or (root / "feed.xml").read_text(encoding="utf-8") != build_feed.build(root):
-        err("feed.xml", "out of date; run python3 tools/build_feed.py")
+        err("feed.xml", "out of date; run python3 tools/build.py")
 
 
 def check_vouches(root):
@@ -913,7 +938,7 @@ def check_text_files(root):
         for w in FORBIDDEN_WORDS:
             if w.lower() in low:
                 err(rel, 'uses the spelling this project never uses. Write "Chittagong".')
-        in_menu = rel.parts[0] in ("menus", "tools")
+        in_menu = rel.parts[0] in ("menus", "tools", "restaurants", "groceries")
         for m in LOCAL_OR_INTL_MOBILE.finditer(text):
             if in_menu:
                 continue  # a restaurant's own business number belongs in its menu
@@ -930,7 +955,7 @@ chip circle dark field fill flush gap-top group-title l label left left-align li
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
 tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label
-cover thumb credit zone-row kind-tabs food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
+cover thumb credit stack menu-editor edit-section edit-item edit-main edit-tools size-list size-row order-panel handle zone-row kind-tabs food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
 
 
 def check_ui(root):
@@ -974,6 +999,7 @@ def main():
                 check_version_chain(d, root)
     check_vouches(root)
     check_feed(root)
+    check_pages(root)
     check_text_files(root)
     check_ui(root)
     for line in WARNINGS + ERRORS:

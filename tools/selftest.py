@@ -45,7 +45,7 @@ class Repo:
         self.dir = self.root / "menus" / TAVA
         (self.root / "menus").mkdir()
         shutil.copytree(ROOT / "menus" / TAVA, self.dir)
-        for f in ("areas.json", "peers.json", "vouchers.json", "rules.json", "regions.json"):
+        for f in ("areas.json", "peers.json", "vouchers.json", "rules.json", "regions.json", "index.html"):
             shutil.copy(ROOT / f, self.root / f)
         self.versions = {1: json.loads((self.dir / "versions" / "1.json").read_bytes())}
         self.raw = {1: (self.dir / "versions" / "1.json").read_bytes()}
@@ -59,7 +59,7 @@ class Repo:
     def write_index(self, edit=None):
         n = self.latest
         idx = {"version": 1, "city": "Chittagong", "updated": "2026-10-20", "restaurants": [{
-            "id": self.versions[n]["id"], "name": self.versions[n]["name"],
+            "id": self.versions[n]["id"], "name": self.versions[n]["name"], "handle": self.versions[n].get("handle"),
             "neighbourhood": self.versions[n]["neighbourhood"], "claimed": self.versions[n].get("claimed", False),
             "version": n, "menu_hash": sha(self.raw[n]),
             "locations": [f"menus/{TAVA}/menu.json"]}]}
@@ -104,7 +104,9 @@ def run_check(repo, extra=None):
     try:  # keep feed.xml in step with the edited listings, as a contributor would
         sys.path.insert(0, str(HERE))
         import build_feed
+        import build_pages
         (repo.root / "feed.xml").write_text(build_feed.build(repo.root), encoding="utf-8")
+        build_pages.write(repo.root)
     except Exception:
         pass
     for name, text in (extra or {}).items():
@@ -369,7 +371,7 @@ check_case("picture that is a script", True, "must be an https JPEG",
            edit_v1(lambda m: m["items"][0].update(image={"src": "https://upload.wikimedia.org/x.svg"})))
 check_case("picture with unknown fields", True, "may only have src and credit",
            edit_v1(lambda m: m["items"][0].update(image={"commons": "File:Pizza.jpg"})))
-check_case("an out-of-date feed.xml is reported", True, "feed.xml: out of date",
+check_case("an out-of-date feed.xml is reported", True, "feed.xml",
            edit_v1(lambda m: None), extra={"feed.xml": "<feed/>"})
 check_case("confirmation feed on an unclaimed listing", True, "only for claimed",
            edit_v1(lambda m: m.update(confirmation_feed="https://ntfy.example.org/x")))
@@ -441,7 +443,7 @@ def make_claim(r, change=None, sign=True, vouchers=("voucher-a", "voucher-b"), c
             "claimed_on": "2026-10-15", "evidence": ["Phone check with claim code", "Visit to the address"],
             "vouchers": list(vouchers), "reviews": [{"date": "2026-10-15", "voucher": "voucher-a", "result": "confirmed"}]}))
     idx = {"version": 1, "city": "Chittagong", "updated": "2026-10-20", "restaurants": [{
-        "id": m["id"], "name": m["name"], "neighbourhood": m["neighbourhood"], "claimed": True, "version": 1,
+        "id": m["id"], "name": m["name"], "handle": m.get("handle"), "neighbourhood": m["neighbourhood"], "claimed": True, "version": 1,
         "menu_hash": sha(raw), "reviewed": "2026-10-15", "replaces": old["id"], "locations": [f"menus/{m['id']}/menu.json"]}]}
     (r.root / "index.json").write_text(json.dumps(idx))
     return m
