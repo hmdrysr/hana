@@ -81,6 +81,6 @@ Adding a class to this list is a theme change: it needs a recorded decision and 
 
 ## Pop-ups
 
-- Dialogs and notices are compact cards no wider than 22rem, centred, with at least 1rem of margin on each side. Dialog titles use 1.25rem type.
+- Dialogs and notices are compact cards no wider than 20rem or 80% of the screen, centred in both directions, with at least 1rem of margin on each side, at any text size. Dialog text is 0.875rem.
 - The notice (snackbar) appears below the top bar, so it never covers the basket bar, a checkout button or the navigation.
 - `tools/browser_test.py` checks both rules at 360px width.
