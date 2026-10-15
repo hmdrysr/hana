@@ -56,7 +56,7 @@ class Repo:
         self.root = Path(tmp)
         self.dir = self.root / "menus" / TAVA
         (self.root / "menus").mkdir()
-        shutil.copytree(ROOT / "menus" / TAVA, self.dir)
+        shutil.copytree(ROOT / "tools" / "fixtures" / "menus" / TAVA, self.dir)
         for f in ("areas.json", "peers.json", "vouchers.json", "rules.json", "regions.json", "index.html"):
             shutil.copy(ROOT / f, self.root / f)
         v1 = with_prices(json.loads((self.dir / "versions" / "1.json").read_bytes()))
@@ -323,7 +323,7 @@ check_case("allowed classes pass", False, "0 error(s)", lambda r: None,
            extra={"app.js": 'h("p", { class: "muted " + (x === "warn" ? "tertiary-container" : "flush") });'})
 
 # ------------------------------------------------------------ order_line cases
-menu_path = ROOT / "menus" / TAVA / "menu.json"
+menu_path = ROOT / "tools" / "fixtures" / "menus" / TAVA / "menu.json"
 real_bytes = menu_path.read_bytes()
 real = json.loads(real_bytes)
 uline = order_line.build(real_bytes, real, {"dahi-bara": 2}, "khulshi")
@@ -371,7 +371,7 @@ check_true("unknown menu version is rejected",
 
 # option items (use Meal Master, which has options)
 MM = "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b"
-mmb = (ROOT / "menus" / MM / "menu.json").read_bytes()
+mmb = (ROOT / "tools" / "fixtures" / "menus" / MM / "menu.json").read_bytes()
 mm = json.loads(mmb)
 oline = order_line.build(mmb, mm, {"strips.4-pieces": 1, "french-fries": 2}, "ccc")
 ores = order_line.decode(oline, [(mmb, mm)])

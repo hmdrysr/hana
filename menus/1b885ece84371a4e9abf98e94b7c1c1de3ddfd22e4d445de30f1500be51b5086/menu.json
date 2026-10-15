@@ -1,0 +1,180 @@
+{
+  "id": "1b885ece84371a4e9abf98e94b7c1c1de3ddfd22e4d445de30f1500be51b5086",
+  "claimed": false,
+  "demo": true,
+  "version": 1,
+  "name": "TONG: NOT A REAL PLACE",
+  "handle": "tong",
+  "kind": "Tea stall",
+  "neighbourhood": "ccc",
+  "address": "Not a real address (demo listing)",
+  "business_phone": "+8801000000000",
+  "listing_note": "DEMO, JUST FOR FUN. This is not a real place, and nothing is sent, cooked, packed or delivered. Like the pretend-shopping sites people use for a little dopamine hit: order anything, watch it get confirmed, follow Rice Uddin on his way, and enjoy the feeling without spending a taka. Prices are typical Bangladeshi retail prices from public market reports in 2026 (see TRANSCRIPTION-NOTES.md), so the totals feel real.",
+  "hours": {
+    "mon": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "tue": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "wed": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "thu": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "fri": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "sat": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "sun": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ]
+  },
+  "delivery": {
+    "zones": [
+      {
+        "id": "ccc",
+        "shape": "named",
+        "areas": [
+          "ccc"
+        ],
+        "fee": 40,
+        "min_order": 0,
+        "eta_min": 30
+      }
+    ]
+  },
+  "contact": [
+    {
+      "app": "demo",
+      "id": "demo",
+      "preferred": true
+    }
+  ],
+  "pickup": true,
+  "payment_on_delivery": [
+    "cash"
+  ],
+  "pledges": {
+    "rider_identity": {
+      "signed": false
+    },
+    "data_handling": {
+      "signed": false
+    },
+    "fair_pricing": {
+      "signed": false
+    },
+    "records": {
+      "signed": false
+    }
+  },
+  "announcement": {
+    "published": "2026-10-16T04:30:00+06:00",
+    "summary": "Demo listing, just for fun. Not a real place.",
+    "changes": []
+  },
+  "items": [
+    {
+      "id": "cha",
+      "name": "Tea (cha)",
+      "section": "Tea",
+      "options": [
+        {
+          "id": "milk",
+          "label": "Milk tea",
+          "price": 15
+        },
+        {
+          "id": "red",
+          "label": "Red tea (lal cha)",
+          "price": 10
+        },
+        {
+          "id": "lemon",
+          "label": "Lemon tea",
+          "price": 12
+        },
+        {
+          "id": "ginger",
+          "label": "Ginger tea",
+          "price": 15
+        }
+      ]
+    },
+    {
+      "id": "coffee",
+      "name": "Coffee (instant, with milk)",
+      "section": "Tea",
+      "price": 30
+    },
+    {
+      "id": "biscuit",
+      "name": "Biscuits (small packet)",
+      "section": "Snacks",
+      "price": 10
+    },
+    {
+      "id": "cream-biscuit",
+      "name": "Cream biscuits (packet)",
+      "section": "Snacks",
+      "price": 20
+    },
+    {
+      "id": "bun",
+      "name": "Bun",
+      "section": "Snacks",
+      "price": 15
+    },
+    {
+      "id": "cake",
+      "name": "Pound cake (slice)",
+      "section": "Snacks",
+      "price": 20
+    },
+    {
+      "id": "banana",
+      "name": "Banana (sagor kola)",
+      "section": "Snacks",
+      "price": 10
+    },
+    {
+      "id": "singara",
+      "name": "Singara",
+      "section": "Snacks",
+      "price": 10
+    },
+    {
+      "id": "water",
+      "name": "Bottled water (500 ml)",
+      "section": "Drinks",
+      "price": 20
+    }
+  ],
+  "price_history": [],
+  "signature": null
+}

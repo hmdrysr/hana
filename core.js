@@ -200,6 +200,7 @@ const DAY_NAMES = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thurs
    already typed; otherwise the customer pastes the copied message. "direct" sends the order
    straight to the business's own open endpoint (for example a self-hosted ntfy topic). */
 const CHANNELS = {
+  demo: { label: "Demo order: nothing is sent, just for fun", icon: "send", direct: true },
   whatsapp: { label: "WhatsApp", icon: "chat", prefill: true, link: (id, text) => "https://wa.me/" + id + "?text=" + encodeURIComponent(text) },
   sms: { label: "Text message", icon: "sms", prefill: true, link: (id, text) => "sms:+" + id + "?body=" + encodeURIComponent(text) },
   email: { label: "Email", icon: "send", prefill: true, link: (id, text, code) => "mailto:" + id + "?subject=" + encodeURIComponent("Hana order " + (code || "")) + "&body=" + encodeURIComponent(text) },

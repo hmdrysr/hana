@@ -10,9 +10,10 @@ List only contact details that people have agreed to publish.
 
 | Listing | Entered by | Date |
 |---|---|---|
-| Meal Master | hmdrysr | October 15, 2026 |
-| Sliced | hmdrysr | October 15, 2026 |
-| Tava Restaurant | hmdrysr | October 15, 2026 |
+| TONG: NOT A REAL PLACE (demo) | hmdrysr | October 16, 2026 |
+| DUWAN: NOT A REAL PLACE (demo) | hmdrysr | October 16, 2026 |
+
+Meal Master, Sliced and Tava Restaurant (entered October 15, 2026) were removed from the live directory on October 16, 2026, and are kept as test data in `tools/fixtures/`.
 
 ## Vouchers
 

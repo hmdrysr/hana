@@ -1,0 +1,193 @@
+{
+  "id": "7b5fdd1521af7fdb5a61fc3e03305fe1fcb2d14b7ce5fecbe3eea16042121a9b",
+  "claimed": false,
+  "demo": true,
+  "version": 1,
+  "name": "DUWAN: NOT A REAL PLACE",
+  "handle": "duwan",
+  "kind": "Grocery store",
+  "neighbourhood": "ccc",
+  "address": "Not a real address (demo listing)",
+  "business_phone": "+8801000000000",
+  "listing_note": "DEMO, JUST FOR FUN. This is not a real place, and nothing is sent, cooked, packed or delivered. Like the pretend-shopping sites people use for a little dopamine hit: order anything, watch it get confirmed, follow Rice Uddin on his way, and enjoy the feeling without spending a taka. Prices are typical Bangladeshi retail prices from public market reports in 2026 (see TRANSCRIPTION-NOTES.md), so the totals feel real.",
+  "hours": {
+    "mon": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "tue": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "wed": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "thu": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "fri": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "sat": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ],
+    "sun": [
+      [
+        "00:00",
+        "23:59"
+      ]
+    ]
+  },
+  "delivery": {
+    "zones": [
+      {
+        "id": "ccc",
+        "shape": "named",
+        "areas": [
+          "ccc"
+        ],
+        "fee": 40,
+        "min_order": 0,
+        "eta_min": 30
+      }
+    ]
+  },
+  "contact": [
+    {
+      "app": "demo",
+      "id": "demo",
+      "preferred": true
+    }
+  ],
+  "pickup": true,
+  "payment_on_delivery": [
+    "cash"
+  ],
+  "pledges": {
+    "rider_identity": {
+      "signed": false
+    },
+    "data_handling": {
+      "signed": false
+    },
+    "fair_pricing": {
+      "signed": false
+    },
+    "records": {
+      "signed": false
+    }
+  },
+  "announcement": {
+    "published": "2026-10-16T04:30:00+06:00",
+    "summary": "Demo listing, just for fun. Not a real place.",
+    "changes": []
+  },
+  "items": [
+    {
+      "id": "rice-miniket",
+      "name": "Miniket rice, fine",
+      "section": "Rice, flour and lentils",
+      "options": [
+        {
+          "id": "1kg",
+          "label": "1 kg",
+          "price": 75
+        },
+        {
+          "id": "5kg",
+          "label": "5 kg",
+          "price": 370
+        }
+      ]
+    },
+    {
+      "id": "rice-coarse",
+      "name": "Coarse rice, 1 kg",
+      "section": "Rice, flour and lentils",
+      "price": 55
+    },
+    {
+      "id": "atta",
+      "name": "Flour (atta), packaged, 2 kg",
+      "section": "Rice, flour and lentils",
+      "price": 165
+    },
+    {
+      "id": "soybean-oil",
+      "name": "Soybean oil, bottled, 1 litre",
+      "section": "Oil and sugar",
+      "price": 204
+    },
+    {
+      "id": "sugar",
+      "name": "Sugar, 1 kg",
+      "section": "Oil and sugar",
+      "price": 125
+    },
+    {
+      "id": "eggs",
+      "name": "Farm eggs",
+      "section": "Dairy and eggs",
+      "options": [
+        {
+          "id": "12",
+          "label": "12 eggs",
+          "price": 160
+        },
+        {
+          "id": "4",
+          "label": "4 eggs",
+          "price": 55
+        }
+      ]
+    },
+    {
+      "id": "onion",
+      "name": "Onions, 1 kg",
+      "section": "Fruit and vegetables",
+      "price": 60
+    },
+    {
+      "id": "potato",
+      "name": "Potatoes, 1 kg",
+      "section": "Fruit and vegetables",
+      "price": 30
+    },
+    {
+      "id": "tomato",
+      "name": "Tomatoes, 1 kg",
+      "section": "Fruit and vegetables",
+      "price": 130
+    },
+    {
+      "id": "green-chilli",
+      "name": "Green chillies, 250 g",
+      "section": "Fruit and vegetables",
+      "price": 35
+    },
+    {
+      "id": "broiler",
+      "name": "Broiler chicken, 1 kg",
+      "section": "Meat and fish",
+      "price": 190
+    }
+  ],
+  "price_history": [],
+  "signature": null
+}

@@ -1,0 +1,41 @@
+{
+  "note": "Test-only listings (the three volunteer entries removed from the live directory on October 16, 2026). tools/browser_test.py and tools/selftest.py add them to a temporary copy of the repository.",
+  "restaurants": [
+    {
+      "id": "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b",
+      "name": "Meal Master",
+      "handle": "mealmaster",
+      "neighbourhood": "ccc",
+      "claimed": false,
+      "version": 1,
+      "menu_hash": "b51cb098f6f6f6cfcc5ea55ecc8526e6d3b9df639595029e2f3eae9cc5bc5d51",
+      "locations": [
+        "menus/bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b/menu.json"
+      ]
+    },
+    {
+      "id": "8a46c5952246c7de87f00b22ceba64fa1d57e834ecae91c4067ac0d0e2c9c5f0",
+      "name": "Sliced",
+      "handle": "sliced",
+      "neighbourhood": "ccc",
+      "claimed": false,
+      "version": 1,
+      "menu_hash": "6382b72649be2f033ebce38bd46c97760435bd7f85b9882122d5ea7981c06849",
+      "locations": [
+        "menus/8a46c5952246c7de87f00b22ceba64fa1d57e834ecae91c4067ac0d0e2c9c5f0/menu.json"
+      ]
+    },
+    {
+      "id": "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7",
+      "name": "Tava Restaurant",
+      "handle": "tava",
+      "neighbourhood": "khulshi",
+      "claimed": false,
+      "version": 1,
+      "menu_hash": "dbe6a038aad95d834a26ee85b953f32864ec45f51bcb916012961ea3ff9b95db",
+      "locations": [
+        "menus/6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7/menu.json"
+      ]
+    }
+  ]
+}

@@ -2,8 +2,7 @@
 """Optional browser test for the app. Needs Python Playwright and Chromium, which are
 NOT standard library, so this is not part of tools/check.py or tools/selftest.py.
 
-    python3 -m http.server 8765        (in the repo root, in another terminal)
-    python3 tools/browser_test.py http://localhost:8765/
+    python3 tools/browser_test.py     (serves a temporary copy with the test listings itself)
 
 Checks, at 320, 360, 768 and 1280 pixels wide, in light and dark mode:
 - no sideways scrolling and no text cut off on any screen, at normal text size and at 200 percent;
@@ -15,6 +14,7 @@ Checks, at 320, 360, 768 and 1280 pixels wide, in light and dark mode:
 Prints PASS or FAIL for each check and exits 1 on any failure.
 """
 import json
+import urllib.request
 import re
 from datetime import datetime
 import sys
@@ -26,7 +26,27 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import order_line  # noqa: E402
 
-ROOT_URL = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8765/").rstrip("/")
+def fixture_site():
+    """A temporary copy of the repository with the test-only listings (tools/fixtures) added,
+    rebuilt and served on a free port. The live directory holds only the demo listings."""
+    import atexit, shutil, subprocess, tempfile, socket, time
+    tmp = Path(tempfile.mkdtemp(prefix="hana-test-"))
+    site = tmp / "site"
+    shutil.copytree(HERE.parent, site, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.zip"))
+    for d in (HERE / "fixtures" / "menus").iterdir():
+        shutil.copytree(d, site / "menus" / d.name)
+    idx = json.loads((site / "index.json").read_text())
+    idx["restaurants"] += json.loads((HERE / "fixtures" / "index-extra.json").read_text())["restaurants"]
+    (site / "index.json").write_text(json.dumps(idx, indent=2) + "\n")
+    subprocess.run([sys.executable, str(site / "tools" / "build.py")], cwd=site, check=True, capture_output=True)
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
+    srv = subprocess.Popen([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"], cwd=site, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    atexit.register(lambda: (srv.terminate(), shutil.rmtree(tmp, ignore_errors=True)))
+    time.sleep(1)
+    return f"http://localhost:{port}"  # a host name, not an IP: passkeys need one
+
+
+ROOT_URL = (sys.argv[1] if len(sys.argv) > 1 else fixture_site()).rstrip("/")
 BASE = ROOT_URL + "/index.html"
 BIZ = ROOT_URL + "/business.html"
 TAVA = "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7"
@@ -100,8 +120,8 @@ with sync_playwright() as p:
     # The full order protocol (code, check line, confirmation window) applies to claimed listings.
     # No listing is claimed yet, so this page sees Tava as claimed, through a stand-in list.
     import hashlib
-    claimed_bytes = (HERE.parent / "menus" / TAVA / "menu.json").read_text().replace('"claimed": false', '"claimed": true', 1).encode()
-    stand_in = json.loads((HERE.parent / "list.json").read_text())
+    claimed_bytes = (HERE / "fixtures" / "menus" / TAVA / "menu.json").read_text().replace('"claimed": false', '"claimed": true', 1).encode()
+    stand_in = json.loads(urllib.request.urlopen(ROOT_URL + "/list.json").read())
     for L in stand_in["listings"]:
         if L["id"] == TAVA:
             L["claimed"], L["menu_hash"] = True, hashlib.sha256(claimed_bytes).hexdigest()
@@ -287,7 +307,7 @@ with sync_playwright() as p:
     page.wait_for_selector(".cat-tile")
     ok("the home page never shows the word null", "null" not in page.inner_text("main"))
     page.click("nav.kind-tabs button:has-text('Groceries')")
-    ok("the Groceries tab explains when no store is listed", "No grocery stores are listed yet" in page.inner_text("#results"))
+    ok("the Groceries tab lists the demo grocery store only", "DUWAN" in page.inner_text("#results") and "TONG" not in page.inner_text("#results"))
     page.click("nav.kind-tabs button:has-text('All')")
     page.goto(BASE + "#/order?r=" + TAVA + "&items=dahi-bara*2&mode=pickup")
     page.wait_for_selector("text=no listed price")
@@ -305,7 +325,7 @@ with sync_playwright() as p:
         page.click("main button:has-text('Download')")
     data = json.loads(Path(dl.value.path()).read_text())
     first = data.get("listings", [{}])[0]
-    ok("the directory downloads as JSON with only the chosen details", data.get("format") == "hana-directory-1" and len(data["listings"]) == 3
+    ok("the directory downloads as JSON with only the chosen details", data.get("format") == "hana-directory-1" and len(data["listings"]) == 5
        and "business_phone" in first and "items" not in first, list(first))
     page.select_option("#dl-zone", "khulshi")
     page.check("input[name=dl-format][value=pdf]", force=True)
@@ -544,6 +564,33 @@ with sync_playwright() as p:
     ok("an unsigned update is ignored and a signed one is accepted", signing["steps"] == ["out:true"], signing["steps"])
     ok("the customer's messages are signed and cannot be altered", signing["mine"] is True and signing["forged"] is False, signing)
     ok("the complaint summary carries the signed records", "(signed by the business)" in signing["summary"] and "Signed records" in signing["summary"])
+    # Demo listings: orders are confirmed and delivered on their own, with clear labels.
+    TONG = json.loads(urllib.request.urlopen(ROOT_URL + "/list.json").read())
+    TONG = next(x["id"] for x in TONG["listings"] if x.get("handle") == "tong")
+    dm = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block").new_page()
+    dm.on("pageerror", lambda e: errors.append(str(e)))
+    dm.goto(BASE + "#/r/" + TONG)
+    dm.wait_for_selector(".page-title")
+    ok("a demo listing says it is not a real place", "Demo, just for fun" in dm.inner_text("main") and "Not a real place" in dm.inner_text("main"))
+    dm.click("button[aria-label^='Add Bun']")
+    dm.goto(BASE + "#/basket")
+    dm.wait_for_selector("#zone")
+    dm.select_option("#zone", "khulshi")
+    dm.fill("#name", "Test")
+    dm.fill("#address", "Demo street")
+    ok("a demo order offers only the demo channel", dm.eval_on_selector_all("input[name=channel] + span", "e => e.map(x => x.textContent)") == ["Demo order: nothing is sent, just for fun"])
+    dm.click("button[type=submit]")
+    dm.wait_for_selector("text=Watch my order")
+    dm.click("text=Watch my order")
+    dm.wait_for_selector("text=Confirmed automatically (demo)", timeout=10000)
+    ok("a demo order is confirmed automatically, with a countdown", "Arriving in" in dm.inner_text("main") or "Arriving soon" in dm.inner_text("main"))
+    dm.evaluate("() => { const o = JSON.parse(localStorage.getItem('hana.orders')); o[0].created = new Date(Date.now() - 40000).toISOString(); localStorage.setItem('hana.orders', JSON.stringify(o)); }")
+    dm.wait_for_selector("text=Out for delivery with Rice Uddin", timeout=5000)
+    ok("Rice Uddin is the pretend rider", "Call Rice Uddin" in dm.inner_text("main"))
+    dm.evaluate("() => { const o = JSON.parse(localStorage.getItem('hana.orders')); o[0].created = new Date(Date.now() - 80000).toISOString(); localStorage.setItem('hana.orders', JSON.stringify(o)); }")
+    dm.wait_for_selector("text=Hope you enjoyed your dopamine hit", timeout=5000)
+    ok("a demo order is delivered on its own, labelled as a demo", "Demo, just for fun" in dm.inner_text("main") and "Problem with this order?" not in dm.inner_text("main"))
+    dm.context.close()
     # Business sign-in: a recovery phrase and a passkey unlock the key from vault.json.
     vctx = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
     published = {}

@@ -152,7 +152,7 @@ function statusChip(menu) {
   const o = openNow(menu.hours);
   if (o === null) return chip("Hours not stated");
   /* Volunteer-entered hours may be out of date, so they say so. */
-  const unsure = menu.claimed === false ? " (hours not confirmed)" : "";
+  const unsure = menu.claimed === false && menu.demo !== true ? " (hours not confirmed)" : "";
   return o ? chip("Open now" + unsure, "ok") : chip("Closed now" + unsure);
 }
 
@@ -444,7 +444,8 @@ function restaurantCard(r, zone, delivers, dishHits) {
     return h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, r.name), h("p", { class: "muted" }, r.problem || "This menu is not available."));
   }
   const chips = [statusChip(m)];
-  if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
+  if (m.demo === true) chips.push(chip("Demo, just for fun: not a real place", "warn"));
+  else if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
   if (!delivers) chips.push(chip("Does not deliver to " + areaName(state.area), "warn"));
   const body = [
     h("h2", { class: "card-title" }, h("a", { href: "#/r/" + r.id }, r.name)),
@@ -564,7 +565,8 @@ function viewRestaurant(id) {
 
   const chips = [os.closed && os.next ? chip("Closed · opens " + whenText(os.next) + (m.claimed === false ? " (hours not confirmed)" : "")) : statusChip(m)];
   const when = m.announcement && m.announcement.published ? longDate(m.announcement.published) : "";
-  if (m.claimed === false) chips.push(chip("Not confirmed by the business" + (when ? " · entered " + when : ""), "warn"));
+  if (m.demo === true) chips.push(chip("Demo, just for fun: not a real place", "warn"));
+  else if (m.claimed === false) chips.push(chip("Not confirmed by the business" + (when ? " · entered " + when : ""), "warn"));
   else if (when) chips.push(chip("Prices confirmed " + when));
   if (state.area && !zoneFor(m, state.area)) chips.push(chip("Does not list delivery to " + areaName(state.area), "warn"));
   const nodes = [
@@ -572,13 +574,14 @@ function viewRestaurant(id) {
     h("figure", { class: "flush hero" }, picture(cover, "cover", "", cuisineKey(m)), cover ? h("figcaption", { class: "credit" }, cover.page ? h("a", { href: cover.page, class: "link", rel: "noopener", target: "_blank" }, cover.credit) : cover.credit) : null),
     h("div", { class: "row" },
       h("p", { class: "muted flush max" }, (m.handle ? "@" + m.handle + " · " : "") + (m.kind || "Restaurant") + " · " + locatedIn(m)),
-      m.business_phone ? h("a", { href: "tel:" + m.business_phone, class: "button circle transparent", "aria-label": "Call " + m.name, title: "Call" }, icon("call")) : null,
+      m.business_phone && m.demo !== true ? h("a", { href: "tel:" + m.business_phone, class: "button circle transparent", "aria-label": "Call " + m.name, title: "Call" }, icon("call")) : null,
       favButton(r),
       m.handle ? h("button", { type: "button", class: "circle transparent", "aria-label": "Share this listing", title: "Share", on: { click: () => shareListing(m) } }, icon("share")) : null),
     h("nav", { class: "wrap small-space" }, chips),
     h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup !== false ? " Pickup is available." : "") +
       " Pay on delivery or at pickup, never in advance." + (os.closed && os.canOrder ? " You can schedule an order for when it opens." : "")),
   ];
+  if (m.demo === true) nodes.push(demoNotice());
   nodes.push(restaurantInfo(m));
 
   const sections = new Map();
@@ -1029,7 +1032,7 @@ function viewBasket() {
   const anyPreferred = channels.some((x) => x.preferred);
   const channelRadios = channels.map((c, i) => h("label", { class: "radio" },
     h("input", { type: "radio", name: "channel", value: String(i), checked: c.preferred || (i === 0 && !anyPreferred) }),
-    h("span", null, CHANNELS[c.app].label + (c.app === "hana" ? "" : c.app === "endpoint" ? " (" + contactText(c.app, c.id) + ")" : " · " + contactText(c.app, c.id)))));
+    h("span", null, CHANNELS[c.app].label + (c.app === "hana" || c.app === "demo" ? "" : c.app === "endpoint" ? " (" + contactText(c.app, c.id) + ")" : " · " + contactText(c.app, c.id)))));
 
   let sending = false;
   const form = h("form", { novalidate: true, on: { submit: async (e) => {
@@ -1052,7 +1055,7 @@ function viewBasket() {
     if (!channels.length) errors.push("This listing has no way to send a written order.");
     if (os.closed && !os.canOrder) errors.push("This business is closed and does not take scheduled orders.");
     if (os.closed && os.canOrder && !when.value) errors.push("Choose a time for your scheduled order.");
-    const waiting = store.get("hana.orders", []).filter((x) => x.status === "awaiting" && !x.informal);
+    const waiting = store.get("hana.orders", []).filter((x) => x.status === "awaiting" && !x.informal && !x.demo);
     if (waiting.some((x) => x.restaurant_id === r.id)) errors.push("You already have an order waiting for this business's reply. Wait for it, or cancel it on the Orders page.");
     else if (waiting.length >= 3) errors.push("You have three orders waiting for replies. Wait for them, or cancel one, before placing another.");
     if (errors.length) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, errors.join(" ")))); return; }
@@ -1069,6 +1072,8 @@ function viewBasket() {
       orderKey = await makeOrderKey();
       try { sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code, cpub: orderKey ? orderKey.pub : null }); await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; } catch (err) { directError = err.message; }
       if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent in Hana. " + directError + " Choose another way to send it."))); return; }
+    } else if (c.app === "demo") {
+      sentDirect = true; /* a demo order stays on this phone */
     } else if (ch.direct) {
       try { await sendDirect(c.id, o.message); sentDirect = true; } catch (err) { directError = err.message; }
       if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent directly. " + directError + " Choose another way to send it."))); return; }
@@ -1082,13 +1087,22 @@ function viewBasket() {
       menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
       items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price, note: (b.notes && b.notes[k]) || undefined })), subtotal: o.sub, fee: o.fee,
       message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
-      window_start: windowStart, scheduled, business_phone: menu.business_phone, informal: menu.claimed !== true,
+      window_start: windowStart, scheduled, business_phone: menu.demo === true ? null : menu.business_phone, informal: menu.claimed !== true && menu.demo !== true, demo: menu.demo === true || undefined,
       order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, sign_key: sealedInfo && orderKey ? orderKey.jwk : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
-      arrive_at: b.mode === "pickup" ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
+      arrive_at: b.mode === "pickup" || menu.demo === true ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
       feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
     log("Prepared order " + o.code + " for " + menu.name + (sentDirect ? "; sent directly to the business." : "."));
     state.basket = null; saveBasket();
+    if (menu.demo === true) {
+      out.replaceChildren(h("h2", { class: "section-title" }, "Demo order " + o.code + " placed"),
+        demoNotice(),
+        h("p", null, "Nothing was sent to anyone. Head to Orders to watch it get confirmed, prepared and brought to you by Rice Uddin, all in about a minute."),
+        h("nav", null, h("a", { href: "#/orders", class: "button" }, icon("receipt_long"), h("span", null, "Watch my order"))));
+      form.remove();
+      out.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const win = state.rules.confirmation_window_minutes;
     out.replaceChildren(...[
       h("h2", { class: "section-title" }, sentDirect ? "Order " + o.code + " sent" : "Order " + o.code + ": send it now"),
@@ -1141,6 +1155,49 @@ function log(text) {
 
 /* Orders that the business never confirmed are removed after the expiry time, so an unsent or
    unconfirmed order cannot be kept and used for a complaint. */
+/* Demo listings (TONG and DUWAN): orders move through every step on their own, for fun, like
+   the pretend-shopping sites people use for a small dopamine hit. Nothing is ever sent. */
+const DEMO_RIDER = { name: "Rice Uddin", phone: "012RICEUDDIN" };
+const DEMO_DONE_S = 75;
+const DEMO_STEPS = {
+  delivery: [[4, "confirm"], [6, "accepted", "Accepted. A pretend cook is on it."], [20, "ready", "Ready, and smelling imaginary-good."], [35, "out", "Out for delivery with Rice Uddin."], [DEMO_DONE_S, "delivered", "Delivered! Hope you enjoyed your dopamine hit."]],
+  pickup: [[4, "confirm"], [6, "accepted", "Accepted. A pretend cook is on it."], [20, "ready", "Ready for pickup (in your imagination)."], [45, "picked", "Picked up! Hope you enjoyed your dopamine hit."]],
+};
+function demoNotice() {
+  return notice("info", h("p", { class: "bold flush" }, "Demo, just for fun"), h("p", { class: "flush" }, "Not a real place. Nothing is sent, cooked or delivered, and nobody will come to your door. Enjoy the ride."));
+}
+function demoAdvance(orders) {
+  let changed = false;
+  for (const o of orders) {
+    if (!o || !o.demo || o.status === "cancelled") continue;
+    const start = new Date(o.created).getTime(), t = (Date.now() - start) / 1000;
+    for (const [at, step, text] of DEMO_STEPS[o.mode === "pickup" ? "pickup" : "delivery"]) {
+      if (t < at) break;
+      const when = new Date(start + at * 1000).toISOString();
+      if (step === "confirm") {
+        if (o.status === "awaiting") { Object.assign(o, { status: "confirmed_demo", confirmed_at: when, confirmation: "Confirmed automatically (demo)" }); changed = true; }
+      } else if (!(o.progress || []).some((p) => p.step === step)) {
+        o.progress = (o.progress || []).concat({ step, at: when, text, rider: step === "out" ? DEMO_RIDER : null });
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+let demoTimer = null;
+function demoTicker() {
+  clearInterval(demoTimer);
+  demoTimer = setInterval(() => {
+    if (location.hash !== "#/orders") { clearInterval(demoTimer); return; }
+    const orders = store.get("hana.orders", []);
+    if (demoAdvance(orders)) { store.set("hana.orders", orders); viewOrders(); return; }
+    for (const el of document.querySelectorAll("[data-demo-start]")) {
+      const left = Math.max(0, Math.ceil(Number(el.dataset.demoStart) / 1000 + DEMO_DONE_S - Date.now() / 1000));
+      el.textContent = "Arriving in " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") + " (demo time runs fast)";
+    }
+  }, 1000);
+}
+
 function expireOrders() {
   const win = Number(state.rules.confirmation_window_minutes) || 15;
   const keepHours = Number(state.rules.draft_order_expiry_hours) || 24;
@@ -1151,7 +1208,7 @@ function expireOrders() {
     if (!o.status) { o.status = o.confirmation ? "confirmed_unsigned" : "awaiting"; changed = true; }
     const age = now - new Date(o.created || o.at).getTime();
     const sinceStart = now - new Date(o.window_start || o.created || o.at).getTime();
-    if (o.status === "awaiting" && !o.informal && sinceStart > win * 60000) {
+    if (o.status === "awaiting" && !o.informal && !o.demo && sinceStart > win * 60000) {
       o.status = "expired";
       o.closed_at = new Date().toISOString();
       changed = true;
@@ -1174,6 +1231,7 @@ const STATUS_TEXT = {
   cancelled: ["Cancelled by you", "info"],
   confirmed_signed: ["Confirmed by the business (signature checked)", "ok"],
   confirmed_unsigned: ["Confirmed by message (not signed)", "info"],
+  confirmed_demo: ["Confirmed automatically (demo)", "info"],
   confirmed_unchecked: ["Confirmed (this browser cannot check the signature)", "info"],
 };
 
@@ -1213,7 +1271,10 @@ function orderCard(o, orders) {
     h("p", { class: "muted flush" }, "Order " + o.code + " · " + dateTime(o.created || o.at)),
     h("p", { class: "flush" }, (o.items.some((i) => i.price === null || i.price === undefined) ? "Prices to be confirmed by the business" : money(o.subtotal)) + (o.mode === "pickup" ? " (pickup)" : o.fee === null ? " plus delivery (fee not stated)" : " plus " + money(o.fee) + " delivery")),
     h("nav", { class: "wrap small-space" }, chip(st[0], st[1])),
-  ];
+    o.demo ? demoNotice() : null,
+    o.demo && o.status !== "cancelled" && o.mode !== "pickup" && !(o.progress || []).some((p) => p.step === "delivered")
+      ? h("p", { class: "bold", "data-demo-start": String(new Date(o.created).getTime()) }, "Arriving soon (demo time runs fast)") : null,
+  ].filter(Boolean);
   const save = () => store.set("hana.orders", orders);
   const win = Number(state.rules.confirmation_window_minutes) || 15;
   const deadline = new Date(new Date(o.window_start || o.created || o.at).getTime() + win * 60000);
@@ -1233,7 +1294,8 @@ function orderCard(o, orders) {
     kids.push(h("ul", { class: "list border" }, o.progress.map((p) => h("li", null, icon("check_circle"),
       h("div", { class: "max" }, h("div", null, p.text || p.step), h("div", { class: "small-text muted" }, dateTime(p.at) + (p.rider ? " · Rider " + p.rider.name + ", " + p.rider.phone : "")))))));
     const lastStep = o.progress.filter((p) => p.step !== "late").pop() || last;
-    if (lastStep.rider && lastStep.step === "out") kids.push(h("nav", null, h("a", { href: "tel:" + lastStep.rider.phone, class: "button border" }, icon("call"), h("span", null, "Call the rider"))));
+    if (o.demo && lastStep.rider && lastStep.step === "out") kids.push(h("nav", null, h("button", { type: "button", class: "border", on: { click: () => snackbar("Rice Uddin (" + DEMO_RIDER.phone + ") is pretend, but he says thank you for calling.") } }, icon("call"), h("span", null, "Call Rice Uddin"))));
+    else if (lastStep.rider && lastStep.step === "out") kids.push(h("nav", null, h("a", { href: "tel:" + lastStep.rider.phone, class: "button border" }, icon("call"), h("span", null, "Call the rider"))));
   }
   /* Check before you pay: tick each item when the order arrives, then hand over the money. */
   if (o.status.startsWith("confirmed") && (o.items || []).length && !(o.progress || []).some((p) => p.step === "delivered" || p.step === "picked")) {
@@ -1326,7 +1388,7 @@ function orderCard(o, orders) {
   } else {
     if (o.eta && o.eta !== "?") kids.push(h("p", { class: "small-text" }, "The business expects to deliver about " + o.eta + " minutes after confirming" + (o.confirmed_at ? ", around " + clockAt(new Date(new Date(o.confirmed_at).getTime() + Number(o.eta) * 60000)) : "") + "."));
     if (cancelButton) kids.push(h("nav", null, cancelButton));
-    kids.push(h("details", { class: "gap-top" }, h("summary", { class: "link" }, "Problem with this order?"),
+    if (!o.demo) kids.push(h("details", { class: "gap-top" }, h("summary", { class: "link" }, "Problem with this order?"),
       h("p", null, "Hana does not resolve disputes. For a problem involving money, contact the Directorate of National Consumer Rights Protection (DNCRP) at 16121 within 30 days, and include the summary below with a screenshot of the chat."),
       o.status === "confirmed_unsigned" ? notice("info", h("p", { class: "flush" }, "This confirmation is not signed, so the chat screenshot is the main evidence.")) : null,
       h("pre", null, complaintText(o)),
@@ -1400,6 +1462,8 @@ function startFeedPolling() {
 function viewOrders() {
   expireOrders();
   const orders = store.get("hana.orders", []);
+  if (demoAdvance(orders)) store.set("hana.orders", orders);
+  if (orders.some((o) => o.demo && o.status !== "cancelled" && !(o.progress || []).some((p) => p.step === "delivered" || p.step === "picked"))) demoTicker();
   const nodes = [pageTitle("Orders"), h("p", { class: "muted" }, "Orders are stored only on this phone. An order counts once the business confirms it within " + state.rules.confirmation_window_minutes + " minutes; otherwise it is cancelled automatically.")];
   if (!orders.length) nodes.push(h("p", { class: "muted" }, "No orders yet."));
   const PER = 10;

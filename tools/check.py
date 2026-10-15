@@ -693,6 +693,8 @@ def check_menu(menu_path, root, area_ids):
         err(rel, "contact needs at least one channel (SMS or phone is the baseline)")
     else:
         apps = {"whatsapp", "sms", "phone", "email", "xmpp", "matrix", "signal", "telegram", "messenger", "endpoint"}
+        if data.get("demo") is True and data.get("claimed") is False:
+            apps = apps | {"demo"}  # demo listings: orders stay inside the app (SPEC.md section 25)
         written = False
         for i, c in enumerate(contact):
             if not (isinstance(c, dict) and c.get("app") in apps and isinstance(c.get("id"), str) and c["id"].strip()):

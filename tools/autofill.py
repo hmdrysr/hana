@@ -61,7 +61,26 @@ def main(argv=None):
         print("ERROR", e)
         return 2
     print("filled in:", ", ".join(changed) if changed else "nothing to fill in")
+    tidy(a.root)
     return 0
+
+
+def tidy(root):
+    """An uploaded zip can add and change files but not remove them. So, after each upload:
+    remove listing folders that were moved to tools/fixtures (test data only), then rebuild the
+    generated files, which also removes listing pages for handles that no longer exist."""
+    import shutil
+    import subprocess
+    r = Path(root)
+    fx = r / "tools" / "fixtures" / "menus"
+    if fx.is_dir():
+        for d in fx.iterdir():
+            live = r / "menus" / d.name
+            if d.is_dir() and live.is_dir():
+                shutil.rmtree(live)
+                print("removed", live.relative_to(r), "(now test data in tools/fixtures)")
+    if (r / "tools" / "build.py").is_file():
+        subprocess.run([sys.executable, str(r / "tools" / "build.py")], cwd=r, check=False)
 
 
 if __name__ == "__main__":

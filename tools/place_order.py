@@ -159,6 +159,8 @@ def cmd_order(args):
     msg.append("Thank you!")
     if formal:
         msg += ["", f"Order reference {code} (Hana): {check}"]
+    if m.get("demo") is True:
+        msg = ["DEMO LISTING, NOT A REAL PLACE: nothing is sent. Try it in the app instead; it is confirmed and \"delivered\" in about a minute.", ""] + msg
     text = "\n".join(msg)
     print(text)
     print("\n--- How to send it (the customer's own account) ---")

@@ -26,7 +26,7 @@ Working and tested in browsers; not yet tested on enough real phones. For custom
 
 Every claimed business's confirmation, status update and message is signed, and so is every message the customer sends in Hana, so neither side can invent the other's words in a dispute. Listings entered by volunteers skip the order codes: the customer and the business agree on prices and the total in their chat.
 
-The three listings (Meal Master, Sliced and Tava Restaurant) were entered by a volunteer and are **not yet confirmed by the businesses**. The full design is in `SPEC.md`; planned upgrades, with the conditions for each, are in `ROADMAP.md`.
+The directory starts with two demo listings, **TONG: NOT A REAL PLACE** (a tea stall) and **DUWAN: NOT A REAL PLACE** (a grocery store), so anyone can try Hana. They use typical Bangladeshi retail prices from 2026 market reports. Orders to them are just for fun, like the pretend-shopping sites people use for a little dopamine hit: nothing is sent, the order is confirmed at once, Rice Uddin brings it, and it is "delivered" in about a minute. Every screen labels them as demos. The full design is in `SPEC.md`; planned upgrades, with the conditions for each, are in `ROADMAP.md`.
 
 ## Why Hana exists
 

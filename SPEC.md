@@ -814,3 +814,10 @@ Every hosted copy and every one-file copy carries the whole directory and serves
 - **Running late:** the business tools post a signed status update with step `late` ("Running about 15 minutes late"). Older apps show it as an ordinary update; it never changes the order's step.
 - **Confirmation date:** listings show "Prices confirmed" with the date of the menu's latest publication, or, for volunteer listings, "Not confirmed by the business" with the date they were entered. Volunteer listings' opening times are marked "(hours not confirmed)".
 
+## 25. Demo listings
+
+- `"demo": true` on an unclaimed listing marks it as a demo. Its only contact is `{"app": "demo"}`, which `tools/check.py` accepts only on demo listings. Every screen shows "Demo, just for fun: not a real place".
+- A demo order is never sent anywhere. It is confirmed after about 4 seconds, then moves through Accepted, Ready, Out for delivery (rider Rice Uddin, 012RICEUDDIN, whose Call button only shows a message) and Delivered at about 75 seconds ("Hope you enjoyed your dopamine hit"), with a countdown. Progress is worked out from the order's creation time, so it survives reloads.
+- Demo orders never expire, never count toward the limit of waiting orders and offer no complaint summary.
+- The live directory holds only TONG and DUWAN. The earlier volunteer listings (Meal Master, Sliced, Tava Restaurant) are kept in `tools/fixtures/` as test data; `tools/browser_test.py` serves a temporary copy of the repository with them added.
+
