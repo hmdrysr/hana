@@ -22,7 +22,7 @@ Check each menu file against `menu_hash` in `index.json` (SHA-256 of the file's 
 1. **Show before sending.** Show the customer the business, every item with its quantity and price, the delivery fee and the total, and get their clear approval before anything is sent.
 2. **No prepayment, ever.** Payment is only on delivery or at pickup: cash, Bangla QR, card on a POS terminal or mobile wallet transfer. Never pay, promise or arrange payment in advance. If a business asks for advance payment, tell the customer not to pay.
 3. **One business per order.** Each order goes to one business.
-4. **Prices come from the menu file only.** Prices include VAT and every other charge. The delivery fee is the only addition and never exceeds `rules.json` `max_delivery_fee`. If a fee is not stated, say so.
+4. **Prices come from the menu file only.** Prices include VAT and every other charge. The delivery fee is the only addition and never exceeds `rules.json` `max_delivery_fee`. If a fee is not stated, say so. An item whose price is `null` has no listed price: say so, and the order message asks the business for each price and the total.
 5. **Listings marked `"claimed": false`** were entered by volunteers and are not confirmed by the business. Tell the customer that prices may have changed.
 6. **Check opening hours** in the customer's local time (Asia/Dhaka). Order from a closed business only if the listing has `"scheduled_orders": true`, and say when the order is for.
 7. **Use the customer's own channel and details.** Send only from the customer's own account, with the name and address they gave. Do not invent details.

@@ -37,8 +37,20 @@ def sha(b):
     return hashlib.sha256(b).hexdigest()
 
 
+def with_prices(menu):
+    """The real Tava listing shows no prices; the price safeguards are tested on a copy with
+    prices filled in (Dahi Bara at 220, everything else at 300, sizes at 300 and 400)."""
+    for it in menu["items"]:
+        if "price" in it and it["price"] is None:
+            it["price"] = 220 if it["id"] == "dahi-bara" else 300
+        for i, op in enumerate(it.get("options") or []):
+            if op.get("price") is None:
+                op["price"] = 300 + 100 * i
+    return menu
+
+
 class Repo:
-    """A temporary copy of the real repo data with the Tava listing only."""
+    """A temporary copy of the real repo data with the Tava listing only (with prices)."""
 
     def __init__(self, tmp):
         self.root = Path(tmp)
@@ -47,8 +59,12 @@ class Repo:
         shutil.copytree(ROOT / "menus" / TAVA, self.dir)
         for f in ("areas.json", "peers.json", "vouchers.json", "rules.json", "regions.json", "index.html"):
             shutil.copy(ROOT / f, self.root / f)
-        self.versions = {1: json.loads((self.dir / "versions" / "1.json").read_bytes())}
-        self.raw = {1: (self.dir / "versions" / "1.json").read_bytes()}
+        v1 = with_prices(json.loads((self.dir / "versions" / "1.json").read_bytes()))
+        raw = dump(v1)
+        (self.dir / "versions" / "1.json").write_bytes(raw)
+        (self.dir / "menu.json").write_bytes(raw)
+        self.versions = {1: v1}
+        self.raw = {1: raw}
         self.index = None
         self.write_index()
 
@@ -305,7 +321,14 @@ check_case("allowed classes pass", False, "0 error(s)", lambda r: None,
 
 # ------------------------------------------------------------ order_line cases
 menu_path = ROOT / "menus" / TAVA / "menu.json"
-mbytes = menu_path.read_bytes()
+real_bytes = menu_path.read_bytes()
+real = json.loads(real_bytes)
+uline = order_line.build(real_bytes, real, {"dahi-bara": 2}, "khulshi")
+ures = order_line.decode(uline, [(real_bytes, real)])
+check_true("an item without a listed price is ordered and flagged for the business to price",
+           ures["ok"] and ures["subtotal_from_menu"] == 0 and any("no listed price" in f for f in ures["flags"]), str(ures))
+menu = with_prices(json.loads(real_bytes))
+mbytes = dump(menu)
 menu = json.loads(mbytes)
 known = [(mbytes, menu)]
 line = order_line.build(mbytes, menu, {"dahi-bara": 2}, "khulshi")

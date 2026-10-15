@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="t">
+  <title id="t">Hana: a smiling rice ball</title>
+  <defs>
+    <clipPath id="body">
+      <path d="M256 74C296 74 322 102 350 150L436 296C476 364 452 428 378 432H134C60 428 36 364 76 296L162 150C190 102 216 74 256 74Z"/>
+    </clipPath>
+  </defs>
+  <!-- rice -->
+  <path d="M256 74C296 74 322 102 350 150L436 296C476 364 452 428 378 432H134C60 428 36 364 76 296L162 150C190 102 216 74 256 74Z" fill="#FFFBF1"/>
+  <g clip-path="url(#body)">
+    <path d="M470 250C452 352 392 404 300 432H480Z" fill="#F3E6D2"/>
+    <g fill="#EBD5BD">
+      <ellipse cx="234" cy="128" rx="5" ry="10" transform="rotate(35 234 128)"/>
+      <ellipse cx="282" cy="122" rx="5" ry="10" transform="rotate(-30 282 122)"/>
+      <ellipse cx="210" cy="172" rx="5" ry="10" transform="rotate(-25 210 172)"/>
+      <ellipse cx="262" cy="160" rx="5" ry="10" transform="rotate(20 262 160)"/>
+      <ellipse cx="312" cy="170" rx="5" ry="10" transform="rotate(40 312 170)"/>
+      <ellipse cx="184" cy="214" rx="5" ry="10" transform="rotate(30 184 214)"/>
+      <ellipse cx="340" cy="214" rx="5" ry="10" transform="rotate(-35 340 214)"/>
+      <ellipse cx="150" cy="262" rx="5" ry="10" transform="rotate(-20 150 262)"/>
+      <ellipse cx="372" cy="262" rx="5" ry="10" transform="rotate(25 372 262)"/>
+      <ellipse cx="126" cy="318" rx="5" ry="10" transform="rotate(35 126 318)"/>
+      <ellipse cx="396" cy="316" rx="5" ry="10" transform="rotate(-30 396 316)"/>
+      <ellipse cx="104" cy="372" rx="5" ry="10" transform="rotate(-15 104 372)"/>
+      <ellipse cx="146" cy="384" rx="5" ry="10" transform="rotate(40 146 384)"/>
+      <ellipse cx="410" cy="378" rx="5" ry="10" transform="rotate(20 410 378)"/>
+      <ellipse cx="376" cy="400" rx="5" ry="10" transform="rotate(-40 376 400)"/>
+    </g>
+    <!-- nori -->
+    <rect x="170" y="318" width="172" height="130" rx="14" fill="#2E4B2F"/>
+    <path d="M170 386C226 372 288 400 342 380V448H170Z" fill="#284229"/>
+    <g fill="#3D5E3C">
+      <ellipse cx="204" cy="346" rx="3.5" ry="7" transform="rotate(30 204 346)"/>
+      <ellipse cx="248" cy="338" rx="3.5" ry="7" transform="rotate(-25 248 338)"/>
+      <ellipse cx="296" cy="350" rx="3.5" ry="7" transform="rotate(35 296 350)"/>
+      <ellipse cx="318" cy="396" rx="3.5" ry="7" transform="rotate(-30 318 396)"/>
+      <ellipse cx="226" cy="402" rx="3.5" ry="7" transform="rotate(25 226 402)"/>
+      <ellipse cx="270" cy="378" rx="3.5" ry="7" transform="rotate(-35 270 378)"/>
+      <ellipse cx="196" cy="384" rx="3.5" ry="7" transform="rotate(-20 196 384)"/>
+    </g>
+    <rect x="170" y="318" width="172" height="130" rx="14" fill="none" stroke="#3A2416" stroke-width="12"/>
+  </g>
+  <!-- outline -->
+  <path d="M256 74C296 74 322 102 350 150L436 296C476 364 452 428 378 432H134C60 428 36 364 76 296L162 150C190 102 216 74 256 74Z" fill="none" stroke="#3A2416" stroke-width="14" stroke-linejoin="round"/>
+  <!-- face -->
+  <g fill="none" stroke="#3A2416" stroke-width="13" stroke-linecap="round">
+    <path d="M184 258C190 232 222 232 228 258"/>
+    <path d="M284 258C290 232 322 232 328 258"/>
+  </g>
+  <path d="M230 266C246 260 266 260 282 266C286 292 274 312 256 312C238 312 226 292 230 266Z" fill="#3A2416"/>
+  <path d="M240 298C246 288 266 288 272 298C266 307 246 307 240 298Z" fill="#F2877A"/>
+  <g fill="#F6A99F">
+    <ellipse cx="172" cy="286" rx="25" ry="18"/>
+    <ellipse cx="340" cy="286" rx="25" ry="18"/>
+  </g>
+  <g fill="#E98A80">
+    <ellipse cx="165" cy="287" rx="3.5" ry="7"/>
+    <ellipse cx="178" cy="287" rx="3.5" ry="7"/>
+    <ellipse cx="333" cy="287" rx="3.5" ry="7"/>
+    <ellipse cx="346" cy="287" rx="3.5" ry="7"/>
+  </g>
+  <!-- joy lines -->
+  <g fill="none" stroke="#3A2416" stroke-width="11" stroke-linecap="round">
+    <path d="M58 228L78 242"/>
+    <path d="M46 268H70"/>
+    <path d="M454 228L434 242"/>
+    <path d="M466 268H442"/>
+  </g>
+</svg>

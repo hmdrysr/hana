@@ -132,8 +132,9 @@ main label.radio {
 .brand-mark {
   font-size: 1.75rem;
   line-height: 1;
-  inline-size: 2rem;
-  block-size: 2rem;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  object-fit: contain;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1028,11 +1029,8 @@ ul.list > li {
   block-size: 100%;
   cursor: pointer;
 }
-.icon-mark {
-  font-size: 1.25rem;
-}
-.icon-mark[aria-pressed="true"] {
-  background-color: var(--secondary-container);
+.swatch-f7f5f2 {
+  background-color: #f7f5f2;
 }
 .swatch-40e0d0 {
   background-color: #40e0d0;
@@ -1062,34 +1060,110 @@ ul.list > li {
   background-color: #111827;
 }
 
-/* ---------- First-visit walkthrough ---------- */
-.tour-card {
-  position: fixed;
-  inset-inline: 0.75rem;
-  inset-block-end: calc(5.5rem + env(safe-area-inset-bottom, 0px));
-  z-index: 200;
-  max-inline-size: 30rem;
-  margin-inline: auto;
+
+/* ---------- Receipts and statements (business point of sale) ---------- */
+.receipt {
+  background-color: #ffffff;
+  color: #000000;
   padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  background-color: var(--surface-container-highest);
-  color: var(--on-surface);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+  max-inline-size: 22rem;
+  font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  border: 1px dashed var(--outline-variant);
+  border-radius: 0.5rem;
 }
-@media (min-width: 601px) {
-  .tour-card {
-    inset-block-end: 1.5rem;
+.receipt-wide {
+  max-inline-size: 40rem;
+}
+.receipt p {
+  margin: 0.25rem 0;
+}
+.receipt hr {
+  border: 0;
+  border-block-start: 1px dashed #000000;
+  margin: 0.5rem 0;
+}
+.receipt .list > li {
+  min-block-size: 0;
+  padding-block: 0.125rem;
+  color: #000000;
+}
+.receipt-head,
+.receipt-title,
+.receipt-foot {
+  text-align: center;
+}
+.receipt-title {
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+.receipt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.receipt-row > span:first-child {
+  overflow-wrap: anywhere;
+}
+.receipt-row > span:last-child {
+  white-space: nowrap;
+}
+.receipt-total {
+  font-weight: 700;
+  font-size: 1rem;
+}
+.receipt-small {
+  font-size: 0.75rem;
+}
+@page roll {
+  size: 80mm 297mm;
+  margin: 4mm;
+}
+@page sheet {
+  size: A4;
+  margin: 15mm;
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-me,
+  .print-me * {
+    visibility: visible;
+  }
+  .print-me {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    border: 0;
+    inline-size: 72mm;
+    page: roll;
+  }
+  html.print-a4 .print-me {
+    inline-size: auto;
+    max-inline-size: none;
+    page: sheet;
   }
 }
-.tour-focus {
-  outline: 3px solid var(--primary);
-  outline-offset: 4px;
-  border-radius: 0.75rem;
-  position: relative;
-  z-index: 1;
+ul.more-list > li > a {
+  gap: 1rem;
+  padding-block: 0.5rem;
 }
-.tour-card > * {
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+}
+.field-row > * {
+  flex: 1 1 9rem;
+  min-inline-size: 0;
+  margin: 0;
+}
+.field-row > button {
+  flex: 0 0 auto;
+}
+.stack > hr {
   margin: 0;
 }

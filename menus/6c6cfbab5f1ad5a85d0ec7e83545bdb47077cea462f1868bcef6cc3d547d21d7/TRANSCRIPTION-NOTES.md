@@ -1,5 +1,7 @@
 # Transcription notes: Tava Restaurant
 
+**Prices removed (October 15, 2026).** At the volunteer's request, the listing shows no prices. Customers ask the restaurant, which states each price and the total when it confirms. The figures below are kept only as a record of the transcription and are not shown to customers.
+
 Listing ID: `6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7` (temporary, unclaimed). Entered by volunteer hmdrysr on October 15, 2026.
 
 ## Source

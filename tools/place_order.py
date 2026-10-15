@@ -96,7 +96,7 @@ def cmd_menu(args):
     m = find(listings, args.listing)["menu"]
     print(m["name"], "-", m.get("kind", "Restaurant"))
     for key, price in sorted(order_line.price_table(m).items()):
-        print(f"  {key:40} {money(price)}")
+        print(f"  {key:40} {'price on request' if price is None else money(price)}")
 
 
 def cmd_order(args):
@@ -123,17 +123,25 @@ def cmd_order(args):
         for op in it.get("options") or []:
             labels[f"{it['id']}.{op['id']}"] = f"{it['name']} ({op['label']})"
         labels.setdefault(it["id"], it["name"])
-    sub = sum(prices[k] * q for k, q in lines.items())
+    sub = sum((prices[k] or 0) * q for k, q in lines.items())
+    unpriced = any(prices[k] is None for k in lines)
     code = order_line.b32(secrets.token_bytes(4))[:6]
     where = (["Pickup: I will collect the order"] if args.pickup else
              ["Delivery to: " + args.address,
               "Zone: " + areas[args.zone]["name"] + (", " + areas[args.ward]["name"] if args.ward in areas else "")])
     msg = [f"Order {code} (sent with Hana)", "To: " + m["name"], ""]
-    msg += [f"{q} × {labels[k]}: {money(prices[k] * q)}" for k, q in sorted(lines.items())]
-    msg += ["", "Items: " + money(sub),
-            "Pickup: no delivery fee" if args.pickup else ("Delivery fee: not stated; please confirm" if fee is None else "Delivery fee: " + money(fee))]
-    if fee is not None:
-        msg.append("Total: " + money(sub + fee))
+    msg += [f"{q} × {labels[k]}: price not listed" if prices[k] is None else f"{q} × {labels[k]} at {money(prices[k])} = {money(prices[k] * q)}"
+            for k, q in sorted(lines.items())]
+    msg.append("")
+    if not unpriced:
+        msg.append("Subtotal (items): " + money(sub))
+    elif sub:
+        msg.append("Subtotal of listed prices: " + money(sub))
+    msg.append("Pickup: no delivery fee" if args.pickup else ("Delivery fee: not stated; please confirm" if fee is None else "Delivery fee: " + money(fee)))
+    if unpriced:
+        msg.append("Please tell me the price of each item and the total, including the delivery fee, when you confirm.")
+    elif fee is not None:
+        msg.append("Total, including delivery: " + money(sub + fee))
     msg += ["Payment: cash on delivery" + (" (at pickup)" if args.pickup else "") + ". I will not pay in advance.", "",
             "Name: " + args.name] + where
     if args.note:

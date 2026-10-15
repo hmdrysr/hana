@@ -739,6 +739,29 @@ A claimed business may name a `confirmation_feed`: an https ntfy topic it contro
 - **Connections (optional).** With a token for its own repository on GitHub, Codeberg, Forgejo or Gitea, the business publishes new versions with one tap through the forge's API. With an ntfy topic as its order endpoint, new orders appear on the Orders page by themselves, are checked against the menu, and are confirmed or declined with one tap; signed confirmations go to the confirmation feed automatically. The key can be kept in the browser's own database. Tokens and keys never leave the device except to the business's own forge.
 - **Download choices.** The directory download lets the customer choose the format (PDF telephone book or JSON), which businesses (type, delivery zone, category) and which details (contact, address, cuisine, hours, delivery, menu). Name, type and zone are always included.
 
-## 16. App icon
+## 16. Logo and app icon
 
-The standard icon is the french fries 🍟 on teal (#0F766E): `icon.svg` and `favicon-32.png` for browser tabs, `apple-touch-icon.png` for iPhone and iPad, and `icon-192.png`, `icon-512.png` and `icon-maskable-512.png` in `manifest.webmanifest`. Inside the app, the mark has no background. In Settings, a person can choose another background colour and picture. The icon is then drawn on their device and used for the browser tab, for Add to Home Screen and in a manifest written on the device (which is why the page's security policy allows `manifest-src data:`). An app installed before the change keeps its old icon until it is removed and installed again.
+The logo is a smiling rice ball, drawn for Hana as a vector file (`logo.svg`, transparent background, released with the project under the MIT Licence). In the app it appears beside the word "Hana" with no background. The standard icons put it on a rice-paper background (#F7F5F2): `icon.svg` and `favicon-32.png` for browser tabs, `apple-touch-icon.png` for iPhone and iPad, and `icon-192.png`, `icon-512.png` and `icon-maskable-512.png` in `manifest.webmanifest`. In Settings, a person can choose another background colour; the icon is then drawn on their device and used for the browser tab, Add to Home Screen and a manifest written on the device (hence `manifest-src data:` in the page's security policy). An app installed before the change keeps its old icon until it is removed and installed again.
+
+## 17. Closed businesses, scheduled orders, arrival times and cancelling
+
+- Items in a closed business are never greyed out. Tapping one explains that the business is closed and when it opens. If the business takes scheduled orders, the customer chooses a time while it is open and the order is prepared for then; otherwise they are asked to come back when it is open.
+- The confirmation window for an order placed while the business is closed starts when the business opens: the business has 15 minutes from opening to confirm or decline, after which the order is cancelled automatically.
+- Each delivery zone has the business's own delivery time (`eta_min`). Customers see an estimated arrival of that time plus the 15-minute confirmation window, at checkout and on the order. A signed confirmation can give a new estimate (E=).
+- A customer can cancel an order within 15 minutes of placing it (or of opening, for a scheduled order). The app prepares a cancellation, `CANCEL <order code>`, for the same channel as the order: a prefilled WhatsApp, text or email message, or, for an order sent directly to the business's order address, the cancellation is sent automatically. The business tools recognise cancellations and mark the order as cancelled.
+
+## 17a. Items without a listed price
+
+An item's price (or a size's price) may be `null`: the listing does not state it. Volunteers use this when they know a business's dishes but not its current prices, and Tava Restaurant's listing has no prices for this reason. The app shows "Price on request", the basket shows the subtotal of listed prices only, and the order message lists such items as "price not listed" and asks the business to state the price of each item and the total, including the delivery fee, when it confirms. The check line counts these items at 0 in S=, and the business tools flag them so that the business prices them in its reply.
+
+## 18. Point of sale, records, riders and backups (optional, for businesses)
+
+- **Where the data lives.** Only the menu and listing are published. Sales, receipts, customer details, riders, keys and tokens are kept in the business's browser database (IndexedDB) and leave the device only to services the business connects.
+- **Sales and receipts.** Counter, pickup and delivery sales, or a confirmed Hana order recorded with one tap. Receipts have a serial number, date and time, business details (and BIN, if given), items, delivery fee, total and payment method, and print on 80 mm thermal paper or A4, or save as PDF through the browser. They are customer receipts, not VAT tax invoices: a business that must issue Mushak-6.3 invoices or use an NBR electronic fiscal device must keep doing so.
+- **Statements.** Totals for any period by payment method and by item, printable or as CSV for spreadsheets.
+- **Riders.** A rider list on the device; a job goes to a rider as a WhatsApp message containing only what the courier pledge allows. Optionally, jobs are posted as JSON to a dispatch address the business runs (for example Node-RED or its own server, which can use a courier company's merchant service). Courier services' secret keys never go in the app.
+- **Backups.** A backup file at any time; and, optionally, Supabase (hosted or self-hosted, through its standard REST interface) or a self-hosted CouchDB database (through its standard HTTP interface). With a passphrase, records are encrypted on the device with AES-GCM using a key derived by PBKDF2-SHA-256 before they are sent. Restoring merges records and keeps the newest copy of each.
+
+## 19. Mirrors
+
+Every hosted copy and every one-file copy carries the whole directory and serves as a backup. The app remembers the mirrors in `peers.json` and uses them when the main copy cannot be reached. See `MIRRORING.md` and `tools/verify_mirror.py`.

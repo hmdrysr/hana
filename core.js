@@ -158,6 +158,9 @@ const store = {
 
 /* Money in Bangladeshi taka, written with the ISO code and Canadian digit grouping. */
 const money = (n) => "BDT " + Number(n).toLocaleString("en-CA");
+/* A listed price, or a note that the business gives it when it confirms. */
+const NO_PRICE = "Price on request";
+const priceOrAsk = (n) => (n === null || n === undefined ? NO_PRICE : money(n));
 
 /* 24-hour "19:00" to "7 p.m.", "03:30" to "3:30 a.m.", "00:00" to "midnight", "12:00" to "noon". */
 function clock(hhmm) {
@@ -294,6 +297,14 @@ async function getText(path) {
     if (SNAP) { try { localStorage.setItem("hana.data:" + path, text); } catch (e) { /* storage full: the snapshot still works */ } }
     return text;
   } catch (e) {
+    /* The main copy is unreachable: try the mirrors listed in peers.json (remembered from the
+       last successful visit). Menus are still checked against their hashes and signatures. */
+    for (const base of store.get("hana.peers", [])) {
+      try {
+        const r = await fetch(new URL(path, base).href, { cache: "no-cache" });
+        if (r.ok) return await r.text();
+      } catch (x) { /* next mirror */ }
+    }
     if (SNAP) {
       let cached = null;
       try { cached = localStorage.getItem("hana.data:" + path); } catch (x) { /* ignore */ }
@@ -445,24 +456,30 @@ function chip(text, tone) {
 function sectionTitle(text) { return h("h2", { class: "section-title" }, text); }
 /* ---------------------------------------------------------------- app icon */
 
-/* The person can choose the app icon's background and picture. The icon is drawn on the
+/* The person can choose the app icon's background colour. The icon is drawn on the
    device, then used for the browser tab, for Add to Home Screen and in a manifest written on the
    device. The standard icon (the files in the repository) is used until something is changed. */
-const ICON_BGS = [["#0F766E", "Teal"], ["#40E0D0", "Turquoise"], ["#9A3412", "Clay"], ["#3730A3", "Indigo"], ["#15803D", "Green"],
-  ["#7E22CE", "Plum"], ["#FACC15", "Yellow"], ["#FFFFFF", "White"], ["#111827", "Black"]];
-const ICON_MARKS = ["🍟", "🥡", "🍛", "🍕", "🍔", "🍗", "🍜", "🥘", "🛒"];
-const ICON_DEFAULT = { bg: "#0F766E", mark: "🍟" };
+const ICON_BGS = [["#F7F5F2", "Rice paper"], ["#0F766E", "Teal"], ["#40E0D0", "Turquoise"], ["#9A3412", "Clay"], ["#3730A3", "Indigo"],
+  ["#15803D", "Green"], ["#7E22CE", "Plum"], ["#FACC15", "Yellow"], ["#111827", "Black"]];
+const ICON_DEFAULT = { bg: "#F7F5F2" };
 function iconChoice() { return Object.assign({}, ICON_DEFAULT, store.get("hana.icon", {})); }
-function drawIcon(size, frac, radius, choice) {
+/* The logo (logo.svg, the smiling rice ball) drawn on the chosen background. */
+let logoImage = null;
+function loadLogo() {
+  if (logoImage) return logoImage;
+  const brand = document.querySelector("img.brand-mark");
+  logoImage = new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = brand ? brand.src : "logo.svg"; });
+  return logoImage;
+}
+async function drawIcon(size, frac, radius, choice) {
+  const img = await loadLogo();
   const c = document.createElement("canvas");
   c.width = c.height = size;
   const g = c.getContext("2d");
   g.fillStyle = /^#[0-9a-f]{6}$/i.test(choice.bg) ? choice.bg : ICON_DEFAULT.bg;
   if (radius && g.roundRect) { g.beginPath(); g.roundRect(0, 0, size, size, radius); g.fill(); } else g.fillRect(0, 0, size, size);
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.font = Math.round(size * frac) + 'px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
-  g.fillText(ICON_MARKS.includes(choice.mark) ? choice.mark : ICON_DEFAULT.mark, size / 2, size * 0.54);
+  const w = size * frac;
+  g.drawImage(img, (size - w) / 2, (size - w) / 2, w, w);
   return c.toDataURL("image/png");
 }
 function setLink(rel, href, extra) {
@@ -470,21 +487,21 @@ function setLink(rel, href, extra) {
   if (!l) { l = document.createElement("link"); l.rel = rel; document.head.append(l); }
   l.href = href;
 }
-function applyIcon() {
+async function applyIcon() {
   const ch = iconChoice();
-  if (ch.bg.toUpperCase() === ICON_DEFAULT.bg && ch.mark === ICON_DEFAULT.mark) return;
+  if (ch.bg.toUpperCase() === ICON_DEFAULT.bg) return;
   try {
-    setLink("icon", drawIcon(64, 0.62, 14, ch), '[type="image/svg+xml"]');
-    setLink("icon", drawIcon(32, 0.62, 7, ch), '[sizes="32x32"]');
-    setLink("apple-touch-icon", drawIcon(180, 0.6, 0, ch));
+    setLink("icon", await drawIcon(64, 0.9, 14, ch), '[type="image/svg+xml"]');
+    setLink("icon", await drawIcon(32, 0.94, 7, ch), '[sizes="32x32"]');
+    setLink("apple-touch-icon", await drawIcon(180, 0.86, 0, ch));
     const base = new URL(".", document.baseURI).href;
     const manifest = {
       id: base, name: "Hana", short_name: "Hana", start_url: base, scope: base, display: "standalone",
       description: "Food and groceries in Chittagong. A free, open directory that prepares your orders. Pay on delivery.",
       background_color: ch.bg, theme_color: "#9a3412",
-      icons: [{ src: drawIcon(192, 0.6, 0, ch), sizes: "192x192", type: "image/png", purpose: "any" },
-        { src: drawIcon(512, 0.6, 0, ch), sizes: "512x512", type: "image/png", purpose: "any" },
-        { src: drawIcon(512, 0.48, 0, ch), sizes: "512x512", type: "image/png", purpose: "maskable" }],
+      icons: [{ src: await drawIcon(192, 0.86, 0, ch), sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: await drawIcon(512, 0.86, 0, ch), sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: await drawIcon(512, 0.62, 0, ch), sizes: "512x512", type: "image/png", purpose: "maskable" }],
     };
     setLink("manifest", "data:application/manifest+json;charset=utf-8," + encodeURIComponent(JSON.stringify(manifest)));
   } catch (e) { /* the standard icon stays */ }
@@ -773,14 +790,14 @@ async function buildStandalone(opts) {
   const [page, coreJs, appJs, beer, theme, bookJs, fontBuf] = await Promise.all(["index.html", "core.js", "app.js", "theme/beer.min.css", "theme/theme.css", "phonebook.js"].map(fetchText)
     .concat([fetch("theme/material-symbols-subset.woff2").then((r) => r.arrayBuffer())]));
   const sprite = (await fetchText("icons/food.svg")).replace("<svg ", "<svg hidden ");
+  const logoUri = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(await fetchText("logo.svg"))));
   const fontB64 = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(fontBuf))));
   const files = {};
   for (const f of ["rules.json", "areas.json", "index.json", "TERMS.md"]) files[f] = await getText(f);
   const index = JSON.parse(files["index.json"]);
-  if (opts.mode === "business") {
-    index.restaurants = index.restaurants.filter((r) => r.id === opts.listingId);
-    if (!index.restaurants.length) throw new Error("That listing is not in the directory yet.");
-  }
+  /* Every copy carries the whole directory, so each one is also a backup of it. A business
+     site opens on its own listing. */
+  if (opts.mode === "business" && !index.restaurants.some((r) => r.id === opts.listingId)) throw new Error("That listing is not in the directory yet.");
   for (const r of index.restaurants) for (const loc of r.locations || []) { try { files[loc] = await getText(loc); break; } catch (e) { /* next */ } }
   const directory = SNAP ? DATA_BASE : new URL(".", document.baseURI).href;
   const site = { repo_url: (opts.site && opts.site.repo_url) || "", company_url: "https://hamidyasir.com", directory_url: directory,
@@ -799,6 +816,7 @@ async function buildStandalone(opts) {
     .replace('<link rel="stylesheet" href="theme/beer.min.css">\n<link rel="stylesheet" href="theme/theme.css">', () => "<style>" + css + "</style>")
     .replace('<script src="core.js" defer></script>\n<script src="app.js" defer></script>', () => scripts.map((s) => "<script>" + s + "</script>").join("\n"))
     .replace('<header class="responsive">', () => sprite + '\n<header class="responsive">')
+    .replace('src="logo.svg"', () => 'src="' + logoUri + '"')
     .replace(/{{REPO_URL}}/g, site.repo_url || "#");
   return html;
 }

@@ -235,6 +235,11 @@ async function versionsOf(row) {
 /* Finds a listing by its business phone. Owners look up their own listing this way; the
    tools never show a list of unclaimed businesses. */
 async function findListingByPhone(phone, unclaimedOnly) {
+  const found = await findListingByPhoneRaw(phone, unclaimedOnly);
+  if (!found.error && !unclaimedOnly) store.set("hana.biz.menu", found.menu);
+  return found;
+}
+async function findListingByPhoneRaw(phone, unclaimedOnly) {
   const want = String(phone || "").replace(/[\s-]/g, "").replace(/^0/, "+880").replace(/^880/, "+880");
   if (!/^\+8801\d{9}$/.test(want)) return { error: "Enter the business phone in the format +8801XXXXXXXXX." };
   for (const row of B.index) {
@@ -251,24 +256,19 @@ function viewHome() {
   show("home", "",
     pageTitle("Business tools"),
     h("p", null, "Free tools for restaurants, kitchens and grocery stores in Chittagong. Listing on Hana costs nothing, and Hana takes no commission."),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "List your business"),
-      h("p", null, "Fill in one form. The page prepares your signed menu file and a request for the community to verify you."),
-      h("nav", null, h("a", { href: "#/join", class: "button" }, icon("add_business"), h("span", null, "New listing")))),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Claim a listing"),
-      h("p", null, "If a volunteer has already listed your business, look it up with your business phone and claim it."),
-      h("nav", null, h("a", { href: "#/claim", class: "button border" }, icon("verified"), h("span", null, "Claim a listing")))),
     h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Orders"),
-      h("p", null, "Check each order against your published menu, then confirm or decline it with one tap. With an order topic set up, new orders appear by themselves."),
+      h("p", null, "Check each order against your published menu, then confirm or decline it with one tap."),
       h("nav", null, h("a", { href: "#/confirm", class: "button" }, icon("inbox"), h("span", null, "Open orders")))),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Edit your menu"),
-      h("p", null, "Add, remove and reorder items, change prices, sizes and delivery fees, and publish a signed new version. Price changes are announced publicly."),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Your menu"),
+      h("p", null, "Change items, prices, sizes, delivery fees and delivery times, and publish a signed new version."),
       h("nav", null, h("a", { href: "#/update", class: "button" }, icon("edit_note"), h("span", null, "Edit my menu")))),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Connections (optional)"),
-      h("p", null, "Connect your repository and an order topic to publish and receive orders without downloading or uploading files. Everything stays on this device."),
-      h("nav", null, h("a", { href: "#/connect", class: "button border" }, icon("tune"), h("span", null, "Set up connections")))),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Your own website"),
-      h("p", null, "Make a one-file website for your business that you can put on your own hosting. It stays in step with your Hana listing and carries the line \u201cCreated using Hana by Hamid Yasir & Co.\u201d"),
-      h("nav", null, h("a", { href: "#/site", class: "button border" }, icon("storefront"), h("span", null, "Make my website")))),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "New to Hana?"),
+      h("p", null, "List your business, or claim the listing a volunteer entered. Point of sale, receipts, riders, backups and your own website are under More."),
+      h("nav", { class: "wrap" }, h("a", { href: "#/join", class: "button border" }, icon("add_business"), h("span", null, "List my business")),
+        h("a", { href: "#/claim", class: "button border" }, icon("verified"), h("span", null, "Claim a listing")),
+        h("a", { href: "#/more", class: "button border" }, icon("tune"), h("span", null, "More tools")))),
+    notice("info", h("p", { class: "bold flush" }, "What leaves your device"),
+      h("p", { class: "flush" }, "Only your menu and your directory listing are published, to your own repository and the Hana directory on GitHub. Orders, sales, receipts, customer details, riders, keys and tokens stay on this device, or go only to services you connect yourself.")),
     sectionTitle("Rules for every business"),
     h("ul", { class: "list border" }, [
       "Take payment only on delivery or at pickup, never in advance.",
@@ -287,7 +287,7 @@ function itemsToText(items) {
   return (items || []).map((it) => [
     (it.section || "Menu") + (it.category ? " / " + it.category : ""),
     it.name,
-    it.options ? it.options.map((o) => o.label + ": " + o.price).join("; ") : String(it.price),
+    it.options ? it.options.map((o) => o.label + ": " + (o.price === null ? "?" : o.price)).join("; ") : (it.price === null || it.price === undefined ? "?" : String(it.price)),
     it.description || "",
     it.image ? it.image.src : "",
   ].join(" | ").replace(/( \| )+$/, "")).join("\n");
@@ -311,11 +311,12 @@ function textToItems(text, oldItems) {
     if (category) it.category = category;
     if (description) it.description = description;
     if (pic) it.image = { src: safeImageUrl(pic) };
-    if (/^\d+$/.test(priceText)) it.price = Number(priceText);
+    if (priceText === "?" || priceText === "") it.price = null;
+    else if (/^\d+$/.test(priceText)) it.price = Number(priceText);
     else {
       const opts = priceText.split(";").map((x) => x.trim()).filter(Boolean).map((x) => {
-        const m = /^(.+?):\s*(\d+)$/.exec(x);
-        return m ? { id: (old && (old.options || []).find((o) => norm(o.label) === norm(m[1])) || {}).id || slug(m[1]), label: m[1].trim(), price: Number(m[2]) } : null;
+        const m = /^(.+?):\s*(\d+|\?)$/.exec(x);
+        return m ? { id: (old && (old.options || []).find((o) => norm(o.label) === norm(m[1])) || {}).id || slug(m[1]), label: m[1].trim(), price: m[2] === "?" ? null : Number(m[2]) } : null;
       });
       if (opts.length < 2 || opts.some((o) => !o)) { errors.push("Line " + (n + 1) + ": a price must be a whole number, or two or more options like 8 inch: 529; 12 inch: 749."); return; }
       it.options = opts;
@@ -352,13 +353,13 @@ function viewJoin() {
     const rows = [];
     if (scope === "ccc") {
       rows.push(h("p", { class: "small-text muted" }, "Set a fee for your own zone and one flat fee for every other zone, or turn on per-zone fees."));
-      rows.push(textFieldFor("fee-home", "Delivery fee in " + (home ? areaName(home) : "your zone") + " (BDT)", "number"));
+      rows.push(feeRow("fee-home", home ? areaName(home) : "Your zone"));
       rows.push(check("perzone", "Set a different fee for each zone", false));
       rows.push(h("div", { id: "fee-rest" }));
     } else {
       rows.push(h("p", { class: "small-text muted" }, "Tick each zone you deliver to and give its fee."));
       for (const z of zones) {
-        rows.push(check("z-" + z.id, "Deliver to " + z.name, z.id === home), textFieldFor("fee-" + z.id, "Fee to " + z.name + " (BDT)", "number"));
+        rows.push(check("z-" + z.id, "Deliver to " + z.name, z.id === home), feeRow("fee-" + z.id, z.name));
       }
     }
     feeTable.replaceChildren(...rows);
@@ -367,11 +368,17 @@ function viewJoin() {
     const drawRest = () => {
       if (!rest) return;
       rest.replaceChildren(...(per && per.checked
-        ? zones.filter((z) => z.id !== home).map((z) => textFieldFor("fee-" + z.id, "Fee to " + z.name + " (BDT)", "number"))
-        : [textFieldFor("fee-rest-flat", "Delivery fee to every other zone (BDT)", "number")]));
+        ? zones.filter((z) => z.id !== home).map((z) => feeRow("fee-" + z.id, z.name))
+        : [feeRow("fee-rest-flat", "Every other zone")]));
     };
     if (per) per.addEventListener("change", drawRest);
     drawRest();
+  }
+  /* Fee and delivery time for one zone, side by side. */
+  function feeRow(id, place) {
+    return h("div", { class: "field-row" },
+      textField(id, place + ": fee (BDT)", input(id, { type: "number", min: 0, max: B.rules.max_delivery_fee })),
+      textField("eta-" + id, "Minutes", input("eta-" + id, { type: "number", min: 5, max: 240 })));
   }
   function textFieldFor(id, label, type) { return textField(id, label, input(id, { type: type || "text", min: type === "number" ? 0 : null, max: type === "number" ? B.rules.max_delivery_fee : null })); }
 
@@ -431,7 +438,8 @@ function viewJoin() {
     feeTable,
     textField("min", "Minimum order (BDT)", input("min", { type: "number", min: 0 })),
     hint("Enter 0 if there is no minimum."),
-    textField("eta", "Usual delivery time (minutes)", input("eta", { type: "number", min: 5, max: 240 })),
+    textField("eta", "Usual delivery time, for zones where you leave Minutes blank", input("eta", { type: "number", min: 5, max: 240 })),
+    hint("Customers see your delivery time plus " + (B.rules.confirmation_window_minutes || 15) + " minutes, the time you have to confirm, as the estimated arrival."),
     h("p", { class: "small-text muted" }, "Delivery fees may not exceed " + money(B.rules.max_delivery_fee) + ". You can change fees later with Update prices."),
     check("pickup", "Customers can pick up orders", true),
     check("scheduled", "Customers may schedule orders for later, including while the business is closed", false),
@@ -439,7 +447,7 @@ function viewJoin() {
     h("nav", { class: "vertical left-align" }, Object.entries(B.rules.payment_methods_on_delivery || {}).map(([k, label]) => check("pay-" + k, label, k === "cash"))),
 
     sectionTitle("4. Menu"),
-    h("p", { class: "small-text muted" }, "Add your items section by section, for example Starters, Pizza and Drinks. Prices are whole taka and include VAT and every other charge. For an item sold in more than one size, add each size with its price."),
+    h("p", { class: "small-text muted" }, "Add your items section by section, for example Starters, Pizza and Drinks. Prices are whole taka and include VAT and every other charge. For an item sold in more than one size, add each size with its price. If you do not know a price, leave it blank: customers then ask the business, which gives the price when it confirms."),
     itemsEditor,
 
     sectionTitle("5. Where your menu file will live"),
@@ -478,19 +486,22 @@ function viewJoin() {
     const fee = (id) => { const v = val(id); return /^\d+$/.test(v) ? Number(v) : NaN; };
     const zonesOut = [];
     const common = { min_order: /^\d+$/.test(val("min")) ? Number(val("min")) : NaN, eta_min: /^\d+$/.test(val("eta")) ? Number(val("eta")) : NaN };
-    if (isNaN(common.min_order) || isNaN(common.eta_min)) errors.push("Enter the minimum order and the usual delivery time as whole numbers.");
+    if (isNaN(common.min_order)) errors.push("Enter the minimum order as a whole number.");
     const home = val("zone");
     if (val("scope") === "ccc") {
-      if (home) zonesOut.push({ id: home, shape: "named", areas: [home], fee: fee("fee-home") });
+      if (home) zonesOut.push({ id: home, shape: "named", areas: [home], fee: fee("fee-home"), _eta: "eta-fee-home" });
       if (checked("perzone")) {
-        for (const z of zonesList()) if (z.id !== home) zonesOut.push({ id: z.id, shape: "named", areas: [z.id], fee: fee("fee-" + z.id) });
-      } else zonesOut.push({ id: "ccc", shape: "named", areas: ["ccc"], fee: fee("fee-rest-flat") });
+        for (const z of zonesList()) if (z.id !== home) zonesOut.push({ id: z.id, shape: "named", areas: [z.id], fee: fee("fee-" + z.id), _eta: "eta-fee-" + z.id });
+      } else zonesOut.push({ id: "ccc", shape: "named", areas: ["ccc"], fee: fee("fee-rest-flat"), _eta: "eta-fee-rest-flat" });
     } else {
-      for (const z of zonesList()) if (checked("z-" + z.id)) zonesOut.push({ id: z.id, shape: "named", areas: [z.id], fee: fee("fee-" + z.id) });
+      for (const z of zonesList()) if (checked("z-" + z.id)) zonesOut.push({ id: z.id, shape: "named", areas: [z.id], fee: fee("fee-" + z.id), _eta: "eta-fee-" + z.id });
       if (!zonesOut.length) errors.push("Tick at least one zone you deliver to.");
     }
     for (const z of zonesOut) {
-      Object.assign(z, common);
+      const own = val(z._eta);
+      delete z._eta;
+      Object.assign(z, common, /^\d+$/.test(own) ? { eta_min: Number(own) } : {});
+      if (isNaN(z.eta_min)) errors.push("Enter the delivery time in minutes for " + areaName(z.areas[0]) + ", or a usual delivery time.");
       if (isNaN(z.fee)) errors.push("Enter a delivery fee for " + areaName(z.areas[0]) + ".");
       else if (z.fee > cap) errors.push("The fee for " + areaName(z.areas[0]) + " is above the limit of " + money(cap) + ".");
     }
@@ -579,7 +590,7 @@ function viewJoin() {
     out.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  show("join", "List or claim", pageHeader("List or claim your business", "#/"),
+  show("join", "List or claim", pageHeader("List or claim your business", "#/more"),
     h("p", { class: "muted" }, "Free. Everything is prepared on this device and nothing is sent until you submit the request."),
     form, out);
   if (claimTarget) { fill(claimTarget); claimTarget = null; }
@@ -633,7 +644,7 @@ let claimTarget = null;
 function viewClaim() {
   const out = h("div", { "aria-live": "polite" });
   const phone = input("claim-phone", { inputmode: "tel", maxlength: 14 });
-  show("join", "Claim a listing", pageHeader("Claim a listing", "#/"),
+  show("join", "Claim a listing", pageHeader("Claim a listing", "#/more"),
     h("p", { class: "muted" }, "Enter your business phone number. If a volunteer has listed your business, you can claim it. Claims are verified by two community members (CLAIMS.md)."),
     textField("claim-phone", "Business phone", phone),
     h("nav", null, h("button", { type: "button", on: { click: async () => {
@@ -650,7 +661,7 @@ function viewClaim() {
 function viewSite() {
   const out = h("div", { "aria-live": "polite" });
   const phone = input("site-phone", { inputmode: "tel", maxlength: 14 });
-  show("home", "Your own website", pageHeader("Your own website", "#/"),
+  show("home", "Your own website", pageHeader("Your own website", "#/more"),
     h("p", null, "This makes one HTML file for your business: your menu, ordering and confirmations, in the Hana design, with the line \u201cCreated using Hana by Hamid Yasir & Co.\u201d It reads your listing from the Hana directory whenever it is online, so your prices and hours stay the same everywhere, and it still works offline."),
     h("ol", null, h("li", null, "Find your listing with your business phone."), h("li", null, "Download the file and upload it as index.html to any web host, for example GitHub Pages or Codeberg Pages in your menu repository."), h("li", null, "Keep your listing on Hana. Your site and the Hana app show the same listing.")),
     textField("site-phone", "Business phone", phone),
@@ -679,13 +690,15 @@ function decodeOrder(text, versions) {
   const prices = {};
   for (const l of priceLines(menu)) prices[l.key] = l;
   const lines = [], flags = [];
-  let sub = 0;
+  let sub = 0, unlisted = false;
   for (const part of m[3].split(",")) {
     const [key, q] = part.split("*");
     const qty = Number(q);
     if (!prices[key] || !(qty >= 1 && qty <= 99)) return { error: "The order lists an item that is not on menu version " + menu.version + "." };
-    lines.push({ label: prices[key].label, qty, total: prices[key].price * qty });
-    sub += prices[key].price * qty;
+    const p = prices[key].price;
+    lines.push({ label: prices[key].label, qty, total: p === null || p === undefined ? null : p * qty });
+    sub += (p || 0) * qty;
+    if (p === null || p === undefined) unlisted = true;
   }
   let fee;
   if (m[2] === "pickup") fee = "0";
@@ -694,6 +707,7 @@ function decodeOrder(text, versions) {
     if (!z) return { error: "The order names a delivery area that is not on the menu." };
     fee = z.fee === null || z.fee === undefined ? "?" : String(z.fee);
   }
+  if (unlisted) flags.push("Some items have no listed price. When you confirm, tell the customer the price of each item and the total, including the delivery fee.");
   if (Number(m[4]) !== sub) flags.push("The subtotal in the message (" + money(m[4]) + ") does not match the menu (" + money(sub) + "). Charge the menu price.");
   if (m[5] !== fee) flags.push("The delivery fee in the message does not match the menu.");
   const newest = Math.max(...versions.map((x) => x.menu.version));
@@ -703,6 +717,8 @@ function decodeOrder(text, versions) {
 
 /* The check, the decoded order and the reply, for one order message. */
 async function orderPanel(text, found, onDone) {
+  const cancel = CANCEL_LINE.exec(text || "");
+  if (cancel && !CHECK_LINE.test(text)) return notice("warn", h("p", { class: "flush" }, "This is a cancellation: the customer cancelled order " + cancel[1] + ". Do not prepare it."));
   const d = decodeOrder(text, found.versions);
   if (d.error) return notice("warn", h("p", { class: "flush" }, d.error));
   const expected = await checkCode(d.hash, d.fields[2], d.fields[3], d.fields[4], d.fields[5]);
@@ -728,11 +744,16 @@ async function orderPanel(text, found, onDone) {
     }
     const minute = unixMinutes();
     if (B.key) s = b64u(await signBytes(B.key, confirmMessage(d.check, d.code, e, minute)));
+    recordBtn.hidden = false;
     finish("Order " + d.code + " is confirmed." + (e !== "?" ? " Expected in about " + e + " minutes." : "") + "\nCONFIRMED hana1 O=" + d.code + " C=" + d.checkCode + " E=" + e + " T=" + minute + " K=" + k + " S=" + s, "Confirmed");
   };
+  const recordBtn = h("button", { type: "button", class: "border", hidden: true, on: { click: async () => {
+    const sale = await saleFromOrder(d, text);
+    location.hash = "#/pos/" + sale.id;
+  } } }, icon("receipt_long"), h("span", null, "Record the sale and print a receipt"));
   return h("div", { class: "order-panel" },
     d.flags.length ? notice("warn", h("ul", null, d.flags.map((f) => h("li", null, f)))) : notice("info", h("p", { class: "flush" }, "The order matches your published menu.")),
-    h("ul", { class: "list border" }, d.lines.map((l) => h("li", null, h("div", { class: "max" }, l.qty + " × " + l.label), h("span", { class: "price" }, money(l.total)))),
+    h("ul", { class: "list border" }, d.lines.map((l) => h("li", null, h("div", { class: "max" }, l.qty + " × " + l.label), h("span", { class: "price" }, l.total === null ? "Price not listed" : money(l.total)))),
       h("li", null, h("div", { class: "max bold" }, "Items"), h("span", { class: "price bold" }, money(d.sub))),
       h("li", null, h("div", { class: "max" }, d.zone === "pickup" ? "Pickup" : "Delivery fee (" + areaName(d.zone) + ")"), h("span", { class: "price" }, d.fee === "?" ? "Not stated" : money(d.fee)))),
     textField("eta-" + d.code, "Minutes until delivery or pickup (optional)", eta),
@@ -741,7 +762,8 @@ async function orderPanel(text, found, onDone) {
     h("nav", { class: "wrap" },
       h("button", { type: "button", on: { click: confirm } }, icon("check_circle"), h("span", null, "Confirm")),
       h("button", { type: "button", class: "border", on: { click: () => finish("Sorry, we cannot take order " + d.code + " right now.\nDECLINED " + d.code, "Declined") } }, icon("close"), h("span", null, "Decline")),
-      h("button", { type: "button", class: "border", on: { click: () => reply.textContent ? copy(reply.textContent) : snackbar("Confirm or decline first.") } }, icon("content_copy"), h("span", null, "Copy reply"))),
+      h("button", { type: "button", class: "border", on: { click: () => reply.textContent ? copy(reply.textContent) : snackbar("Confirm or decline first.") } }, icon("content_copy"), h("span", null, "Copy reply")),
+      recordBtn),
     reply);
 }
 
@@ -763,6 +785,8 @@ function viewConfirm() {
     let msgs = [];
     try { msgs = await inboxFetch(); } catch (e) { inbox.replaceChildren(notice("warn", h("p", { class: "flush" }, e.message))); return; }
     const handled = store.get("hana.biz.handled", {});
+    const cancelled = new Set(msgs.map((m) => (CANCEL_LINE.exec(m.message) || [])[1]).filter(Boolean));
+    msgs = msgs.filter((m) => CHECK_LINE.test(m.message));
     if (!msgs.length) { inbox.replaceChildren(h("p", { class: "muted" }, "No orders in the last 12 hours.")); return; }
     inbox.replaceChildren(...msgs.map((m) => {
       const code = (/Order ([0-9A-HJKMNP-TV-Z]{6})/.exec(m.message) || [])[1] || "?";
@@ -770,7 +794,8 @@ function viewConfirm() {
       const det = h("details", { class: "info-list", open: !handled[m.id] },
         h("summary", { class: "row" }, icon(handled[m.id] ? "check_circle" : "inbox"), h("span", { class: "max" }, "Order " + code + ", " + clock(new Date(m.time * 1000).toTimeString().slice(0, 5))), icon("expand_more")),
         body);
-      orderPanel(m.message, found, () => { handled[m.id] = true; store.set("hana.biz.handled", handled); }).then((p) => body.replaceChildren(p));
+      if (cancelled.has(code)) body.replaceChildren(notice("warn", h("p", { class: "flush" }, "The customer cancelled this order. Do not prepare it.")));
+      else orderPanel(m.message, found, () => { handled[m.id] = true; store.set("hana.biz.handled", handled); }).then((p) => body.replaceChildren(p));
       return det;
     }));
   }
@@ -805,13 +830,14 @@ function viewUpdate() {
 
   function renderEditor() {
     editor = menuEditor(prev.items, prev.items);
-    const zrows = ((prev.delivery && prev.delivery.zones) || []).map((z) => h("div", { class: "size-row" },
+    const zrows = ((prev.delivery && prev.delivery.zones) || []).map((z) => h("div", { class: "field-row" },
       textField("zf-" + z.id, "Fee, " + z.areas.map(areaName).join(", "), input("zf-" + z.id, { type: "number", min: 0, max: B.rules.max_delivery_fee, value: z.fee })),
-      textField("zm-" + z.id, "Minimum order", input("zm-" + z.id, { type: "number", min: 0, value: z.min_order }))));
+      textField("zm-" + z.id, "Minimum order", input("zm-" + z.id, { type: "number", min: 0, value: z.min_order })),
+      textField("ze-" + z.id, "Minutes", input("ze-" + z.id, { type: "number", min: 5, max: 240, value: z.eta_min }))));
     editorBox.replaceChildren(
       notice("info", h("p", { class: "flush" }, "Editing " + prev.name + ", version " + prev.version + ". Changes stay on this device until you publish them.")),
       sectionTitle("Menu"), editor,
-      sectionTitle("Delivery fees and minimum orders (BDT)"), ...zrows,
+      sectionTitle("Delivery fees, minimum orders and delivery times"), ...zrows,
       sectionTitle("Pickup"), check("pickup", "Customers can pick up orders", prev.pickup !== false),
       sectionTitle("Publish"),
       textField("summary", "Short public note about the change", input("summary", { maxlength: 200 })),
@@ -827,8 +853,8 @@ function viewUpdate() {
     next.items = read.items;
     next.pickup = checked("pickup");
     for (const z of (next.delivery && next.delivery.zones) || []) {
-      z.fee = num("zf-" + z.id); z.min_order = num("zm-" + z.id);
-      if (isNaN(z.fee) || isNaN(z.min_order)) errors.push("Enter every delivery fee and minimum order as a whole number.");
+      z.fee = num("zf-" + z.id); z.min_order = num("zm-" + z.id); z.eta_min = num("ze-" + z.id);
+      if (isNaN(z.fee) || isNaN(z.min_order) || isNaN(z.eta_min)) errors.push("Enter every delivery fee, minimum order and delivery time as a whole number.");
       else if (z.fee > B.rules.max_delivery_fee) errors.push("A delivery fee is above the limit of " + money(B.rules.max_delivery_fee) + ".");
     }
     if (!B.key) errors.push("Load your key.");
@@ -960,13 +986,13 @@ function menuEditor(items, oldItems) {
         if (pic) { if (safeImageUrl(pic)) it.image = { src: safeImageUrl(pic) }; else errors.push(name + ": the picture must be a JPEG, PNG or WebP file on one of the listed hosts."); }
         const sizes = Array.from(li.querySelectorAll(".size-row")).map((r) => ({ id: r._id, label: r.querySelector('[data-k="label"]').value.trim(), price: r.querySelector('[data-k="price"]').value.trim() }));
         if (sizes.length >= 2) {
-          if (sizes.some((s) => !s.label || !/^\d+$/.test(s.price))) { errors.push(name + ": give every size a name and a whole-number price."); continue; }
+          if (sizes.some((s) => !s.label || !/^\d*$/.test(s.price))) { errors.push(name + ": give every size a name and a whole-number price, or leave the price blank."); continue; }
           const oids = new Set();
-          it.options = sizes.map((s) => { let oid = s.id || slug(s.label); while (oids.has(oid)) oid += "-2"; oids.add(oid); return { id: oid, label: s.label, price: Number(s.price) }; });
+          it.options = sizes.map((s) => { let oid = s.id || slug(s.label); while (oids.has(oid)) oid += "-2"; oids.add(oid); return { id: oid, label: s.label, price: s.price === "" ? null : Number(s.price) }; });
         } else {
           const p = sizes.length ? sizes[0].price : get(li, "price");
-          if (!/^\d+$/.test(p)) { errors.push(name + ": enter the price as a whole number of taka."); continue; }
-          it.price = Number(p);
+          if (!/^\d*$/.test(p)) { errors.push(name + ": enter the price as a whole number of taka, or leave it blank."); continue; }
+          it.price = p === "" ? null : Number(p);
         }
         out.push(it);
       }
@@ -979,7 +1005,7 @@ function menuEditor(items, oldItems) {
   root.append(secBox,
     h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "border", on: { click: () => { const b = sectionBox("", []); secBox.append(b); b.querySelector("input").focus(); } } }, icon("add"), h("span", null, "Add a section"))),
     h("details", null, h("summary", { class: "link small-text" }, "Paste or copy the menu as text"),
-      h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description | Picture address. For sizes, write 8 inch: 529; 12 inch: 749 as the price."),
+      h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description | Picture address. For sizes, write 8 inch: 529; 12 inch: 749 as the price. Write ? for a price that is not known."),
       text,
       h("nav", { class: "wrap small-space" },
         h("button", { type: "button", class: "border", on: { click: () => { const p = textToItems(text.value, read().items); if (p.errors.length) snackbar(p.errors[0]); else { load(p.items); snackbar("The menu was replaced with the pasted text."); } } } }, h("span", null, "Use this text")),
@@ -1048,7 +1074,7 @@ function viewConnect() {
   const prov = h("select", { id: "c-provider" }, [["", "Not connected"], ["github", "GitHub"], ["forgejo", "Codeberg, Forgejo or Gitea"]].map(([v, t]) => h("option", { value: v, selected: c.provider === v }, t)));
   const out = h("div", { "aria-live": "polite" });
   const keyStatus = h("p", { class: "small-text muted" }, B.keyRemembered ? "Your key is kept on this device: " + (B.key && B.key.id) + "." : "Your key is not kept on this device.");
-  show("connect", "Connections", pageHeader("Connections", "#/"),
+  show("more", "Connections", pageHeader("Connections", "#/more"),
     h("p", { class: "muted" }, "Optional. Everything here is kept on this device only. With these set up, the tools publish your menu and handle orders with one tap. Without them, you download files and upload them yourself."),
     sectionTitle("Your repository"),
     h("p", { class: "small-text muted" }, "Create a token on your forge that can write to your menu repository only. GitHub: Settings, Developer settings, Fine-grained tokens, with Contents: read and write. Codeberg: Settings, Applications, with repository write access."),
@@ -1085,15 +1111,38 @@ function viewConnect() {
     B.keyRemembered ? h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => { await KEYSTORE.clear(); B.keyRemembered = false; B.key = null; viewConnect(); } } }, h("span", null, "Forget my key on this device"))) : null);
 }
 
+/* ---------------------------------------------------------------- more tools */
+
+function viewMore() {
+  const card = (href, ic, title, text) => h("li", null, h("a", { href, class: "row max" }, icon(ic), h("div", { class: "max" }, h("div", { class: "bold" }, title), h("div", { class: "small-text muted" }, text))));
+  show("more", "More tools", pageTitle("More tools"),
+    notice("info", h("p", { class: "flush" }, "Everything here is optional. Only your menu and listing are ever published; sales, customers, riders, keys and backups stay on this device or go only to services you connect.")),
+    sectionTitle("Your listing"),
+    h("ul", { class: "list border more-list" },
+      card("#/join", "add_business", "List a new business", "Prepare a signed listing and ask the community to verify it."),
+      card("#/claim", "verified", "Claim a listing", "Find a listing a volunteer entered, by your business phone."),
+      card("#/site", "storefront", "Your own website", "A one-file site for your own hosting, which also carries a full copy of the directory.")),
+    sectionTitle("Point of sale"),
+    h("ul", { class: "list border more-list" },
+      card("#/pos", "receipt_long", "Sales and receipts", "Ring up counter, pickup and delivery sales, and print standard receipts."),
+      card("#/statements", "edit_note", "Statements", "Daily and monthly totals by payment method and item, as PDF or CSV."),
+      card("#/riders", "moped", "Riders", "Send delivery jobs to your riders by WhatsApp, or to your own dispatch system.")),
+    sectionTitle("Data and connections"),
+    h("ul", { class: "list border more-list" },
+      card("#/backup", "cloud_upload", "Records and backups", "Receipt details, backup files, and optional encrypted backup to Supabase or CouchDB."),
+      card("#/connect", "tune", "Connections", "Publish your menu and receive orders automatically.")));
+}
+
 /* ---------------------------------------------------------------- orders inbox */
 
+const CANCEL_LINE = /^CANCEL ([0-9A-HJKMNP-TV-Z]{6})\s*$/m;
 async function inboxFetch() {
   const c = conn();
   if (!c.orders) return [];
   const r = await fetch(c.orders.replace(/\/$/, "") + "/json?poll=1&since=12h", { cache: "no-store" });
   if (!r.ok) throw new Error("The order topic answered " + r.status + ".");
   return (await r.text()).split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
-    .filter((m) => m && m.event === "message" && CHECK_LINE.test(m.message || "")).reverse();
+    .filter((m) => m && m.event === "message" && (CHECK_LINE.test(m.message || "") || CANCEL_LINE.test(m.message || ""))).reverse();
 }
 
 /* ---------------------------------------------------------------- start */
@@ -1107,6 +1156,12 @@ function route() {
   if (hash === "#/claim") return viewClaim();
   if (hash === "#/site") return viewSite();
   if (hash === "#/connect") return viewConnect();
+  if (hash === "#/more") return viewMore();
+  if (hash === "#/pos") return viewPos();
+  if (hash.startsWith("#/pos/")) return viewReceipt(hash.slice(6));
+  if (hash === "#/statements") return viewStatements();
+  if (hash === "#/riders") return viewRiders();
+  if (hash === "#/backup") return viewBackup();
   return viewHome();
 }
 

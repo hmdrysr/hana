@@ -13,7 +13,7 @@
     "lon": 91.811672
   },
   "business_phone": "+8801729298282",
-  "listing_note": "Entered by volunteer hmdrysr on October 15, 2026, from photographs of the restaurant's printed South Asian menu. The restaurant has not confirmed this listing. Prices are as printed and may have changed. Items with prices that could not be read clearly are omitted, and the Oriental menu has not been entered. The delivery fee, minimum order, delivery time and opening hours are not stated. Delivery is limited to the Khulshi zone, as reported by a regular customer. Pickup and the accepted ways to pay at delivery are not stated.",
+  "listing_note": "Entered by volunteer hmdrysr on October 15, 2026, from photographs of the restaurant's printed South Asian menu. The restaurant has not confirmed this listing. Prices are not listed: ask the restaurant, which gives the price of each item and the total when it confirms your order. Some items from the printed menu are omitted, and the Oriental menu has not been entered. The delivery fee, minimum order, delivery time and opening hours are not stated. Delivery is limited to the Khulshi zone, as reported by a regular customer. The accepted ways to pay at delivery are not stated.",
   "hours": null,
   "delivery": {
     "zones": [
@@ -66,49 +66,49 @@
       "name": "Dahi Bara (2 pieces)",
       "section": "South Asian",
       "category": "Starters",
-      "price": 220
+      "price": null
     },
     {
       "id": "paan-chicken",
       "name": "Paan Chicken",
       "section": "South Asian",
       "category": "Starters",
-      "price": 450
+      "price": null
     },
     {
       "id": "chicken-papri",
       "name": "Chicken Papri",
       "section": "South Asian",
       "category": "Starters",
-      "price": 450
+      "price": null
     },
     {
       "id": "dry-chili-paneer",
       "name": "Dry Chili Paneer",
       "section": "South Asian",
       "category": "Starters",
-      "price": 650
+      "price": null
     },
     {
       "id": "kachumber",
       "name": "Kachumber",
       "section": "South Asian",
       "category": "Salads",
-      "price": 200
+      "price": null
     },
     {
       "id": "sambar-vegetable-curry",
       "name": "Sambar Vegetable Curry",
       "section": "South Asian",
       "category": "Chef's specials",
-      "price": 310
+      "price": null
     },
     {
       "id": "pigeon-kebab",
       "name": "Pigeon Kebab",
       "section": "South Asian",
       "category": "Chef's specials",
-      "price": 550
+      "price": null
     },
     {
       "id": "grilled-lamb-chops",
@@ -119,12 +119,12 @@
         {
           "id": "2-pieces",
           "label": "2 pieces",
-          "price": 880
+          "price": null
         },
         {
           "id": "4-pieces",
           "label": "4 pieces",
-          "price": 1290
+          "price": null
         }
       ]
     },
@@ -133,119 +133,119 @@
       "name": "Mughal-E-Azam (Thali)",
       "section": "South Asian",
       "category": "Tava specials",
-      "price": 3900
+      "price": null
     },
     {
       "id": "chicken-roast-whole",
       "name": "Chicken Roast (Whole)",
       "section": "South Asian",
       "category": "Tava specials",
-      "price": 900
+      "price": null
     },
     {
       "id": "chicken-hariyali-kebab",
       "name": "Chicken Hariyali Kebab",
       "section": "South Asian",
       "category": "Mains, grilled",
-      "price": 420
+      "price": null
     },
     {
       "id": "tava-special-mixed-kebab",
       "name": "Tava Special Mixed Kebab",
       "section": "South Asian",
       "category": "Mains, grilled",
-      "price": 1190
+      "price": null
     },
     {
       "id": "chicken-butter-masala",
       "name": "Chicken Butter Masala",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 700
+      "price": null
     },
     {
       "id": "chicken-reshmi-masala",
       "name": "Chicken Reshmi Masala",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 700
+      "price": null
     },
     {
       "id": "chicken-tikka-masala",
       "name": "Chicken Tikka Masala",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 700
+      "price": null
     },
     {
       "id": "mutton-karai",
       "name": "Mutton Karai",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 950
+      "price": null
     },
     {
       "id": "mutton-rogan-josh",
       "name": "Mutton Rogan Josh",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 950
+      "price": null
     },
     {
       "id": "aloo-achari",
       "name": "Aloo Achari",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 350
+      "price": null
     },
     {
       "id": "vegetable-korma",
       "name": "Vegetable Korma",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 420
+      "price": null
     },
     {
       "id": "vegetable-kofta-curry",
       "name": "Vegetable Kofta Curry",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 420
+      "price": null
     },
     {
       "id": "vegetable-dopiaza",
       "name": "Vegetable Dopiaza",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 420
+      "price": null
     },
     {
       "id": "paneer-butter-masala",
       "name": "Paneer Butter Masala",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 650
+      "price": null
     },
     {
       "id": "palak-paneer",
       "name": "Palak Paneer",
       "section": "South Asian",
       "category": "Mains, curries",
-      "price": 650
+      "price": null
     },
     {
       "id": "kulcha",
       "name": "Kulcha",
       "section": "South Asian",
       "category": "Sides",
-      "price": 220
+      "price": null
     },
     {
       "id": "tava-special-naan",
       "name": "Tava Special Naan",
       "section": "South Asian",
       "category": "Sides",
-      "price": 350
+      "price": null
     },
     {
       "id": "paratha",
@@ -256,12 +256,12 @@
         {
           "id": "plain",
           "label": "Plain",
-          "price": 95
+          "price": null
         },
         {
           "id": "sheka",
           "label": "Sheka",
-          "price": 95
+          "price": null
         }
       ]
     },
@@ -270,49 +270,49 @@
       "name": "Crispy Battered Potato Slices with Raita",
       "section": "South Asian",
       "category": "Kids menu",
-      "price": 190
+      "price": null
     },
     {
       "id": "stuffed-keema-naan",
       "name": "Stuffed Keema Naan",
       "section": "South Asian",
       "category": "Kids menu",
-      "price": 200
+      "price": null
     },
     {
       "id": "chicken-lollipop-2-pieces",
       "name": "Chicken Lollipop (2 pieces)",
       "section": "South Asian",
       "category": "Kids menu",
-      "price": 220
+      "price": null
     },
     {
       "id": "chicken-and-vegetable-chowmein",
       "name": "Chicken & Vegetable Chowmein",
       "section": "South Asian",
       "category": "Kids menu",
-      "price": 250
+      "price": null
     },
     {
       "id": "chicken-fried-rice",
       "name": "Chicken Fried Rice",
       "section": "South Asian",
       "category": "Kids menu",
-      "price": 250
+      "price": null
     },
     {
       "id": "house-fries-and-chicken-fingers",
       "name": "House Fries & Chicken Fingers",
       "section": "South Asian",
       "category": "Kids menu",
-      "price": 400
+      "price": null
     },
     {
       "id": "steamed-rice-dal-butter-fry-and-reshmi-kebab",
       "name": "Steamed Rice, Dal Butter Fry & Reshmi Kebab",
       "section": "South Asian",
       "category": "Kids menu",
-      "price": 400
+      "price": null
     }
   ],
   "announcement": {

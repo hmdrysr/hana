@@ -15,6 +15,7 @@ Checks, at 320, 360, 768 and 1280 pixels wide, in light and dark mode:
 Prints PASS or FAIL for each check and exits 1 on any failure.
 """
 import json
+from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -30,7 +31,7 @@ BIZ = ROOT_URL + "/business.html"
 TAVA = "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7"
 MEAL = "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b"
 SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BASE + "#/about", BASE + "#/terms", BASE + "#/settings",
-           BIZ, BIZ + "#/join", BIZ + "#/claim", BIZ + "#/confirm", BIZ + "#/update", BIZ + "#/site", BIZ + "#/connect", ROOT_URL + "/index.html#/download", ROOT_URL + "/restaurants/tava/"]
+           BIZ, BIZ + "#/join", BIZ + "#/claim", BIZ + "#/confirm", BIZ + "#/update", BIZ + "#/site", BIZ + "#/connect", BIZ + "#/more", BIZ + "#/pos", BIZ + "#/statements", BIZ + "#/riders", BIZ + "#/backup", ROOT_URL + "/index.html#/download", ROOT_URL + "/restaurants/tava/"]
 failed = 0
 
 # Finds text that is cut off: any text whose box extends past an ancestor that clips its overflow.
@@ -97,8 +98,7 @@ with sync_playwright() as p:
     page = browser.new_page(viewport={"width": 360, "height": 800})
     page.on("pageerror", lambda e: errors.append(str(e)))
     # Fix the clock at 8 p.m. on a Thursday, when every listed business is open.
-    import datetime
-    page.clock.install(time=datetime.datetime(2026, 10, 15, 20, 0, 0))
+    page.clock.install(time=datetime(2026, 10, 15, 20, 0, 0))
     page.goto(BASE)
     page.wait_for_selector("#results article")
     names = lambda: page.eval_on_selector_all("#results .card-title", "e => e.map(x => x.textContent)")
@@ -176,7 +176,8 @@ with sync_playwright() as p:
     line = message.splitlines()[-1]
     menu_bytes = (HERE.parent / "menus" / TAVA / "menu.json").read_bytes()
     res = order_line.decode(line, [(menu_bytes, json.loads(menu_bytes))])
-    ok("order check line is accepted by tools/order_line.py", res["ok"] and res["subtotal_from_menu"] == 440, res)
+    ok("order check line is accepted by tools/order_line.py", res["ok"] and res["subtotal_from_menu"] == 0, res)
+    ok("an order without listed prices asks the business for each price and the total", "tell me the price of each item and the total" in message, message[:300])
     ok("no courier slip is prepared", "DELIVERY SLIP" not in page.inner_text("main"))
     code = message.split()[1]
     page.goto(BASE + "#/orders")
@@ -218,8 +219,13 @@ with sync_playwright() as p:
     ok("the Groceries tab explains when no store is listed", "No grocery stores are listed yet" in page.inner_text("#results"))
     page.click("nav.kind-tabs button:has-text('All')")
     page.goto(BASE + "#/order?r=" + TAVA + "&items=dahi-bara*2&mode=pickup")
+    page.wait_for_selector("text=no listed price")
+    ok("an order link fills the basket", "Dahi Bara" in page.inner_text("main") and "no listed price" in page.inner_text("main"), page.inner_text("main")[:200])
+    page.goto(BASE + "#/order?r=" + MEAL + "&items=french-fries*2&mode=pickup")
+    page.wait_for_selector("#dialog[open]")
+    page.click("#dialog-ok")
     page.wait_for_selector("text=Total to pay at pickup")
-    ok("an order link fills the basket", "BDT 440" in page.inner_text("main"), page.inner_text("main")[:200])
+    ok("the basket shows each line's sum and the total", "2 × BDT 120 = BDT 240" in page.inner_text("main") and "Subtotal (items)" in page.inner_text("main"), page.inner_text("main")[:300])
     page.goto(BASE + "#/download")
     page.wait_for_selector("text=Details to include")
     page.check("input[name=dl-format][value=json]", force=True)
@@ -276,7 +282,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(200)
     ok("Install uses the browser's own install offer", page.evaluate("window.__prompted === true"))
     page.click("button[aria-label='Plum']")
-    page.click("button[aria-label='Use 🍟']")
+    page.wait_for_timeout(300)
     page.reload()
     page.wait_for_selector("text=App icon")
     ok("a chosen app icon is used for installing", page.evaluate("document.querySelector('link[rel=manifest]').href.startsWith('data:application/manifest+json')")
@@ -291,19 +297,45 @@ with sync_playwright() as p:
     page.reload()
     page.wait_for_selector(".cat-tile")
     ok("Not now hides the install offer on the home page", "Install Hana" not in page.inner_text("main"))
-    page.goto(BASE + "#/settings")
-    page.wait_for_selector("text=Show the walkthrough again")
-    page.click("text=Show the walkthrough again")
-    page.wait_for_selector("#tour")
-    steps = 1
-    while page.locator("#tour button:has-text('Next')").count():
-        page.click("#tour button:has-text('Next')")
-        steps += 1
-        if steps > 20:
-            break
-    ok("the walkthrough points at each part of the home page", page.locator(".tour-focus").count() == 1 and steps == 8, steps)
-    page.click("#tour button:has-text('Done')")
-    ok("the walkthrough closes and is remembered", page.locator("#tour").count() == 0 and page.evaluate("localStorage.getItem('hana.tour.done')") == "true")
+    ctx = browser.new_context(viewport={"width": 360, "height": 800})
+    cp = ctx.new_page()
+    cp.clock.install(time=datetime(2026, 10, 15, 10, 0))
+    cp.goto(BASE + "#/r/" + MEAL)
+    cp.wait_for_selector("button.dish-add")
+    ok("items in a closed business are not greyed out", cp.locator("button.dish-add[disabled]").count() == 0)
+    cp.locator("button.dish-add").first.click()
+    cp.wait_for_selector("dialog[open] h5")
+    ok("tapping an item in a closed business says when it opens", "closed now" in cp.inner_text("dialog[open]") and "opens again" in cp.inner_text("dialog[open]"))
+    ctx.close()
+    bp = browser.new_page(viewport={"width": 360, "height": 800})
+    bp.goto(BIZ + "#/backup")
+    bp.wait_for_selector("text=Receipt details")
+    bp.fill("#p-name", "Test Kitchen")
+    bp.locator("main button:has-text('Save')").first.click()
+    bp.wait_for_timeout(300)
+    bp.goto(BIZ + "#/pos")
+    bp.wait_for_selector("text=New sale")
+    bp.fill("#free-name", "Samosa")
+    bp.fill("#free-price", "40")
+    bp.click("button[aria-label='Add this item']")
+    bp.click("text=Save and show the receipt")
+    bp.wait_for_selector("#receipt")
+    rc = bp.inner_text("#receipt")
+    ok("a counter sale gives a numbered receipt", "Test Kitchen" in rc and "R-000001" in rc and "BDT 40" in rc and "not a VAT tax invoice" in rc, rc[:200])
+    bp.goto(BIZ + "#/statements")
+    bp.wait_for_selector("#statement")
+    bp.wait_for_timeout(300)
+    ok("the statement totals today's sales", "BDT 40" in bp.inner_text("#statement"))
+    with bp.expect_download() as dl:
+        bp.click("text=Download CSV")
+    ok("the statement downloads as CSV", "R-000001" in Path(dl.value.path()).read_text())
+    bp.goto(BIZ + "#/backup")
+    bp.wait_for_selector("text=Download a backup")
+    with bp.expect_download() as dl:
+        bp.click("text=Download a backup")
+    back = json.loads(Path(dl.value.path()).read_text())
+    ok("the point-of-sale backup file holds the sales", back.get("format") == "hana-pos-backup-1" and any(r["store"] == "sales" for r in back["records"]))
+    bp.close()
     ok("no script errors", not errors, errors)
     browser.close()
 

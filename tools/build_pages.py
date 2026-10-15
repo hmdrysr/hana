@@ -24,7 +24,7 @@ def folder(menu):
 
 
 def money(n):
-    return "BDT " + f"{n:,}"
+    return "price on request" if n is None else "BDT " + f"{n:,}"
 
 
 def body(menu, areas):

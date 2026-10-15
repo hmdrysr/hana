@@ -73,7 +73,8 @@ def menu_hash(menu_bytes):
 
 
 def price_table(menu):
-    """item key (item-id or item-id.option-id) -> whole-taka price"""
+    """item key (item-id or item-id.option-id) -> whole-taka price, or None when the listing
+    does not state it (the business then gives the price when it confirms)"""
     t = {}
     for it in menu["items"]:
         if "price" in it:
@@ -115,7 +116,7 @@ def build(menu_bytes, menu, lines, zone_id):
         if not isinstance(qty, int) or isinstance(qty, bool) or not (1 <= qty <= MAX_QTY):
             raise OrderError(f"quantity for '{key}' must be a whole number from 1 to {MAX_QTY}")
         parts.append(f"{key}*{qty}")
-        sub += prices[key] * qty
+        sub += (prices[key] or 0) * qty
     if not parts:
         raise OrderError("an order needs at least one item")
     items = ",".join(parts)
@@ -146,8 +147,11 @@ def decode(line, known_menus):
         if key not in prices:
             raise OrderError(f"'{key}' is not on menu version {menu['version']}")
         qty = int(qty_text)
-        out_lines.append({"item": key, "qty": qty, "price": prices[key], "line_total": prices[key] * qty})
-        sub += prices[key] * qty
+        p = prices[key]
+        out_lines.append({"item": key, "qty": qty, "price": p, "line_total": None if p is None else p * qty})
+        sub += (p or 0) * qty
+        if p is None:
+            flags.append(f"'{key}' has no listed price: tell the customer its price and the total")
     fee = zone_fee(menu, m["z"])
     fee_text = "?" if fee is None else str(fee)
     if int(m["s"]) != sub:
@@ -162,7 +166,8 @@ def decode(line, known_menus):
         flags.append(f"order uses menu version {menu['version']}; the current version is {newest}. "
                      "Compare prices in the price history before deciding.")
     return {"menu_version": menu["version"], "zone": m["z"], "lines": out_lines,
-            "subtotal_from_menu": sub, "delivery_fee": fee_text, "flags": flags, "ok": not flags}
+            "subtotal_from_menu": sub, "delivery_fee": fee_text, "flags": flags,
+            "ok": not [f for f in flags if "no listed price" not in f]}
 
 
 def confirm_message(check_line, order_code, eta, minute):

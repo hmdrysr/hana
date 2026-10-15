@@ -24,13 +24,13 @@ Each business listed on Hana agrees to the following:
 
 1. **Cash on delivery only.** Payment is taken only on delivery or at pickup, by cash, Bangla QR, card on a POS terminal or mobile wallet transfer. A business must never request or accept payment in advance.
 2. **All-inclusive prices.** Every listed price includes VAT and every other tax or charge. The delivery fee is the only addition, and it must not exceed the limit in `rules.json`.
-3. **Confirmation within 15 minutes.** A business must confirm or decline each order within 15 minutes of receiving it. An order that is not confirmed within that time is cancelled, and the customer has no obligation to accept or pay for it.
+3. **Confirmation within 15 minutes.** A business must confirm or decline each order within 15 minutes of receiving it, or of opening, for an order placed while it was closed. It must state a delivery time for each area it serves, and must not prepare an order the customer has cancelled within that period. An order that is not confirmed within that time is cancelled, and the customer has no obligation to accept or pay for it.
 4. **Pledges.** A business that claims its listing signs the courier identity, data handling, fair pricing and record-keeping pledges, and must comply with them.
 5. **Records.** A business must keep all communications relating to orders placed through Hana, including order messages, confirmations, courier details and payment records, for at least six months from the date of the order, and for at least twelve months where a complaint or dispute has been raised or is reasonably anticipated.
 
 ## 5. Obligations of customers
 
-Customers agree to provide accurate order details, to place only orders they intend to accept, and to pay on delivery or at pickup as agreed. Customers should never pay in advance and should report any request for advance payment. Customers are encouraged to keep their own records of order communications for the same periods as businesses.
+Customers agree to provide accurate order details, to place only orders they intend to accept, and to pay on delivery or at pickup as agreed. Customers should never pay in advance and should report any request for advance payment. Customers are encouraged to keep their own records of order communications for the same periods as businesses. A customer may cancel an order within 15 minutes of placing it, or, for an order placed while the business is closed, within 15 minutes of the business opening, by sending the cancellation the app prepares in the same chat as the order.
 
 ## 6. Preservation of records
 

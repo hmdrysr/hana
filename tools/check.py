@@ -712,8 +712,8 @@ def check_menu(menu_path, root, area_ids):
             has_price, has_opts = "price" in it, "options" in it
             if has_price == has_opts:
                 err(rel, f"{w}: give either 'price' or 'options', not both and not neither")
-            if has_price and (not is_int(it["price"]) or it["price"] < 0):
-                err(rel, f"{w}.price must be a whole number of taka, 0 or more (no decimals)")
+            if has_price and it["price"] is not None and (not is_int(it["price"]) or it["price"] < 0):
+                err(rel, f"{w}.price must be a whole number of taka, 0 or more (no decimals), or null when not known")
             if has_opts:
                 opts = it["options"]
                 if not isinstance(opts, list) or len(opts) < 2:
@@ -729,8 +729,8 @@ def check_menu(menu_path, root, area_ids):
                         if op["id"] in oids:
                             err(rel, f"{ow}: duplicate option id '{op['id']}'")
                         oids.add(op["id"])
-                        if not is_int(op.get("price")) or op["price"] < 0:
-                            err(rel, f"{ow}.price must be a whole number of taka, 0 or more")
+                        if op.get("price") is not None and (not is_int(op.get("price")) or op["price"] < 0):
+                            err(rel, f"{ow}.price must be a whole number of taka, 0 or more, or null when not known")
             check_photos(it.get("photos"), f"{w}.photos", rel)
     check_photos(data.get("photos"), "photos", rel)
     check_announcement(data, rel)
@@ -955,7 +955,7 @@ chip circle dark field fill flush gap-top group-title l label left left-align li
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
 tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label
-cover thumb credit tour-card tour-focus icon-preview swatch swatch-any icon-mark swatch-40e0d0 swatch-9a3412 swatch-0f766e swatch-3730a3 swatch-15803d swatch-7e22ce swatch-facc15 swatch-ffffff swatch-111827 stack menu-editor edit-section edit-item edit-main edit-tools size-list size-row order-panel handle zone-row kind-tabs food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
+cover thumb credit field-row receipt receipt-wide receipt-head receipt-title receipt-row receipt-total receipt-small receipt-foot print-me print-a4 more-list icon-preview swatch-f7f5f2 swatch swatch-any swatch-40e0d0 swatch-9a3412 swatch-0f766e swatch-3730a3 swatch-15803d swatch-7e22ce swatch-facc15 swatch-ffffff swatch-111827 stack menu-editor edit-section edit-item edit-main edit-tools size-list size-row order-panel handle zone-row kind-tabs food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
 
 
 def check_ui(root):

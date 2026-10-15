@@ -71,6 +71,14 @@ An AI assistant can find businesses, read menus and prepare an order from the pu
 
 In the app, Settings, then Download the directory, saves the directory as JSON or as a PDF laid out like a telephone book. You choose which businesses (all, restaurants or grocery stores; a delivery zone; a category) and which details (contact details, address, cuisine, hours, delivery fees, menus).
 
+## For businesses
+
+The business tools (business.html) let a business confirm orders, edit its menu and publish signed updates. Optional tools, under More, add a point of sale with standard receipts and statements, rider dispatch, and encrypted backups to the business's own Supabase or CouchDB. Only the menu and the listing are ever published; everything else stays on the business's device or goes only where it sends it. See `SPEC.md`, section 18.
+
+## Hosting a copy
+
+Every copy of Hana carries the full directory and acts as a backup. See `MIRRORING.md`.
+
 ## Listing addresses
 
 Every listing can have a handle, such as @mealmaster, and a clean address: https://hmdrysr.github.io/hana/restaurants/mealmaster/. Run `python3 tools/build.py` after changing a listing to rebuild these pages and the feed.

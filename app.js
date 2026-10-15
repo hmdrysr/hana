@@ -29,6 +29,9 @@ async function loadAll() {
     const [site, rules, areas, index] = await Promise.all([
       fetchJson("site.json").catch(() => ({})), fetchJson("rules.json").catch(() => ({})), fetchJson("areas.json"), fetchJson("index.json")]);
     Object.assign(state.site, site);
+    fetch(dataUrl("peers.json"), { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).then((p) => {
+      if (p) store.set("hana.peers", (p.peers || []).map((x) => (typeof x === "string" ? x : x.url)).filter((u) => /^https:\/\/.+\/$/.test(u || "")).slice(0, 10));
+    }).catch(() => {});
     Object.assign(state.rules, rules);
     if (SNAP) Object.assign(state.site, SNAP.site);
     if (Array.isArray(state.rules.image_hosts)) IMAGE_HOSTS = state.rules.image_hosts.slice();
@@ -139,6 +142,11 @@ function statusChip(menu) {
   return o ? chip("Open now", "ok") : chip("Closed now");
 }
 
+/* Estimated minutes from ordering to arrival: the business's own delivery time for the zone,
+   plus the confirmation window it is allowed before it starts. */
+function arrivalMinutes(z) { return z && z.eta_min !== null && z.eta_min !== undefined ? Number(z.eta_min) + (Number(state.rules.confirmation_window_minutes) || 15) : null; }
+function clockAt(d) { return clock(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")); }
+
 /* One or two plain sentences, for example "Delivery fee BDT 60, minimum order BDT 300, about
    40 minutes." or "The delivery fee, minimum order and delivery time are not stated." */
 function feeSummary(z) {
@@ -147,7 +155,7 @@ function feeSummary(z) {
   const known = [], unknown = [];
   if (given(z.fee)) known.push("Delivery fee " + money(z.fee)); else unknown.push("delivery fee");
   if (given(z.min_order)) known.push((known.length ? "minimum order " : "Minimum order ") + (z.min_order ? money(z.min_order) : "none")); else unknown.push("minimum order");
-  if (given(z.eta_min)) known.push((known.length ? "about " : "About ") + z.eta_min + " minutes"); else unknown.push("delivery time");
+  if (given(z.eta_min)) known.push((known.length ? "arrives in about " : "Arrives in about ") + arrivalMinutes(z) + " minutes"); else unknown.push("delivery time");
   const list = unknown.length > 1 ? unknown.slice(0, -1).join(", ") + " and " + unknown[unknown.length - 1] : unknown[0];
   return [known.length ? known.join(", ") + "." : "", unknown.length ? "The " + list + (unknown.length > 1 ? " are" : " is") + " not stated." : ""].filter(Boolean).join(" ");
 }
@@ -223,64 +231,6 @@ async function locateZone(onFound) {
   if (!zone || zone.kind !== "zone") { snackbar("Your location could not be matched to a zone. Choose it from the list."); return; }
   onFound(zone.id);
   snackbar("Zone set to " + zone.name + ". You can change it at any time.");
-}
-
-/* ---------------------------------------------------------------- first-visit walkthrough */
-
-/* A short tour on the first visit, shown as a card at the bottom of the screen that points
-   at each part of the home page. It can be skipped, and replayed from Settings. */
-const TOUR = [
-  [null, "Welcome to Hana", "Order food and groceries in Chittagong straight from the business. No account, no fees and no prepayment."],
-  [".zone-row", "Your zone", "Choose your zone, or tap Use my location. Hana then shows the places that deliver to you."],
-  ["main .field.prefix", "Search", "Search for a dish, a place or a handle such as @sliced."],
-  ["nav.cat-strip", "Categories", "Or browse by category. Every list is alphabetical, and no listing is featured or paid for."],
-  ["article.rcard", "Places", "Open a place to see its menu and hours. Tap + to add items to your basket."],
-  ['[data-nav="basket"]', "Your order", "At checkout, Hana prepares your order message. You send it yourself, by WhatsApp, text message or email. You pay on delivery or at pickup, never in advance."],
-  ['[data-nav="orders"]', "Confirmation", "The business must confirm within 15 minutes, or the order is cancelled. Paste its reply in Orders to keep a record."],
-  ["#settings-link", "Make it yours", "Change colours, text size and the app icon in Settings. You can install Hana on your phone from there too."],
-];
-function visible(sel) { return sel ? Array.from(document.querySelectorAll(sel)).find((e) => e.offsetParent !== null || e.getClientRects().length) : null; }
-function startTour() {
-  if (document.getElementById("tour")) return;
-  let i = 0, focused = null;
-  const title = h("h2", { class: "card-title" }), text = h("p", { class: "flush" }), step = h("p", { class: "small-text muted flush" });
-  const back = h("button", { type: "button", class: "border", on: { click: () => go(i - 1) } }, h("span", null, "Back"));
-  const next = h("button", { type: "button", on: { click: () => (i < TOUR.length - 1 ? go(i + 1) : end()) } }, h("span", null, "Next"));
-  const card = h("section", { id: "tour", class: "tour-card round", role: "dialog", "aria-modal": "false", "aria-labelledby": "tour-title" },
-    step, title, text,
-    h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "transparent", on: { click: end } }, h("span", null, "Skip")), h("div", { class: "max" }), back, next));
-  title.id = "tour-title";
-  const key = (e) => { if (e.key === "Escape") end(); };
-  function go(n) {
-    i = Math.max(0, Math.min(TOUR.length - 1, n));
-    const [sel, t, body] = TOUR[i];
-    if (focused) focused.classList.remove("tour-focus");
-    focused = visible(sel);
-    if (focused) { focused.classList.add("tour-focus"); focused.scrollIntoView({ behavior: "smooth", block: "center" }); }
-    else if (!sel) window.scrollTo({ top: 0, behavior: "smooth" });
-    step.textContent = "Step " + (i + 1) + " of " + TOUR.length;
-    title.textContent = t;
-    text.textContent = body;
-    back.hidden = i === 0;
-    next.querySelector("span").textContent = i === TOUR.length - 1 ? "Done" : "Next";
-    next.focus();
-  }
-  function end() {
-    if (focused) focused.classList.remove("tour-focus");
-    store.set("hana.tour.done", true);
-    document.removeEventListener("keydown", key);
-    window.removeEventListener("hashchange", end);
-    card.remove();
-  }
-  document.addEventListener("keydown", key);
-  window.addEventListener("hashchange", end);
-  document.body.append(card);
-  go(0);
-}
-function maybeStartTour() {
-  /* Not for automated browsers (the project's own tests), shared listing links or business sites. */
-  if (store.get("hana.tour.done", false) || state.site.mode === "business" || document.querySelector('meta[name="hana-listing"]') || navigator.webdriver) return;
-  setTimeout(startTour, 400);
 }
 
 function viewList() {
@@ -402,7 +352,6 @@ function viewList() {
     listHead,
     results);
   render();
-  maybeStartTour();
 }
 
 /* Page navigation for long lists: previous, "Page 2 of 5", next. */
@@ -444,7 +393,9 @@ function scheduleSlots(m) {
 function whenText(d) { return DAY_NAMES[DAYS[(d.getDay() + 6) % 7]] + ", " + clock(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")); }
 
 function fromPrice(it) {
-  return it.price !== undefined ? money(it.price) : "from " + money(Math.min(...it.options.map((o) => o.price)));
+  if (!it.options) return priceOrAsk(it.price);
+  const known = it.options.map((o) => o.price).filter((p) => p !== null && p !== undefined);
+  return known.length ? "from " + money(Math.min(...known)) : NO_PRICE;
 }
 
 function restaurantCard(r, zone, delivers, dishHits) {
@@ -478,8 +429,8 @@ function chooseOption(r, it) {
     h("h5", null, it.name),
     it.description ? h("p", { class: "small-text muted" }, it.description) : null,
     h("ul", { class: "list border" }, it.options.map((op) => h("li", null,
-      h("div", { class: "max" }, op.label), h("span", { class: "price" }, money(op.price)),
-      h("button", { type: "button", class: "circle", "aria-label": "Add " + it.name + ", " + op.label + ", " + money(op.price),
+      h("div", { class: "max" }, op.label), h("span", { class: "price" }, priceOrAsk(op.price)),
+      h("button", { type: "button", class: "circle", "aria-label": "Add " + it.name + ", " + op.label + ", " + priceOrAsk(op.price),
         on: { click: () => { d.close(); addToBasket(r, it.id + "." + op.id, it.name + " (" + op.label + ")"); } } }, icon("add"))))),
     h("nav", { class: "right-align" }, h("button", { type: "button", class: "border", on: { click: () => d.close() } }, "Cancel")));
   d.addEventListener("close", () => d.remove());
@@ -487,9 +438,38 @@ function chooseOption(r, it) {
   if (d.showModal) d.showModal(); else d.setAttribute("open", "");
 }
 
+/* Before adding from a closed business: say when it opens and, if it takes scheduled
+   orders, let the customer choose a time while it is open. Resolves true to go ahead. */
+function readyToOrder(r) {
+  const m = r.menu, os = orderingState(m);
+  if (!os.closed) return Promise.resolve(true);
+  if (state.basket && state.basket.rid === r.id && state.basket.scheduled) return Promise.resolve(true);
+  const slots = scheduleSlots(m);
+  return new Promise((resolve) => {
+    const when = h("select", { id: "closed-when" }, slots.map((x) => h("option", { value: x.value }, x.label)));
+    const done = (v) => { d.close(); resolve(v); };
+    const d = h("dialog", { "aria-labelledby": "closed-title" },
+      h("h5", { id: "closed-title" }, m.name + " is closed now"),
+      h("p", null, os.next ? "It opens again " + whenText(os.next) + ", " + longDate(os.next.toISOString().slice(0, 10)) + "." : "Its opening hours are not stated."),
+      slots.length ? [h("p", null, "It takes scheduled orders. Choose a time while it is open, and your order goes in for then."), selectField("closed-when", "Deliver or ready at", when)]
+        : h("p", null, "It does not take orders while closed. Please come back when it is open."),
+      h("nav", { class: "right-align" },
+        h("button", { type: "button", class: "border", on: { click: () => done(false) } }, slots.length ? "Not now" : "OK"),
+        slots.length ? h("button", { type: "button", on: { click: () => {
+          if (!state.basket || state.basket.rid !== r.id) state.basket = { rid: r.id, version: m.version, mode: "delivery", zone: state.area || "", ward: "", lines: {} };
+          state.basket.scheduled = when.value;
+          saveBasket();
+          done(true);
+        } } }, "Schedule") : null));
+    d.addEventListener("close", () => { d.remove(); resolve(false); });
+    document.body.append(d);
+    if (d.showModal) d.showModal(); else d.setAttribute("open", "");
+  });
+}
+
 function dishRow(r, it, canOrder) {
-  const add = () => {
-    if (!canOrder) return;
+  const add = async () => {
+    if (!(await readyToOrder(r))) return;
     if (it.options) chooseOption(r, it); else addToBasket(r, it.id, it.name);
   };
   return h("li", { class: "dish", on: { click: add } },
@@ -499,8 +479,8 @@ function dishRow(r, it, canOrder) {
       h("div", { class: "price" }, fromPrice(it))),
     h("div", { class: "dish-side" },
       settings().pictures ? itemPicture(it, r.menu) : null,
-      h("button", { type: "button", class: "circle dish-add", disabled: !canOrder,
-        "aria-label": "Add " + it.name + (it.options ? ", choose an option" : ", " + money(it.price)) }, icon("add"))));
+      h("button", { type: "button", class: "circle dish-add",
+        "aria-label": "Add " + it.name + (it.options ? ", choose an option" : ", " + priceOrAsk(it.price)) }, icon("add"))));
 }
 
 async function addToBasket(r, key, label) {
@@ -647,13 +627,13 @@ async function buildOrder(r, f) {
   const prices = {};
   for (const l of priceLines(menu)) prices[l.key] = l;
   const keys = Object.keys(state.basket.lines).filter((k) => prices[k]).sort();
-  let sub = 0;
+  let sub = 0, unpriced = 0;
   const parts = [], text = [];
   for (const k of keys) {
-    const q = state.basket.lines[k];
-    sub += prices[k].price * q;
+    const q = state.basket.lines[k], p = prices[k].price;
     parts.push(k + "*" + q);
-    text.push(q + " × " + prices[k].label + ": " + money(prices[k].price * q));
+    if (p === null || p === undefined) { unpriced++; text.push(q + " × " + prices[k].label + ": price not listed"); }
+    else { sub += p * q; text.push(q + " × " + prices[k].label + " at " + money(p) + " = " + money(p * q)); }
   }
   const pickup = f.mode === "pickup";
   const zone = pickup ? null : f.deliveryZone;
@@ -667,15 +647,16 @@ async function buildOrder(r, f) {
     ["Delivery to: " + f.address, "Zone: " + areaName(f.zone) + (f.ward ? ", " + areaName(f.ward) : "")];
   const lines = ["Order " + code + " (sent with Hana)", "To: " + menu.name,
     f.scheduled ? "Scheduled for: " + longDate(f.scheduled.slice(0, 10)) + ", " + clock(f.scheduled.slice(11, 16)) : null, "", ...text, "",
-    "Items: " + money(sub),
+    unpriced ? (sub ? "Subtotal of listed prices: " + money(sub) : null) : "Subtotal (items): " + money(sub),
     pickup ? "Pickup: no delivery fee" : (fee === null ? "Delivery fee: not stated; please confirm" : "Delivery fee: " + money(fee)),
-    fee === null ? null : "Total: " + money(sub + fee),
+    unpriced ? "Please tell me the price of each item and the total, including the delivery fee, when you confirm."
+      : fee === null ? null : "Total, including delivery: " + money(sub + fee),
     "Payment: cash on delivery" + (pickup ? " (at pickup)" : "") + ". I will not pay in advance.", "",
     "Name: " + f.name, ...where,
     f.note ? "Note: " + f.note : null, "",
     "To confirm, reply: CONFIRMED " + code, "", check].filter((l) => l !== null);
   const message = lines.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
-  return { code, message, check, sub, fee, keys, zoneId, prices };
+  return { code, message, check, sub, fee, keys, zoneId, prices, unpriced };
 }
 
 /* Ordering channels at checkout: an order is a written message, so a phone number is offered as a text message, never as a call. */
@@ -729,7 +710,7 @@ function viewBasket() {
   if (menu.claimed === false) nodes.push(notice("warn", h("p", { class: "flush" }, "This listing is not yet confirmed by the business. Check the prices when the business confirms your order.")));
 
   const list = h("ul", { class: "list border" });
-  const totals = h("article", { class: "round no-elevate surface-container-high" });
+  const totals = h("article", { class: "round no-elevate surface-container-high stack" });
   const deliveryBox = h("div");
   const out = h("div", { "aria-live": "polite" });
   const pickupOffered = menu.pickup !== false;
@@ -737,18 +718,19 @@ function viewBasket() {
   const slots = scheduleSlots(menu);
   const when = h("select", { id: "when" },
     os.closed ? null : h("option", { value: "" }, "As soon as possible"),
-    slots.map((s) => h("option", { value: s.value }, s.label)));
+    slots.map((s) => h("option", { value: s.value, selected: b.scheduled === s.value }, s.label)));
   const whenBox = (os.closed && os.canOrder) || (!os.closed && menu.scheduled_orders === true && slots.length) ? selectField("when", os.closed ? "Schedule for later (the business is closed now)" : "When", when) : null;
 
   const deliveryZone = () => (b.mode === "delivery" && b.zone ? zoneFor(menu, b.zone) : null);
 
   function refresh() {
-    let sub = 0;
+    let sub = 0, unpriced = 0;
     list.replaceChildren(...Object.keys(b.lines).sort().map((k) => {
-      const q = b.lines[k];
-      sub += prices[k].price * q;
+      const q = b.lines[k], p = prices[k].price;
+      if (p === null || p === undefined) unpriced++; else sub += p * q;
       return h("li", null,
-        h("div", { class: "max" }, h("div", { class: "bold" }, prices[k].label), h("div", { class: "small-text muted price" }, money(prices[k].price) + " each")),
+        h("div", { class: "max" }, h("div", { class: "bold" }, prices[k].label),
+          h("div", { class: "small-text muted price" }, p === null || p === undefined ? "Price on request" : q + " × " + money(p) + " = " + money(p * q))),
         h("nav", { class: "no-space", role: "group", "aria-label": "Quantity of " + prices[k].label },
           h("button", { type: "button", class: "circle transparent", "aria-label": "Remove one " + prices[k].label, on: { click: () => change(k, -1) } }, icon(q === 1 ? "delete" : "remove")),
           h("span", { class: "bold price" }, String(q)),
@@ -761,9 +743,15 @@ function viewBasket() {
     else if (!z) feeText = "No delivery to your zone";
     else feeText = z.fee === null ? "Not stated" : money(z.fee);
     const fee = b.mode === "pickup" ? 0 : (z && z.fee !== null ? z.fee : null);
-    const rows = [h("nav", null, h("span", { class: "max" }, "Items"), h("span", { class: "price" }, money(sub))),
-      h("nav", null, h("span", { class: "max" }, b.mode === "pickup" ? "Pickup" : "Delivery"), h("span", { class: "price" }, feeText))];
-    if (fee !== null && (b.mode === "pickup" || z)) rows.push(h("hr"), h("nav", null, h("span", { class: "max bold" }, "Total to pay at " + (b.mode === "pickup" ? "pickup" : "delivery")), h("span", { class: "price bold" }, money(sub + fee))));
+    const rows = [h("nav", null, h("span", { class: "max" }, unpriced ? "Subtotal of listed prices" : "Subtotal (items)"), h("span", { class: "price" }, unpriced && !sub ? "Not listed" : money(sub))),
+      h("nav", null, h("span", { class: "max" }, b.mode === "pickup" ? "Pickup" : "Delivery fee"), h("span", { class: "price" }, feeText))];
+    if (unpriced) rows.push(h("hr"), h("p", { class: "small-text flush" }, (unpriced === 1 ? "One item has" : unpriced + " items have") + " no listed price. Your order message asks the business for each price and the total" + (b.mode === "pickup" ? "" : ", including delivery,") + " when it confirms."));
+    else if (fee !== null && (b.mode === "pickup" || z)) rows.push(h("hr"), h("nav", null, h("span", { class: "max bold" }, "Total to pay at " + (b.mode === "pickup" ? "pickup" : "delivery") + (b.mode === "pickup" ? "" : ", including delivery")), h("span", { class: "price bold" }, money(sub + fee))));
+    else if (b.mode !== "pickup" && z) rows.push(h("hr"), h("p", { class: "small-text flush" }, "Total: " + money(sub) + " plus the delivery fee, which the business confirms."));
+    if (b.mode !== "pickup" && z && arrivalMinutes(z) && !when.value) {
+      const start = os.closed && os.next ? os.next : new Date();
+      rows.push(h("p", { class: "small-text flush" }, "Estimated arrival: about " + clockAt(new Date(start.getTime() + arrivalMinutes(z) * 60000)) + ". That is the business's delivery time of " + z.eta_min + " minutes, plus up to " + state.rules.confirmation_window_minutes + " minutes for it to confirm."));
+    }
     if (z && z.min_order && sub < z.min_order) rows.push(h("p", { class: "small-text flush" }, "This order is below the minimum order of " + money(z.min_order) + "."));
     rows.push(h("p", { class: "small-text muted flush" }, "All prices include VAT and every other charge. Prices from version " + menu.version + ", published " + longDate(menu.announcement && menu.announcement.published) + "."));
     totals.replaceChildren(...rows);
@@ -842,7 +830,9 @@ function viewBasket() {
       menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
       items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price })), subtotal: o.sub, fee: o.fee,
       message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
-      window_start: windowStart, scheduled, feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
+      window_start: windowStart, scheduled, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
+      arrive_at: b.mode === "pickup" ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
+      feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
     log("Prepared order " + o.code + " for " + menu.name + (sentDirect ? "; sent directly to the business." : "."));
     state.basket = null; saveBasket();
@@ -882,6 +872,7 @@ function viewBasket() {
     } } }, icon("delete"), h("span", null, "Empty basket"))));
   show("basket", "Basket", ...nodes);
   renderDelivery();
+  when.addEventListener("change", () => { b.scheduled = when.value || null; saveBasket(); refresh(); });
   refresh();
 }
 
@@ -940,7 +931,7 @@ function complaintText(o) {
     "Confirmation received: " + dateTime(o.confirmed_at), "Confirmation text: " + o.confirmation,
     "Menu version: " + o.menu_version, "Menu file SHA-256: " + o.menu_hash,
     "Items: " + o.items.map((i) => i.qty + " × " + (i.label || i.key)).join("; "),
-    "Items subtotal: " + money(o.subtotal), "Delivery fee: " + (o.mode === "pickup" ? "none (pickup)" : o.fee === null ? "not stated" : money(o.fee)),
+    "Items subtotal: " + money(o.subtotal) + (o.items.some((i) => i.price === null || i.price === undefined) ? " (some prices not listed)" : ""), "Delivery fee: " + (o.mode === "pickup" ? "none (pickup)" : o.fee === null ? "not stated" : money(o.fee)),
     "", "Message sent to the business:", o.message || o.kitchen_message, "",
     "Attach a screenshot of the chat showing the order and the business's confirmation.",
     "Under the Hana Terms of Use, the business must keep its communications about this order for at least " + state.rules.record_retention_months + " months, or " + state.rules.record_retention_months_when_disputed + " months once a dispute is raised.",
@@ -953,7 +944,7 @@ function orderCard(o, orders) {
   const kids = [
     h("h2", { class: "card-title" }, o.restaurant),
     h("p", { class: "muted flush" }, "Order " + o.code + " · " + dateTime(o.created || o.at)),
-    h("p", { class: "flush" }, money(o.subtotal) + (o.mode === "pickup" ? " (pickup)" : o.fee === null ? " plus delivery (fee not stated)" : " plus " + money(o.fee) + " delivery")),
+    h("p", { class: "flush" }, (o.items.some((i) => i.price === null || i.price === undefined) ? "Prices to be confirmed by the business" : money(o.subtotal)) + (o.mode === "pickup" ? " (pickup)" : o.fee === null ? " plus delivery (fee not stated)" : " plus " + money(o.fee) + " delivery")),
     h("nav", { class: "wrap small-space" }, chip(st[0], st[1])),
   ];
   const save = () => store.set("hana.orders", orders);
@@ -967,6 +958,24 @@ function orderCard(o, orders) {
     if (!ch.prefill) copy(text);
     window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener");
   };
+  if (o.arrive_at && (o.status === "awaiting" || o.status.startsWith("confirmed"))) {
+    kids.push(h("p", { class: "small-text bold" }, (o.scheduled ? "Scheduled for " : "Estimated arrival: about ") + clockAt(new Date(o.arrive_at)) + (new Date(o.arrive_at).toDateString() !== new Date().toDateString() ? ", " + longDate(o.arrive_at.slice(0, 10)) : "") + "."));
+  }
+  const cancelOpen = o.status === "awaiting" || (o.status.startsWith("confirmed") && Date.now() < deadline.getTime());
+  const cancelButton = cancelOpen ? h("button", { type: "button", class: "border", on: { click: async () => {
+    const ch = CHANNELS[o.channel];
+    const how = ch && ch.direct ? "The cancellation is sent to the business automatically." : "Your messaging app opens with the cancellation filled in; send it in the same chat as the order.";
+    if (!(await ask("Cancel order " + o.code + "?", "You can cancel within " + win + " minutes of ordering. " + how, "Cancel order"))) return;
+    const text = "Please cancel order " + o.code + ". I no longer want it.\nCANCEL " + o.code;
+    if (ch && ch.direct) { try { await sendDirect(o.channel_id, text); snackbar("Cancellation sent to the business."); } catch (e) { copy(text); snackbar("Could not send it directly. The cancellation was copied; send it to the business."); } }
+    else if (ch && o.channel_id) { if (!ch.prefill) copy(text); window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener"); }
+    else copy(text);
+    o.status = "cancelled";
+    o.closed_at = new Date().toISOString();
+    save();
+    log("Cancelled order " + o.code + " for " + o.restaurant + ".");
+    viewOrders();
+  } } }, icon("close"), h("span", null, "Cancel order")) : null;
   if (o.status === "awaiting" || o.status === "expired") {
     const reply = h("textarea", { id: "reply-" + o.code, rows: 3, placeholder: " " });
     const left = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / 60000));
@@ -989,19 +998,13 @@ function orderCard(o, orders) {
           viewOrders();
         } } }, icon("check_circle"), h("span", null, "Save the reply")),
         o.status === "awaiting" ? h("button", { type: "button", class: "border", on: { click: reminder } }, icon("send"), h("span", null, "Send a reminder")) : null,
-        o.status === "awaiting" ? h("button", { type: "button", class: "border", on: { click: async () => {
-          if (!(await ask("Cancel this order?", "Tell the business that you are cancelling. The order will be marked as cancelled on this phone.", "Cancel order"))) return;
-          o.status = "cancelled";
-          o.closed_at = new Date().toISOString();
-          save();
-          log("Cancelled order " + o.code + " for " + o.restaurant + " before confirmation.");
-          viewOrders();
-        } } }, icon("close"), h("span", null, "Cancel order")) : null),
+        o.status === "awaiting" ? cancelButton : null),
       out);
   } else if (o.status === "declined" || o.status === "cancelled") {
     kids.push(h("p", { class: "small-text muted" }, "This record is removed after " + state.rules.draft_order_expiry_hours + " hours."));
   } else {
-    if (o.eta && o.eta !== "?") kids.push(h("p", { class: "small-text" }, "Expected in about " + o.eta + " minutes from confirmation."));
+    if (o.eta && o.eta !== "?") kids.push(h("p", { class: "small-text" }, "The business expects to deliver about " + o.eta + " minutes after confirming" + (o.confirmed_at ? ", around " + clockAt(new Date(new Date(o.confirmed_at).getTime() + Number(o.eta) * 60000)) : "") + "."));
+    if (cancelButton) kids.push(h("nav", null, cancelButton));
     kids.push(h("details", { class: "gap-top" }, h("summary", { class: "link" }, "Problem with this order?"),
       h("p", null, "Hana does not resolve disputes. For a problem involving money, contact the Directorate of National Consumer Rights Protection (DNCRP) at 16121 within 30 days, and include the summary below with a screenshot of the chat."),
       o.status === "confirmed_unsigned" ? notice("info", h("p", { class: "flush" }, "This confirmation is not signed, so the chat screenshot is the main evidence.")) : null,
@@ -1172,34 +1175,30 @@ async function viewTerms() {
 
 /* ---------------------------------------------------------------- settings */
 
-const SWATCH_CLASS = { "#40E0D0": "swatch-40e0d0", "#9A3412": "swatch-9a3412", "#0F766E": "swatch-0f766e", "#3730A3": "swatch-3730a3", "#15803D": "swatch-15803d",
+const SWATCH_CLASS = { "#F7F5F2": "swatch-f7f5f2", "#40E0D0": "swatch-40e0d0", "#9A3412": "swatch-9a3412", "#0F766E": "swatch-0f766e", "#3730A3": "swatch-3730a3", "#15803D": "swatch-15803d",
   "#7E22CE": "swatch-7e22ce", "#FACC15": "swatch-facc15", "#FFFFFF": "swatch-ffffff", "#111827": "swatch-111827" };
 /* Background colour and picture for the app icon, with a live preview. */
 function iconPicker() {
   const preview = h("img", { class: "icon-preview", alt: "Preview of the app icon", width: 72, height: 72 });
   const set = (patch) => {
-    const ch = Object.assign(iconChoice(), patch);
-    store.set("hana.icon", ch);
+    store.set("hana.icon", Object.assign(iconChoice(), patch));
     applyIcon();
     draw();
   };
   const swatches = h("nav", { class: "wrap small-space", "aria-label": "Icon background" });
-  const marks = h("nav", { class: "wrap small-space", "aria-label": "Icon picture" });
   const custom = h("input", { type: "color", id: "icon-colour", "aria-label": "Any colour", on: { input: (e) => set({ bg: e.target.value }) } });
   function draw() {
     const ch = iconChoice();
-    preview.src = drawIcon(144, 0.6, 32, ch);
+    drawIcon(144, 0.86, 32, ch).then((src) => { preview.src = src; }, () => { preview.src = "icon-192.png"; });
     custom.value = ch.bg;
     swatches.replaceChildren(...ICON_BGS.map(([c, name]) => h("button", { type: "button", class: "swatch " + SWATCH_CLASS[c], title: name, "aria-label": name,
       "aria-pressed": ch.bg.toUpperCase() === c ? "true" : "false", on: { click: () => set({ bg: c }) } })),
       h("label", { class: "swatch swatch-any", title: "Any colour" }, custom));
-    marks.replaceChildren(...ICON_MARKS.map((m) => h("button", { type: "button", class: "chip small border icon-mark", "aria-pressed": ch.mark === m ? "true" : "false", "aria-label": "Use " + m, on: { click: () => set({ mark: m }) } }, m)));
   }
   draw();
   return h("div", { class: "stack" },
-    h("div", { class: "row" }, preview, h("p", { class: "small-text muted max" }, "Choose a background colour and a picture. The new icon is used in the browser tab and when you install Hana. If Hana is already installed, remove it and install it again to see the new icon.")),
-    h("p", { class: "small-text bold flush" }, "Background"), swatches,
-    h("p", { class: "small-text bold flush" }, "Picture"), marks,
+    h("div", { class: "row" }, preview, h("p", { class: "small-text muted max" }, "Choose the background of the app icon. It is used in the browser tab and when you install Hana. If Hana is already installed, remove it and install it again to see the change.")),
+    swatches,
     h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { store.set("hana.icon", null); location.reload(); } } }, h("span", null, "Use the standard icon"))));
 }
 
@@ -1231,7 +1230,6 @@ function viewSettings() {
     h("div", { class: "row" }, h("label", { class: "switch" }, pictures, h("span")), h("label", { for: "pictures", class: "max" }, "Show pictures of food")),
     h("p", { class: "small-text muted" }, "Pictures come from the business. Listings without a cover show a stock photo for their cuisine from Wikimedia Commons, an openly licensed library; loading it lets Wikimedia see your network address, as any website you visit would. Food icons are Twemoji, by Twitter, Inc. and contributors, CC BY 4.0."),
     h("nav", { class: "gap-top" }, h("button", { type: "button", class: "border", on: { click: () => { try { localStorage.removeItem("hana.settings"); localStorage.removeItem("hana.theme"); } catch (e) { /* ignore */ } applyTheme(); viewSettings(); } } }, h("span", null, "Reset appearance"))),
-    h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { location.hash = "#/"; setTimeout(startTour, 300); } } }, h("span", null, "Show the walkthrough again"))),
     sectionTitle("Profile (optional)"),
     h("p", { class: "small-text muted" }, "Filled in at checkout so you do not have to type it each time. Kept on this phone only."),
     textField("p-name", "First name or nickname", pname),
@@ -1373,7 +1371,7 @@ async function downloadPhoneBook(o) {
       if (has("menu")) for (const l of priceLines(m)) {
         const sec = l.item.section || "Menu";
         if (!secs.has(sec)) secs.set(sec, []);
-        secs.get(sec).push({ name: l.option ? l.item.name + ", " + l.option : l.item.name, price: money(l.price) });
+        secs.get(sec).push({ name: l.option ? l.item.name + ", " + l.option : l.item.name, price: priceOrAsk(l.price) });
       }
       return { name: m.name, letter: norm(m.name).charAt(0).toUpperCase() || "#", lines, sections: Array.from(secs, ([name, items]) => ({ name, items })) };
     });
