@@ -151,7 +151,9 @@ function show(navName, title, ...nodes) {
 function statusChip(menu) {
   const o = openNow(menu.hours);
   if (o === null) return chip("Hours not stated");
-  return o ? chip("Open now", "ok") : chip("Closed now");
+  /* Volunteer-entered hours may be out of date, so they say so. */
+  const unsure = menu.claimed === false ? " (hours not confirmed)" : "";
+  return o ? chip("Open now" + unsure, "ok") : chip("Closed now" + unsure);
 }
 
 /* Estimated minutes from ordering to arrival: the business's own delivery time for the zone,
@@ -442,7 +444,7 @@ function restaurantCard(r, zone, delivers, dishHits) {
     return h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, r.name), h("p", { class: "muted" }, r.problem || "This menu is not available."));
   }
   const chips = [statusChip(m)];
-  if (m.claimed === false) chips.push(chip("Unconfirmed listing", "warn"));
+  if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
   if (!delivers) chips.push(chip("Does not deliver to " + areaName(state.area), "warn"));
   const body = [
     h("h2", { class: "card-title" }, h("a", { href: "#/r/" + r.id }, r.name)),
@@ -560,8 +562,10 @@ function viewRestaurant(id) {
   const myZone = state.area ? zoneFor(m, state.area) : onlyZone(m);
   const cover = coverFor(m);
 
-  const chips = [os.closed && os.next ? chip("Closed · opens " + whenText(os.next)) : statusChip(m)];
-  if (m.claimed === false) chips.push(chip("Unconfirmed listing", "warn"));
+  const chips = [os.closed && os.next ? chip("Closed · opens " + whenText(os.next) + (m.claimed === false ? " (hours not confirmed)" : "")) : statusChip(m)];
+  const when = m.announcement && m.announcement.published ? longDate(m.announcement.published) : "";
+  if (m.claimed === false) chips.push(chip("Not confirmed by the business" + (when ? " · entered " + when : ""), "warn"));
+  else if (when) chips.push(chip("Prices confirmed " + when));
   if (state.area && !zoneFor(m, state.area)) chips.push(chip("Does not list delivery to " + areaName(state.area), "warn"));
   const nodes = [
     pageHeader(m.name, "#/"),
@@ -810,8 +814,9 @@ async function buildOrder(r, f) {
   for (const k of keys) {
     const q = state.basket.lines[k], p = prices[k].price;
     parts.push(k + "*" + q);
-    if (p === null || p === undefined) { unpriced++; text.push(q + " × " + prices[k].label); }
-    else { sub += p * q; text.push(q + " × " + prices[k].label + ": " + money(p * q)); }
+    const n = state.basket.notes && state.basket.notes[k] ? " (note: " + state.basket.notes[k] + ")" : "";
+    if (p === null || p === undefined) { unpriced++; text.push(q + " × " + prices[k].label + n); }
+    else { sub += p * q; text.push(q + " × " + prices[k].label + n + ": " + money(p * q)); }
   }
   const pickup = f.mode === "pickup";
   const zone = pickup ? null : f.deliveryZone;
@@ -917,6 +922,14 @@ function viewBasket() {
 
   const deliveryZone = () => (b.mode === "delivery" && b.zone ? zoneFor(menu, b.zone) : null);
 
+  /* A short note for one item, such as "no onion", carried into the order message. */
+  const itemNote = (k) => {
+    const cur = (b.notes && b.notes[k]) || "";
+    const inp = h("input", { type: "text", id: "note-" + k, maxlength: 80, autocomplete: "off", placeholder: " ", value: cur,
+      on: { change: () => { b.notes = Object.assign({}, b.notes, { [k]: inp.value.trim() }); if (!b.notes[k]) delete b.notes[k]; saveBasket(); refresh(); } } });
+    return h("details", null, h("summary", { class: "link small-text" }, cur ? "Note: " + cur : "Add a note for this item"),
+      textField("note-" + k, "Note, for example no onion", inp));
+  };
   function refresh() {
     let sub = 0, unpriced = 0;
     list.replaceChildren(...Object.keys(b.lines).sort().map((k) => {
@@ -924,7 +937,8 @@ function viewBasket() {
       if (p === null || p === undefined) unpriced++; else sub += p * q;
       return h("li", null,
         h("div", { class: "max" }, h("div", { class: "bold" }, prices[k].label),
-          h("div", { class: "small-text muted price" }, p === null || p === undefined ? "Price on request" : q + " × " + money(p) + " = " + money(p * q))),
+          h("div", { class: "small-text muted price" }, p === null || p === undefined ? "Price on request" : q + " × " + money(p) + " = " + money(p * q)),
+          itemNote(k)),
         h("nav", { class: "no-space", role: "group", "aria-label": "Quantity of " + prices[k].label },
           h("button", { type: "button", class: "circle transparent", "aria-label": "Remove one " + prices[k].label, on: { click: () => change(k, -1) } }, icon(q === 1 ? "delete" : "remove")),
           h("span", { class: "bold price" }, String(q)),
@@ -1066,7 +1080,7 @@ function viewBasket() {
     orders.unshift({ code: o.code, status: "awaiting", created, restaurant_id: r.id, restaurant: menu.name,
       claimed: menu.claimed === true && !!(menu.owner && menu.owner.public_key), public_key: menu.owner && menu.owner.public_key ? menu.owner.public_key : null, staff_keys: ((menu.owner && menu.owner.staff) || []).map((x) => x.public_key).filter(Boolean),
       menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
-      items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price })), subtotal: o.sub, fee: o.fee,
+      items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price, note: (b.notes && b.notes[k]) || undefined })), subtotal: o.sub, fee: o.fee,
       message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
       window_start: windowStart, scheduled, business_phone: menu.business_phone, informal: menu.claimed !== true,
       order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, sign_key: sealedInfo && orderKey ? orderKey.jwk : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
@@ -1218,7 +1232,22 @@ function orderCard(o, orders) {
     const last = o.progress[o.progress.length - 1];
     kids.push(h("ul", { class: "list border" }, o.progress.map((p) => h("li", null, icon("check_circle"),
       h("div", { class: "max" }, h("div", null, p.text || p.step), h("div", { class: "small-text muted" }, dateTime(p.at) + (p.rider ? " · Rider " + p.rider.name + ", " + p.rider.phone : "")))))));
-    if (last.rider && last.step === "out") kids.push(h("nav", null, h("a", { href: "tel:" + last.rider.phone, class: "button border" }, icon("call"), h("span", null, "Call the rider"))));
+    const lastStep = o.progress.filter((p) => p.step !== "late").pop() || last;
+    if (lastStep.rider && lastStep.step === "out") kids.push(h("nav", null, h("a", { href: "tel:" + lastStep.rider.phone, class: "button border" }, icon("call"), h("span", null, "Call the rider"))));
+  }
+  /* Check before you pay: tick each item when the order arrives, then hand over the money. */
+  if (o.status.startsWith("confirmed") && (o.items || []).length && !(o.progress || []).some((p) => p.step === "delivered" || p.step === "picked")) {
+    const done = new Set(o.checked || []);
+    const all = () => o.items.every((i) => done.has(i.key));
+    const msg = h("p", { class: "small-text flush" + (all() ? " bold" : " muted") }, all() ? "Everything is here. You can pay now." : "Tick each item as you check it. Pay only when everything is here.");
+    kids.push(h("details", { class: "gap-top", open: o.items.length > 0 && done.size > 0 }, h("summary", { class: "link" }, "Check before you pay"),
+      h("div", { class: "stack" }, msg, h("nav", { class: "vertical left-align" }, o.items.map((i) => h("label", { class: "checkbox" },
+        h("input", { type: "checkbox", checked: done.has(i.key), on: { change: (e) => {
+          if (e.target.checked) done.add(i.key); else done.delete(i.key);
+          o.checked = Array.from(done); save();
+          msg.textContent = all() ? "Everything is here. You can pay now." : "Tick each item as you check it. Pay only when everything is here.";
+          msg.className = "small-text flush" + (all() ? " bold" : " muted");
+        } } }), h("span", null, i.qty + " × " + (i.label || i.key) + (i.note ? " (" + i.note + ")" : ""))))))));
   }
   if (o.channel === "hana" && o.order_topic && !o.alerts && (o.status === "awaiting" || o.status.startsWith("confirmed")) && !(o.progress || []).some((p) => p.step === "delivered" || p.step === "picked"))
     kids.push(h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => {

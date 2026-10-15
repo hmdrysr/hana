@@ -64,3 +64,7 @@ Open a pull request as described in `CONTRIBUTING.md`. State in the description 
 ## What not to share with an assistant
 
 Customer orders, phone numbers from orders, private keys (`hana_sign.py` key files) and anything from a business's private messages. The repository itself is public and safe to share.
+
+## Free software and backwards compatibility
+
+Every change must keep Hana free and open source, add no paid service or API key, and stay backwards compatible: older menus, orders, saved data and links keep working. New or untested tools go into `ROADMAP.md` first, with the conditions they must meet. See the rules at the top of `ROADMAP.md`.

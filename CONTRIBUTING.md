@@ -62,3 +62,7 @@ Hana is released under the MIT licence (`LICENSE`). By contributing you agree th
 ## Review
 
 Reviewers are volunteers. There is no promised response time. If nobody has responded in two weeks, comment on the pull request.
+
+## Free software and backwards compatibility
+
+Every change must keep Hana free and open source, add no paid service or API key, and stay backwards compatible: older menus, orders, saved data and links keep working. New or untested tools go into `ROADMAP.md` first, with the conditions they must meet. See the rules at the top of `ROADMAP.md`.

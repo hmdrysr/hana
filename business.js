@@ -957,14 +957,15 @@ async function orderPanel(text, found, onDone, direct) {
 }
 
 /* The steps of an accepted order sent in Hana. Each step reaches the customer's app at once. */
-const STEP_TEXT = { accepted: "Accepted, being prepared", ready: "Ready", out: "Out for delivery", delivered: "Delivered", picked: "Picked up" };
+const STEP_TEXT = { accepted: "Accepted, being prepared", ready: "Ready", out: "Out for delivery", delivered: "Delivered", picked: "Picked up", late: "Running about 15 minutes late" };
 function progressPanel(o, redraw) {
   const pickup = /Z=pickup /.test(o.text);
   const send = async (step, extra) => {
     try {
       await postUpdate(o, Object.assign({ t: "status", step, text: STEP_TEXT[step] }, extra || {}));
       const l = inboxOrders(); const x = l.find((y) => y.id === o.id);
-      if (x) { x.step = step; if (step === "delivered" || step === "picked") x.status = "done"; if (extra && extra.rider) x.rider = extra.rider; saveInbox(l); }
+      if (x && step === "late") { x.late = (x.late || 0) + 15; saveInbox(l); }
+      else if (x) { x.step = step; if (step === "delivered" || step === "picked") x.status = "done"; if (extra && extra.rider) x.rider = extra.rider; saveInbox(l); }
       snackbar(STEP_TEXT[step] + ". The customer's app shows it now.");
       redraw();
     } catch (e) { snackbar("Could not reach the customer's app. Check your connection and try again."); }
@@ -982,6 +983,8 @@ function progressPanel(o, redraw) {
         send("out", { rider: { name: rn.value.trim().slice(0, 40), phone } });
       } } }, icon("moped"), h("span", null, "Out for delivery"))));
   }
+  /* An honest delay notice: customers mind a broken promise more than a wait. */
+  if (step !== "delivered" && step !== "picked") kids.push(h("nav", null, h("button", { type: "button", class: "border", on: { click: () => send("late") } }, icon("schedule"), h("span", null, "Running late: add 15 minutes" + (o.late ? " (" + o.late + " so far)" : "")))));
   if (step === "out" || (pickup && step === "ready")) kids.push(h("nav", null, h("button", { type: "button", on: { click: () => send(pickup ? "picked" : "delivered") } }, icon("check_circle"), h("span", null, pickup ? "Picked up and paid" : "Delivered and paid"))));
   return h("div", { class: "order-panel" }, kids);
 }

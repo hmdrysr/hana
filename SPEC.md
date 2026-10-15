@@ -807,3 +807,10 @@ Every hosted copy and every one-file copy carries the whole directory and serves
 - **Community reports:** if `site.json` has `"reports": {"topic", "enc_key"}`, each listing page offers "Report a problem with this listing". The report is sealed like an order (section 21) and posted to that ntfy topic; volunteers open reports under More, Community reports, with their key.
 - **Bangla:** Settings, Language. `i18n/bn.json` (about 4 KB) loads only when chosen and replaces fixed interface labels as they appear. Business names, dishes and order messages stay as written.
 
+## 24. Small reliability features (October 2026)
+
+- **Item notes:** each basket line may carry a note (up to 80 characters), written into the order message as "(note: ...)" after the item. Orders without notes are unchanged.
+- **Check before you pay:** confirmed orders show each item with a tick box; the customer pays once everything is ticked. Kept on the phone only.
+- **Running late:** the business tools post a signed status update with step `late` ("Running about 15 minutes late"). Older apps show it as an ordinary update; it never changes the order's step.
+- **Confirmation date:** listings show "Prices confirmed" with the date of the menu's latest publication, or, for volunteer listings, "Not confirmed by the business" with the date they were entered. Volunteer listings' opening times are marked "(hours not confirmed)".
+

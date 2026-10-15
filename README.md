@@ -12,20 +12,21 @@ Hana is a directory and an order-preparation tool. Each order is a contract betw
 
 ## Status
 
-This is the first working version. The app:
+Working and tested in browsers; not yet tested on enough real phones. For customers, the app:
 
-- lists restaurants alphabetically, with typo-tolerant search across restaurants and dishes;
-- matches restaurants to your zone (thana), with an optional ward at checkout;
-- offers delivery or pickup, with the delivery fee fixed by the business and capped;
-- counts an order only once the business confirms it, with a signed confirmation for claimed listings;
-- keeps one basket for one restaurant at a time;
-- prepares the order message, which you send from your own phone; and
-- works offline after the first visit, and can be downloaded as a single offline file that updates itself when online;
-- lets each person choose a colour scheme, text size and pictures, with an optional profile kept on the phone.
+- lists restaurants and grocery stores alphabetically, with typo-tolerant search that shows items first ("what is available where"), then places; each menu has its own search;
+- matches places to your zone (thana), found from your location or your map pin, with an optional ward at checkout;
+- offers delivery or pickup, with the delivery fee set by the business and capped;
+- keeps one basket for one business, saved addresses, favourites, an "Open now" filter and "Order again";
+- prepares a polite order message, sent from your own phone by WhatsApp, text message, email or another app, or sends it in Hana, encrypted, with live status, chat and alerts;
+- takes a note for each item (such as "no onion"), shows a "Check before you pay" list when the order arrives, and passes on the business's "running late" notices;
+- shows when each listing's prices were last confirmed, and says so when a volunteer entered them;
+- adds a map pin for the rider (OpenStreetMap), and works in English or Bangla, light or dark, at any text size;
+- works offline after the first visit, and can be downloaded as one offline file or as a JSON or PDF phone book.
 
-Businesses use the business tools page (`business.html`) to list or claim a listing, confirm orders and publish price changes. Claims are verified by two community members (`CLAIMS.md`).
+Every claimed business's confirmation, status update and message is signed, and so is every message the customer sends in Hana, so neither side can invent the other's words in a dispute. Listings entered by volunteers skip the order codes: the customer and the business agree on prices and the total in their chat.
 
-Not built yet: the courier card, photos and drawn area boundaries. The three listings (Meal Master, Sliced and Tava Restaurant) were entered by a volunteer from menu images and are **not yet confirmed by the businesses**. The full design, including every open item, is in `SPEC.md`.
+The three listings (Meal Master, Sliced and Tava Restaurant) were entered by a volunteer and are **not yet confirmed by the businesses**. The full design is in `SPEC.md`; planned upgrades, with the conditions for each, are in `ROADMAP.md`.
 
 ## Why Hana exists
 
@@ -73,9 +74,15 @@ In the app, Settings, then Download the directory, saves the directory as JSON o
 
 ## For businesses
 
-Businesses can take orders in Hana itself: customers send them from the app, encrypted so that only the business can read them, and the business confirms, updates and messages the customer with one tap. It uses ntfy, a free relay that needs no account. See `SPEC.md`, section 21.
+Listing costs nothing and Hana takes no commission. The business tools (`business.html`) work on any phone browser:
 
-The business tools (business.html) let a business confirm orders, edit its menu and publish signed updates. Optional tools, under More, add a point of sale with standard receipts and statements, rider dispatch, and encrypted backups to the business's own Supabase or CouchDB. Only the menu and the listing are ever published; everything else stays on the business's device or goes only where it sends it. See `SPEC.md`, section 18.
+- **Sign-in:** a passkey (fingerprint, face or screen lock) or a five-word recovery phrase unlocks the business key, kept encrypted as `vault.json` in the business's own repository. Staff get their own sign-in and can confirm and update orders, but cannot change the menu.
+- **Orders:** orders sent in Hana arrive encrypted, with a sound, through ntfy (free, open source, no account). Confirm, decline, mark ready or out for delivery (rider details required) and message the customer, all signed. Orders pasted from other apps are checked against the published menu.
+- **Today:** mark items sold out, add busy minutes or switch to pickup only; customers see it at once, and it resets at midnight.
+- **Menu:** a visual editor publishes signed menu versions with a public price history.
+- **More:** point of sale with receipts and statements, rider dispatch, encrypted backups, an own website, a QR poster, a Get started checklist and community reports.
+
+Only the menu, the listing and the encrypted vault are published. Everything else stays on the business's device. See `SPEC.md`, sections 18 and 21 to 23.
 
 ## Hosting a copy
 
@@ -94,7 +101,12 @@ Read `CONTRIBUTING.md`. You can list a restaurant, report a wrong listing, fix a
 | Path | What it holds |
 |---|---|
 | `index.html`, `core.js`, `app.js`, `sw.js`, `site.json`, `manifest.webmanifest`, `icon*` | The customer app. Plain files, no build step |
-| `business.html`, `business.js` | Business tools: list or claim, confirm orders, update prices |
+| `business.html`, `business.js`, `pos.js`, `vault.js`, `vault-words.txt` | Business tools: sign-in, orders, menu, point of sale, staff |
+| `direct.js` | Orders sent in Hana: ntfy relay, end-to-end encryption, presence |
+| `i18n/bn.json` | Bangla interface labels, loaded only when chosen |
+| `vendor/` | Third-party code loaded only where needed (the QR library) |
+| `list.json`, `search.json`, `feed.xml`, `restaurants/`, `groceries/` | Built by `tools/build.py`: the home-page list, dish search, the Atom feed and clean listing pages |
+| `ROADMAP.md` | Planned upgrades and the conditions each must meet first |
 | `rules.json` | Rules every listing follows: cash on delivery only, all-inclusive prices, the delivery fee limit |
 | `ADOPTING.md`, `regions.json` | How another region runs its own Hana, and the list of regional directories |
 | `TERMS.md` | Terms of Use: rules for businesses and customers, records, disputes and liability |
@@ -106,12 +118,14 @@ Read `CONTRIBUTING.md`. You can list a restaurant, report a wrong listing, fix a
 | `menus/` | Menus hosted in this repo by volunteers (signed by the owners) |
 | `vouches/`, `vouchers.json` | Signed vouch notes and the list of approved vouchers |
 | `theme/` | The one fixed look: Beer CSS, the Hana theme and the uniformity rules (`theme/UNIFORMITY.md`) |
-| `tools/` | `check.py` (the check every pull request must pass), `selftest.py`, `browser_test.py`, `order_line.py`, `hana_sign.py`, `ed25519.py`, `verify_images.py`, `unpack.py`, `autofill.py` |
+| `tools/` | `check.py` (the check every pull request must pass), `selftest.py`, `browser_test.py`, `build.py`, `place_order.py`, `order_line.py`, `hana_sign.py`, `ed25519.py`, `verify_images.py`, `unpack.py`, `autofill.py` |
 | `.github/` | Issue forms, the pull request template and the check workflow |
 | `AUTHORS.md`, `GOVERNANCE.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `VOLUNTEERS.md` | People, rules and contacts |
 
 ## Licence
 
-MIT. See `LICENSE`. Third-party files keep their own licences: Beer CSS (MIT, `theme/beer-LICENSE.md`) Material Symbols (Apache License 2.0, `theme/material-symbols-LICENSE.txt`) and the Twemoji food icons (CC BY 4.0, `icons/README.md`). See `DEPENDENCIES.md`.
+MIT. See `LICENSE`. Third-party files keep their own licences: Beer CSS (MIT, `theme/beer-LICENSE.md`) Material Symbols (Apache License 2.0, `theme/material-symbols-LICENSE.txt`) the Twemoji food icons (CC BY 4.0, `icons/README.md`), qrcode-generator (MIT) and the BIP-39 word list (MIT). Map data is © OpenStreetMap contributors (ODbL). See `DEPENDENCIES.md`.
+
+Every part of Hana is free and open source, and every update must stay backwards compatible (see `ROADMAP.md`).
 
 Contributors keep their copyright and release their work under the same MIT licence (see `CONTRIBUTING.md`).
