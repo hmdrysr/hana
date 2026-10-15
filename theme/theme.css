@@ -644,12 +644,6 @@ html.text-larger { font-size: 125%; }
   place-items: center;
   color: var(--on-surface-variant);
 }
-.placeholder > svg {
-  inline-size: 40%;
-  max-inline-size: 4rem;
-  block-size: auto;
-  opacity: 0.45;
-}
 .credit {
   font-size: 0.75rem;
   line-height: 1rem;
@@ -763,5 +757,77 @@ article.rcard > a {
   display: block;
 }
 .hero > .placeholder + .credit {
+  display: none;
+}
+
+/* ---------- Food icons (Twemoji, icons/food.svg) ---------- */
+.food-icon {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  flex-shrink: 0;
+}
+.food-icon.large {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+}
+.placeholder > .food-icon {
+  inline-size: 45%;
+  block-size: 45%;
+  max-inline-size: 4.5rem;
+  max-block-size: 4.5rem;
+}
+.chip > .food-icon {
+  margin-inline-end: 0.25rem;
+}
+
+/* ---------- Category strip and search ---------- */
+nav.cat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  gap: 0.25rem;
+  align-items: start;
+  margin-block: 0.5rem;
+}
+nav.cat-strip:empty {
+  display: none;
+}
+button.cat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.375rem;
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: auto;
+  min-block-size: 5.5rem;
+  padding: 0.5rem 0.25rem;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--on-surface);
+  font-size: 0.8125rem;
+  line-height: 1.1rem;
+  white-space: normal;
+  text-align: center;
+  box-shadow: none;
+}
+button.cat-tile[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+ul.cat-list > li > a {
+  gap: 1rem;
+  padding-block: 0.5rem;
+}
+
+/* ---------- Page header with Back ---------- */
+nav.page-head {
+  gap: 0.5rem;
+}
+#settings-link[aria-current="page"] {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+nav.cat-strip[hidden] {
   display: none;
 }

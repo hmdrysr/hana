@@ -81,6 +81,6 @@ Read `CONTRIBUTING.md`. You can list a restaurant, report a wrong listing, fix a
 
 ## Licence
 
-MIT. See `LICENSE`. Third-party files keep their own licences: Beer CSS (MIT, `theme/beer-LICENSE.md`) and Material Symbols (Apache License 2.0, `theme/material-symbols-LICENSE.txt`). See `DEPENDENCIES.md`.
+MIT. See `LICENSE`. Third-party files keep their own licences: Beer CSS (MIT, `theme/beer-LICENSE.md`) Material Symbols (Apache License 2.0, `theme/material-symbols-LICENSE.txt`) and the Twemoji food icons (CC BY 4.0, `icons/README.md`). See `DEPENDENCIES.md`.
 
 Contributors keep their copyright and release their work under the same MIT licence (see `CONTRIBUTING.md`).

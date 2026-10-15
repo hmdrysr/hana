@@ -14,6 +14,10 @@ const state = {
   area: store.get("hana.area", ""),
   showAll: false,
   query: "",
+  cat: "",
+  searching: false,
+  allDishes: false,
+  moreCats: false,
   page: 0,
   basket: store.get("hana.basket", null),
 };
@@ -168,41 +172,103 @@ function locatedIn(m) {
 
 /* ---------------------------------------------------------------- views */
 
-function viewList() {
-  const results = h("div", { id: "results", "aria-live": "polite" });
-  const search = h("input", {
-    type: "search", id: "q", placeholder: "Search restaurants and dishes", autocomplete: "off", value: state.query,
-    "aria-label": "Search restaurants and dishes",
-    on: { input: (e) => { state.query = e.target.value; state.page = 0; renderResults(); } },
-  });
-  const showAll = h("input", { type: "checkbox", id: "showall", checked: state.showAll, on: { change: (e) => { state.showAll = e.target.checked; renderResults(); } } });
+/* Categories that at least one listed restaurant offers, with how many restaurants offer each. */
+function availableCategories() {
+  const count = {};
+  for (const r of state.restaurants) {
+    if (!r.menu) continue;
+    const keys = new Set((r.menu.items || []).map(itemCat).filter(Boolean));
+    const c = cuisineKey(r.menu);
+    if (c) keys.add(c);
+    r.cats = keys;
+    for (const k of keys) count[k] = (count[k] || 0) + 1;
+  }
+  return FOOD.filter((f) => count[f[0]]).map((f) => ({ key: f[0], label: f[1], count: count[f[0]] }));
+}
 
-  function renderResults() {
-    const area = state.area;
-    const cards = [];
+function viewList() {
+  const cats = availableCategories();
+  const results = h("div", { id: "results", "aria-live": "polite" });
+  const strip = h("nav", { class: "cat-strip", "aria-label": "Categories" });
+  const search = h("input", {
+    type: "search", id: "q", placeholder: "Search food or restaurants", autocomplete: "off", value: state.query,
+    "aria-label": "Search restaurants, dishes or categories",
+    on: {
+      input: (e) => { state.query = e.target.value; state.page = 0; state.allDishes = false; render(); },
+      focus: () => { state.searching = true; render(); },
+      blur: () => setTimeout(() => { state.searching = false; render(); }, 200),
+      keydown: (e) => { if (e.key === "Escape") { search.value = state.query = ""; search.blur(); } },
+    },
+  });
+  const showAll = h("input", { type: "checkbox", id: "showall", checked: state.showAll, on: { change: (e) => { state.showAll = e.target.checked; render(); } } });
+
+  const pickCategory = (key) => {
+    state.cat = state.cat === key ? "" : key;
+    state.query = search.value = "";
+    state.page = 0;
+    state.searching = false;
+    search.blur();
+    render();
+  };
+  const catRows = (list) => h("ul", { class: "list cat-list" }, list.map((c) => h("li", null,
+    h("a", { href: "#/", class: "row max", on: { pointerdown: (e) => e.preventDefault(), click: (e) => { e.preventDefault(); pickCategory(c.key); } } },
+      foodIcon(c.key, "large"), h("span", { class: "max" }, c.label),
+      h("span", { class: "small-text muted" }, c.count + (c.count === 1 ? " restaurant" : " restaurants"))))));
+
+  function render() {
+    strip.hidden = !!(norm(state.query) || state.searching);
+    const FEW = 8;
+    const visible = state.moreCats || cats.length <= FEW + 1 ? cats : cats.slice(0, FEW).concat(cats.filter((c, i) => i >= FEW && c.key === state.cat));
+    strip.replaceChildren(...visible.map((c) => h("button", {
+      type: "button", class: "cat-tile", "aria-pressed": state.cat === c.key ? "true" : "false",
+      on: { click: () => pickCategory(c.key) } }, foodIcon(c.key, "large"), h("span", null, c.label))),
+      visible.length < cats.length ? h("button", { type: "button", class: "cat-tile", on: { click: () => { state.moreCats = true; render(); } } }, foodIcon("plate", "large"), h("span", null, "More")) : null);
+    const q = norm(state.query);
+    const kids = [];
+    if (!q && state.searching) {
+      results.replaceChildren(sectionTitle("Top categories"), catRows(cats));
+      return;
+    }
+    if (q) {
+      const matchCats = cats.filter((c) => fuzzyMatches(state.query, c.label));
+      if (matchCats.length) kids.push(sectionTitle("Categories"), catRows(matchCats));
+    }
+    const cards = [], dishes = [];
     let hidden = 0;
     for (const r of state.restaurants) {
       const m = r.menu;
-      const zone = m ? zoneFor(m, area) : null;
-      const delivers = !area || !m || !!zone;
+      const zone = m ? zoneFor(m, state.area) : null;
+      const delivers = !state.area || !m || !!zone;
       if (!delivers && !state.showAll) { hidden++; continue; }
+      if (state.cat && !(r.cats && r.cats.has(state.cat))) continue;
       const nameHit = fuzzyMatches(state.query, r.name + " " + (m ? m.kind || "" : ""));
-      let dishHits = [];
-      if (m && norm(state.query)) {
-        dishHits = (m.items || []).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || "")));
-      }
-      if (norm(state.query) && !nameHit && !dishHits.length) continue;
-      cards.push(restaurantCard(r, zone, delivers, dishHits));
+      const hits = m && q ? (m.items || []).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
+      if (q && !nameHit && !hits.length) continue;
+      if (q) cards.push(restaurantCard(r, zone, delivers, []));
+      else cards.push(restaurantCard(r, zone, delivers, state.cat && m ? (m.items || []).filter((it) => itemCat(it) === state.cat) : []));
+      for (const it of hits) dishes.push({ r, it });
     }
+    if (state.cat) {
+      kids.push(h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "chip small", "aria-label": "Clear the category filter",
+        on: { click: () => pickCategory(state.cat) } }, foodIcon(state.cat), h("span", null, FOOD_BY_KEY[state.cat][1]), icon("close"))));
+    }
+    if (q && cards.length) kids.push(sectionTitle("Restaurants"));
     const PER = 12;
     const pages = Math.max(1, Math.ceil(cards.length / PER));
     if (state.page >= pages) state.page = pages - 1;
-    const kids = [];
-    if (cards.length) kids.push(...cards.slice(state.page * PER, state.page * PER + PER));
-    if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; renderResults(); results.scrollIntoView({ block: "start" }); }));
-    else kids.push(h("p", { class: "muted" }, state.restaurants.length ? "No restaurants match. Try a shorter search or another zone." : "No restaurants are listed yet."));
-    if (area && hidden) {
-      kids.push(h("p", { class: "small-text muted" }, hidden + (hidden === 1 ? " restaurant does" : " restaurants do") + " not deliver to " + areaName(area) + " and " + (hidden === 1 ? "is" : "are") + " hidden."));
+    kids.push(...cards.slice(state.page * PER, state.page * PER + PER));
+    if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; render(); results.scrollIntoView({ block: "start" }); }));
+    if (q && dishes.length) {
+      const shown = state.allDishes ? dishes : dishes.slice(0, 8);
+      kids.push(sectionTitle("Dishes"), h("ul", { class: "list border" }, shown.map(({ r, it }) => h("li", null,
+        foodIcon(itemCat(it) || "plate", "large"),
+        h("a", { href: "#/r/" + r.id, class: "max" }, h("div", null, it.name), h("div", { class: "small-text muted" }, r.name)),
+        h("span", { class: "price" }, fromPrice(it))))));
+      if (dishes.length > shown.length) kids.push(h("button", { type: "button", class: "border gap-top", on: { click: () => { state.allDishes = true; render(); } } }, "Show all " + dishes.length + " dishes"));
+    }
+    if (!cards.length && !dishes.length) kids.push(h("p", { class: "muted" }, state.restaurants.length ? "Nothing matches. Try a shorter search, another category or another zone." : "No restaurants are listed yet."));
+    if (state.area && hidden) {
+      kids.push(h("p", { class: "small-text muted" }, hidden + (hidden === 1 ? " restaurant does" : " restaurants do") + " not deliver to " + areaName(state.area) + " and " + (hidden === 1 ? "is" : "are") + " hidden."));
     }
     results.replaceChildren(...kids);
   }
@@ -210,12 +276,12 @@ function viewList() {
   show("list", "",
     pageTitle("Restaurants in Chittagong"),
     h("p", { class: "muted" }, "Listed alphabetically. No listing is featured or paid for."),
-    zoneSelect("area", state.area, (v) => { state.area = v; state.page = 0; store.set("hana.area", v); renderResults(); }, "Choose your zone"),
+    zoneSelect("area", state.area, (v) => { state.area = v; state.page = 0; store.set("hana.area", v); render(); }, "Choose your zone"),
     h("div", { class: "field prefix round fill" }, icon("search"), search),
+    strip,
     h("div", { class: "row" }, h("label", { class: "switch" }, showAll, h("span")), h("label", { for: "showall", class: "max" }, "Include restaurants that do not deliver to my zone")),
-    h("div", { class: "space" }),
     results);
-  renderResults();
+  render();
 }
 
 /* Page navigation for long lists: previous, "Page 2 of 5", next. */
@@ -280,7 +346,7 @@ function restaurantCard(r, zone, delivers, dishHits) {
     if (dishHits.length > 5) body.push(h("p", { class: "small-text muted flush" }, (dishHits.length - 5) + " more on the restaurant page"));
   }
   return h("article", { class: "round border no-elevate rcard" },
-    h("a", { href: "#/r/" + r.id, tabindex: "-1", "aria-hidden": "true" }, picture(coverFor(m), "cover", "")),
+    h("a", { href: "#/r/" + r.id, tabindex: "-1", "aria-hidden": "true" }, picture(coverFor(m), "cover", "", cuisineKey(m))),
     h("div", { class: "rcard-body" }, body));
 }
 
@@ -339,9 +405,9 @@ function hoursText(list) {
 
 function viewRestaurant(id) {
   const r = restaurantById(id);
-  if (!r) return show("list", "Not found", pageTitle("Restaurant not found"), h("p", null, h("a", { class: "link", href: "#/" }, "Back to all restaurants")));
+  if (!r) return show("list", "Not found", pageHeader("Restaurant not found", "#/"), h("p", null, h("a", { class: "link", href: "#/" }, "All restaurants")));
   const m = r.menu;
-  if (!m) return show("list", r.name, pageTitle(r.name), notice("warn", r.problem || "This menu is not available."));
+  if (!m) return show("list", r.name, pageHeader(r.name, "#/"), notice("warn", r.problem || "This menu is not available."));
   const os = orderingState(m);
   const myZone = state.area ? zoneFor(m, state.area) : onlyZone(m);
   const cover = coverFor(m);
@@ -350,8 +416,8 @@ function viewRestaurant(id) {
   if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
   if (state.area && !zoneFor(m, state.area)) chips.push(chip("Does not list delivery to " + areaName(state.area), "warn"));
   const nodes = [
-    h("nav", null, h("a", { href: "#/", class: "button circle transparent", "aria-label": "Back to all restaurants" }, icon("arrow_back")), h("h1", { class: "page-title max" }, m.name)),
-    h("figure", { class: "flush hero" }, picture(cover, "cover", ""), cover ? h("figcaption", { class: "credit" }, cover.page ? h("a", { href: cover.page, class: "link", rel: "noopener", target: "_blank" }, cover.credit) : cover.credit) : null),
+    pageHeader(m.name, "#/"),
+    h("figure", { class: "flush hero" }, picture(cover, "cover", "", cuisineKey(m)), cover ? h("figcaption", { class: "credit" }, cover.page ? h("a", { href: cover.page, class: "link", rel: "noopener", target: "_blank" }, cover.credit) : cover.credit) : null),
     h("p", { class: "muted flush" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
     h("nav", { class: "wrap small-space" }, chips),
     h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup === true ? " · Pickup available" : "") +
@@ -368,7 +434,7 @@ function viewRestaurant(id) {
   if (sections.size > 1) {
     nodes.push(h("nav", { class: "dish-tabs", "aria-label": "Menu sections" },
       Array.from(sections.keys()).map((sec, i) => h("a", { href: "#/r/" + r.id, class: "chip small border",
-        on: { click: (e) => { e.preventDefault(); const t = document.getElementById("sec-" + i); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, sec))));
+        on: { click: (e) => { e.preventDefault(); const t = document.getElementById("sec-" + i); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, foodIcon(foodCat(sec) || "plate"), h("span", null, sec)))));
   }
   let secIndex = 0;
   for (const [sec, items] of sections) {
@@ -918,6 +984,7 @@ function viewAbout() {
     pageTitle("About Hana"),
     h("p", null, "Hana is the Chittagonian word for food. It is a free directory of restaurants in Chittagong and a tool for preparing orders."),
     h("p", null, "Built by ", link(state.site.company_url || "https://hamidyasir.com", "Hamid Yasir & Co."), " for the people of Chittagong. Managed by the ", link(repo, "Hana Community"), "."),
+    h("p", { class: "small-text muted" }, "Food icons: ", link("https://github.com/jdecked/twemoji", "Twemoji"), ", by Twitter, Inc. and contributors, licensed under CC BY 4.0."),
     sectionTitle("How it works"),
     h("p", null, "Hana lists restaurants and prepares your order message. You send the message yourself, from your own phone, through the app the business uses. The order counts once the business confirms it in the same chat. Hana does not take payments, prepare food or make deliveries."),
     sectionTitle("Rules for every listing"),
@@ -963,11 +1030,11 @@ function viewAbout() {
 /* ---------------------------------------------------------------- terms */
 
 async function viewTerms() {
-  show("about", "Terms of Use", pageTitle("Terms of Use"), h("p", { class: "muted" }, "Loading…"));
+  show("about", "Terms of Use", pageHeader("Terms of Use", "#/about"), h("p", { class: "muted" }, "Loading…"));
   try {
     show("about", "Terms of Use", ...renderMarkdown(await getText("TERMS.md")));
   } catch (e) {
-    show("about", "Terms of Use", pageTitle("Terms of Use"), notice("warn", h("p", { class: "flush" }, "The terms could not be loaded. They are also in TERMS.md on the project page.")));
+    show("about", "Terms of Use", pageHeader("Terms of Use", "#/about"), notice("warn", h("p", { class: "flush" }, "The terms could not be loaded. They are also in TERMS.md on the project page.")));
   }
 }
 
@@ -982,7 +1049,7 @@ function viewSettings() {
   const pname = h("input", { type: "text", id: "p-name", value: me.name || "", maxlength: 60, autocomplete: "off" });
   const paddr = h("textarea", { id: "p-address", rows: 3, maxlength: 300 }, me.address || "");
   const pictures = h("input", { type: "checkbox", id: "pictures", checked: st.pictures, on: { change: (e) => saveSettings(Object.assign(settings(), { pictures: e.target.checked })) } });
-  show("settings", "Settings", pageTitle("Settings"),
+  show("settings", "Settings", pageHeader("Settings", "#/"),
     h("p", { class: "muted" }, "Settings are kept on this device only."),
     sectionTitle("Colour scheme"),
     radios("scheme", SCHEMES, st.scheme, (k) => saveSettings(Object.assign(settings(), { scheme: k }))),
@@ -992,7 +1059,7 @@ function viewSettings() {
     radios("text", TEXT_SIZES, st.text, (k) => saveSettings(Object.assign(settings(), { text: k }))),
     sectionTitle("Pictures"),
     h("div", { class: "row" }, h("label", { class: "switch" }, pictures, h("span")), h("label", { for: "pictures", class: "max" }, "Show pictures of food")),
-    h("p", { class: "small-text muted" }, "Pictures come from the business or from Wikimedia Commons, an openly licensed library. Pictures from Commons are approximate. Loading them lets Wikimedia see your network address, as any website you visit would."),
+    h("p", { class: "small-text muted" }, "Pictures come from the business. Listings without a cover show a stock photo for their cuisine from Wikimedia Commons, an openly licensed library; loading it lets Wikimedia see your network address, as any website you visit would. Food icons are Twemoji, by Twitter, Inc. and contributors, CC BY 4.0."),
     sectionTitle("Profile (optional)"),
     h("p", { class: "small-text muted" }, "Filled in at checkout so you do not have to type it each time. Kept on this phone only."),
     textField("p-name", "First name or nickname", pname),
@@ -1055,6 +1122,7 @@ function downloadText(name, text, type) {
 /* ---------------------------------------------------------------- routing and start-up */
 
 function route() {
+  trackPage();
   if (!state.loaded) {
     return show("list", "", pageTitle("Hana"), state.loadError ? notice("warn", h("p", { class: "flush" }, state.loadError)) : h("p", { class: "muted" }, "Loading the directory…"));
   }

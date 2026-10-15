@@ -375,7 +375,7 @@ function viewJoin() {
     const wa = (m.contact || []).find((c) => c.app === "whatsapp");
     set("whatsapp", wa ? "+" + wa.id : "");
     set("items", itemsToText(m.items));
-    set("cuisine", (CUISINES.find((c) => c[0] === cuisineKey(m)) || [0, ""])[1]);
+    set("cuisine", (FOOD_BY_KEY[cuisineKey(m)] || [0, ""])[1]);
     renderFees();
     snackbar("Filled in from the existing listing. Check every detail.");
   }
@@ -385,7 +385,7 @@ function viewJoin() {
     sectionTitle("1. Your business"),
     textField("name", "Business name", input("name", { maxlength: 80 })),
     select("kind", "Type of business", KINDS.map((k) => [k, k]), KINDS[0]),
-    select("cuisine", "Main cuisine", [["", "Other or mixed"]].concat(CUISINES.map((c) => [c[1], c[1]])), ""),
+    select("cuisine", "Main cuisine", [["", "Other or mixed"]].concat(FOOD.filter((f) => !["sides", "drink", "combo"].includes(f[0])).map((f) => [f[1], f[1]])), ""),
     hint("Picks a stock cover photo until you add your own."),
     textField("phone", "Business phone", input("phone", { inputmode: "tel", maxlength: 14, on: { change: checkMerge } })),
     mergeBox,
@@ -563,7 +563,7 @@ function viewJoin() {
     out.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  show("join", "List or claim", pageTitle("List or claim your business"),
+  show("join", "List or claim", pageHeader("List or claim your business", "#/"),
     h("p", { class: "muted" }, "Free. Everything is prepared on this device and nothing is sent until you submit the request."),
     form, out);
   if (claimTarget) { fill(claimTarget); claimTarget = null; }
@@ -617,7 +617,7 @@ let claimTarget = null;
 function viewClaim() {
   const out = h("div", { "aria-live": "polite" });
   const phone = input("claim-phone", { inputmode: "tel", maxlength: 14 });
-  show("join", "Claim a listing", pageTitle("Claim a listing"),
+  show("join", "Claim a listing", pageHeader("Claim a listing", "#/"),
     h("p", { class: "muted" }, "Enter your business phone number. If a volunteer has listed your business, you can claim it. Claims are verified by two community members (CLAIMS.md)."),
     textField("claim-phone", "Business phone", phone),
     h("nav", null, h("button", { type: "button", on: { click: async () => {
@@ -634,7 +634,7 @@ function viewClaim() {
 function viewSite() {
   const out = h("div", { "aria-live": "polite" });
   const phone = input("site-phone", { inputmode: "tel", maxlength: 14 });
-  show("home", "Your own website", pageTitle("Your own website"),
+  show("home", "Your own website", pageHeader("Your own website", "#/"),
     h("p", null, "This makes one HTML file for your business: your menu, ordering and confirmations, in the Hana design, with the line \u201cCreated using Hana by Hamid Yasir & Co.\u201d It reads your listing from the Hana directory whenever it is online, so your prices and hours stay the same everywhere, and it still works offline."),
     h("ol", null, h("li", null, "Find your listing with your business phone."), h("li", null, "Download the file and upload it as index.html to any web host, for example GitHub Pages or Codeberg Pages in your menu repository."), h("li", null, "Keep your listing on Hana. Your site and the Hana app show the same listing.")),
     textField("site-phone", "Business phone", phone),
@@ -688,7 +688,7 @@ function decodeOrder(text, versions) {
 function viewConfirm() {
   const out = h("div", { "aria-live": "polite" });
   const msg = h("textarea", { id: "order-text", rows: 8, placeholder: " " });
-  show("confirm", "Confirm an order", pageTitle("Confirm an order"),
+  show("confirm", "Confirm an order", pageHeader("Confirm an order", "#/"),
     h("p", { class: "muted" }, "Paste the customer's whole message. Nothing leaves this device."),
     textField("listing-phone", "Your business phone", input("listing-phone", { inputmode: "tel", maxlength: 14, value: (() => { try { return localStorage.getItem("hana.biz.phone") || ""; } catch (e) { return ""; } })() })),
     textField("order-text", "Customer's order message", msg),
@@ -799,7 +799,7 @@ function viewUpdate() {
         h("button", { type: "button", class: "border", on: { click: () => download("menu.json", text) } }, icon("download"), h("span", null, "Download menu.json"))));
   }
 
-  show("update", "Update prices", pageTitle("Update prices and delivery fees"),
+  show("update", "Update prices", pageHeader("Update prices and delivery fees", "#/"),
     h("p", { class: "muted" }, "For claimed listings. Load your current published menu.json, change what you need and sign the new version with your key. Every change is published in the menu's price history."),
     textField("menufile", "Current menu.json", file),
     h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => {
@@ -816,6 +816,7 @@ function viewUpdate() {
 /* ---------------------------------------------------------------- start */
 
 function route() {
+  trackPage();
   const hash = location.hash || "#/";
   if (hash === "#/join") return viewJoin();
   if (hash === "#/confirm") return viewConfirm();

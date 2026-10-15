@@ -922,7 +922,7 @@ chip circle dark field fill flush gap-top group-title l label left left-align li
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
 tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label
-cover thumb credit dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
+cover thumb credit food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
 
 
 def check_ui(root):

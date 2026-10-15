@@ -431,6 +431,36 @@ function chip(text, tone) {
 function sectionTitle(text) { return h("h2", { class: "section-title" }, text); }
 function pageTitle(text) { return h("h1", { class: "page-title" }, text); }
 
+/* In-app history, so Back returns to the page the person came from, and a page opened
+   directly (from a link or bookmark) still has a sensible place to go back to. */
+const trail = [];
+function trackPage() {
+  const now = location.hash || "#/";
+  if (trail.length > 1 && trail[trail.length - 2] === now) trail.pop();
+  else if (trail[trail.length - 1] !== now) trail.push(now);
+  const s = document.getElementById("settings-link");
+  if (s) { if (now === "#/settings") s.setAttribute("aria-current", "page"); else s.removeAttribute("aria-current"); }
+}
+function goBack(fallback) {
+  if (trail.length > 1) history.back();
+  else location.hash = fallback || "#/";
+}
+/* Title row with a Back button, for every page that is not one of the main tabs. */
+function pageHeader(title, fallback) {
+  return h("nav", { class: "page-head" },
+    h("button", { type: "button", class: "circle transparent", "aria-label": "Back", title: "Back", on: { click: () => goBack(fallback) } }, icon("arrow_back")),
+    h("h1", { class: "page-title max" }, title));
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || document.querySelector("dialog[open]")) return;
+  const back = document.querySelector("main .page-head > button");
+  if (back) back.click();
+});
+document.addEventListener("click", (e) => {
+  const a = e.target.closest && e.target.closest("#settings-link");
+  if (a && (location.hash === "#/settings")) { e.preventDefault(); goBack("#/"); }
+});
+
 function textField(id, label, input) {
   return h("div", null,
     h("label", { for: id, class: "field-label" }, label),
@@ -537,61 +567,78 @@ const COVERS = {
   burger: { file: "NCI_Visuals_Food_Hamburger.jpg", path: "6/62", credit: "Hamburger, by Renee Comet, public domain" },
   chinese: { file: "Chinese_meal.jpg", path: "1/14", credit: "Chinese meal, by ZiCheng Xu, CC BY-SA" },
 };
-const CUISINES = [
-  ["bangladeshi", "Bangladeshi", /bangla|bengali|bhuna|kacchi|kala ?bhuna|bhorta|mezban|khichuri|tehari|polao/i],
-  ["indian", "Indian", /india|biryani|biriyani|tandoor|tikka|masala|curry|naan|kebab|kabab|dal\b|paneer|korma/i],
-  ["pizza", "Pizza", /pizza/i],
-  ["fried_chicken", "Fried chicken", /fried chicken|wings?\b|popcorn|strips?\b|drumstick|nugget|broast/i],
-  ["burger", "Burgers and fast food", /burger|fast food|fries|sandwich|hot ?dog|sub\b|wrap/i],
-  ["chinese", "Chinese and Thai", /chinese|thai|chow ?mein|noodle|fried rice|dim ?sum|dumpling|wonton|szechuan/i],
+/* Food categories: used for search, section tabs, cuisine covers and item drawings.
+   [key, label, icon in icons/food.svg, words that place a dish in it]. Order matters: the first match wins. */
+const FOOD = [
+  ["pizza", "Pizza", "pizza", /pizza/i],
+  ["burger", "Burgers", "burger", /burger/i],
+  ["fried_chicken", "Fried chicken", "chicken", /fried chicken|wings?\b|popcorn|strips?\b|drumstick|nugget|broast|crispy chicken/i],
+  ["biryani", "Biryani", "biryani", /biryani|biriyani|kacchi|tehari|polao|pulao/i],
+  ["bangladeshi", "Bangladeshi", "rice", /bangla|bengali|bhuna|bhorta|vorta|mezban|khichuri|bhaji|bhat\b/i],
+  ["indian", "Indian", "curry", /india|tandoor|tikka masala|masala|curry|naan|paneer|korma|butter chicken|\bdal\b|dahi|chaat/i],
+  ["chinese", "Chinese and Thai", "noodles", /chinese|thai|chow ?mein|noodle|fried rice|dim ?sum|dumpling|wonton|szechuan|ramen|manchurian/i],
+  ["pasta", "Pasta", "pasta", /pasta|spaghetti|lasagn|penne|fettuccine|macaroni|carbonara/i],
+  ["kebab", "Kebabs and grills", "kebab", /kebab|kabab|grill|bbq|shashlik|steak|chaap|tikka|meat box/i],
+  ["wrap", "Sandwiches and wraps", "sandwich", /sandwich|\bsub\b|wrap|shawarma|club|hot ?dog|roll\b/i],
+  ["seafood", "Seafood", "seafood", /prawn|shrimp|fish|seafood|crab|calamari|squid/i],
+  ["salad", "Salads", "salad", /salad/i],
+  ["soup", "Soups", "soup", /soup/i],
+  ["sides", "Fries and sides", "fries", /fries|wedges|\bsides?\b|nachos|add-?ons?|dip\b|sauce/i],
+  ["dessert", "Desserts", "cake", /dessert|cake|brownie|ice ?cream|pudding|firni|sweet|mishti|halwa|kulfi|waffle|pastry|doughnut|donut/i],
+  ["coffee", "Coffee and tea", "coffee", /coffee|\btea\b|latte|cappuccino|espresso|chai|mocha/i],
+  ["drink", "Drinks", "drink", /drink|juice|lassi|shake|soda|cola|smoothie|mojito|lemonade|water|beverage/i],
+  ["breakfast", "Breakfast", "breakfast", /breakfast|paratha|porota|\beggs?\b|omelette/i],
+  ["combo", "Combos and platters", "combo", /combo|platter|set menu|meal box|family pack/i],
 ];
+const FOOD_BY_KEY = Object.fromEntries(FOOD.map((f) => [f[0], f]));
+const COVER_OF = { biryani: "bangladeshi" };
+function foodCat(text) { for (const f of FOOD) if (text && f[3].test(text)) return f[0]; return null; }
+function itemCat(it) { return foodCat(it.name) || foodCat(it.category) || foodCat(it.section); }
 function cuisineKey(m) {
-  for (const [key, , re] of CUISINES) if (m.cuisine && re.test(m.cuisine)) return key;
+  const own = foodCat(m.cuisine);
+  if (own) return own;
   const score = {};
-  for (const it of m.items || []) {
-    const text = [it.section, it.category, it.name].join(" ");
-    for (const [key, , re] of CUISINES) if (re.test(text)) { score[key] = (score[key] || 0) + 1; break; }
-  }
+  for (const it of m.items || []) { const k = foodCat(it.section) || itemCat(it); if (k && k !== "sides" && k !== "drink") score[k] = (score[k] || 0) + 1; }
   const best = Object.entries(score).sort((a, b) => b[1] - a[1])[0];
   return best ? best[0] : null;
 }
+/* The food icons are Twemoji graphics (CC BY 4.0), kept in one file in this repository. */
+const FOOD_SPRITE = SNAP ? "" : "icons/food.svg";
+function foodIcon(key, cls) {
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("class", "food-icon" + (cls ? " " + cls : ""));
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(SVGNS, "use");
+  use.setAttribute("href", FOOD_SPRITE + "#" + ((FOOD_BY_KEY[key] || [])[2] || key || "plate"));
+  svg.append(use);
+  return svg;
+}
 function coverFor(m) {
   if (m.cover && safeImageUrl(m.cover.src)) return { src: safeImageUrl(m.cover.src), credit: m.cover.credit ? String(m.cover.credit).slice(0, 120) : "Photo supplied by the business" };
-  const c = COVERS[cuisineKey(m)];
+  const k = cuisineKey(m);
+  const c = COVERS[COVER_OF[k] || k];
   if (!c) return null;
   const f = encodeURIComponent(c.file), base = "https://upload.wikimedia.org/wikipedia/commons/";
   return { src: base + "thumb/" + c.path + "/" + f + "/960px-" + f, fallback: base + c.path + "/" + f,
     credit: "Stock photo: " + c.credit + ", Wikimedia Commons", page: "https://commons.wikimedia.org/wiki/File:" + f };
 }
 
-/* A plain drawing of a covered dish, shown where no picture has been supplied. */
-function dishArt() {
-  const svg = document.createElementNS(SVGNS, "svg");
-  svg.setAttribute("viewBox", "0 0 64 64");
-  svg.setAttribute("aria-hidden", "true");
-  for (const d of ["M12 42a20 20 0 0 1 40 0Z", "M29 20a3 3 0 1 1 6 0a3 3 0 1 1-6 0Z", "M6 45h52a2.5 2.5 0 0 1 0 5H6a2.5 2.5 0 0 1 0-5Z"]) {
-    const p = document.createElementNS(SVGNS, "path");
-    p.setAttribute("d", d);
-    p.setAttribute("fill", "currentColor");
-    svg.append(p);
-  }
-  return svg;
-}
-function placeholder(cls) { return h("div", { class: cls + " placeholder", role: "presentation" }, dishArt()); }
+/* Shown where no picture has been supplied: the food icon for the dish or cuisine. */
+function placeholder(cls, key) { return h("div", { class: cls + " placeholder", role: "presentation" }, foodIcon(key || "plate")); }
 
 /* A picture that loads only when it nears the screen. Falls back to the original file, then
    to the drawing, so a missing or blocked picture never leaves a gap. */
-function picture(info, cls, alt) {
-  if (!info || !settings().pictures) return placeholder(cls);
+function picture(info, cls, alt, key) {
+  if (!info || !settings().pictures) return placeholder(cls, key);
   let triedFallback = !info.fallback;
   const img = h("img", { src: info.src, alt: alt || "", class: cls, loading: "lazy", decoding: "async", referrerpolicy: "no-referrer",
     on: { error: () => {
       if (!triedFallback) { triedFallback = true; img.src = info.fallback; return; }
-      img.replaceWith(placeholder(cls));
+      img.replaceWith(placeholder(cls, key));
     } } });
   return img;
 }
-function itemPicture(it) { return it.image && safeImageUrl(it.image.src) ? picture({ src: safeImageUrl(it.image.src) }, "thumb", "") : placeholder("thumb"); }
+function itemPicture(it) { return it.image && safeImageUrl(it.image.src) ? picture({ src: safeImageUrl(it.image.src) }, "thumb", "", itemCat(it)) : placeholder("thumb", itemCat(it)); }
 
 /* Clears the picture search results that earlier versions stored. */
 try { Object.keys(localStorage).filter((k) => k.startsWith("hana.img:")).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
@@ -605,6 +652,7 @@ async function buildStandalone(opts) {
   const fetchText = (u) => fetch(u, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error(u + " could not be loaded"); return r.text(); });
   const [page, coreJs, appJs, beer, theme, fontBuf] = await Promise.all(["index.html", "core.js", "app.js", "theme/beer.min.css", "theme/theme.css"].map(fetchText)
     .concat([fetch("theme/material-symbols-subset.woff2").then((r) => r.arrayBuffer())]));
+  const sprite = (await fetchText("icons/food.svg")).replace("<svg ", "<svg hidden ");
   const fontB64 = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(fontBuf))));
   const files = {};
   for (const f of ["rules.json", "areas.json", "index.json", "TERMS.md"]) files[f] = await getText(f);
@@ -630,6 +678,7 @@ async function buildStandalone(opts) {
     .replace(/<link rel="(icon|apple-touch-icon|manifest)"[^>]*>\n?/g, "")
     .replace('<link rel="stylesheet" href="theme/beer.min.css">\n<link rel="stylesheet" href="theme/theme.css">', () => "<style>" + css + "</style>")
     .replace('<script src="core.js" defer></script>\n<script src="app.js" defer></script>', () => scripts.map((s) => "<script>" + s + "</script>").join("\n"))
+    .replace('<header class="responsive">', () => sprite + '\n<header class="responsive">')
     .replace(/{{REPO_URL}}/g, site.repo_url || "#");
   return html;
 }
