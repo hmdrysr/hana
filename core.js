@@ -371,6 +371,34 @@ async function ed25519Verify(publicRaw, message, signature) {
   } catch (e) { return null; }
 }
 
+/* Updates on an order sent in Hana (steps, chat, declines, cancellations) are signed: the
+   business with its listing key, the customer with a key made for that one order. Neither side
+   can later produce a message in the other's name, and a complaint summary carries the signed
+   records so anyone can check them. See SPEC.md, section 21. */
+function updateBytes(code, obj) {
+  const b = JSON.parse(JSON.stringify(obj));
+  delete b.sig;
+  return utf8("hana-update-1\n" + code + "\n" + canonicalJSON(b));
+}
+async function signUpdate(privJwk, code, obj) {
+  const priv = await crypto.subtle.importKey("jwk", Object.assign({ ext: true }, privJwk), { name: "Ed25519" }, false, ["sign"]);
+  obj.sig = b64u(new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, priv, updateBytes(code, obj))));
+  return obj;
+}
+/* true (valid), false (missing or wrong) or null (this browser cannot check Ed25519). */
+async function checkUpdate(publicB64, code, obj) {
+  if (!publicB64 || !obj || typeof obj.sig !== "string") return false;
+  try { return await ed25519Verify(unb64u(publicB64), updateBytes(code, obj), unb64u(obj.sig)); } catch (e) { return false; }
+}
+/* A signing key for one order, made by the customer's app. Null if the browser cannot make one. */
+async function makeOrderKey() {
+  try {
+    const k = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
+    const j = await crypto.subtle.exportKey("jwk", k.privateKey);
+    return { jwk: { kty: "OKP", crv: "Ed25519", d: j.d, x: j.x }, pub: j.x };
+  } catch (e) { return null; }
+}
+
 /* Reads a reply pasted by the customer. Returns {status, eta, line, minute} or {error}.
    status: "signed" (signature valid), "unsigned" (plain reply from a listing without a key),
    "unchecked" (this browser cannot check signatures) or "declined".
@@ -556,7 +584,7 @@ function installCard(dismissible) {
    own topic and kept on each device with the order. */
 function chatBox(messages, mine, quick, onSend) {
   const list = h("ul", { class: "list border chat-list" }, (messages || []).map((m) => h("li", { class: m.from === mine ? "chat-mine" : "chat-theirs" },
-    h("div", { class: "max" }, h("div", null, m.text), h("div", { class: "small-text muted" }, (m.from === mine ? "You" : mine === "c" ? "Business" : "Customer") + " · " + dateTime(m.at))))));
+    h("div", { class: "max" }, h("div", null, m.text), h("div", { class: "small-text muted" }, (m.from === mine ? "You" : mine === "c" ? "Business" : "Customer") + " · " + dateTime(m.at) + (m.from !== mine && m.verified === false ? " · not verified" : ""))))));
   const box = h("input", { type: "text", maxlength: 300, placeholder: " ", id: "chat-" + Math.random().toString(36).slice(2) });
   const send = async (text) => { text = String(text || "").trim(); if (!text) return; box.value = ""; await onSend(text); };
   return h("div", { class: "stack" },

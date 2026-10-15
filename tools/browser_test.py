@@ -433,6 +433,24 @@ with sync_playwright() as p:
     dp.click("button:has-text('Where is my order?')")
     dp.wait_for_timeout(500)
     ok("a customer can message the business about an open order", any("HANA1R" in m["message"] for v in box.values() for m in v) and "Where is my order?" in dp.inner_text("main"))
+    signing = dp.evaluate("""async () => {
+        const biz = await makeOrderKey(), cust = await makeOrderKey();
+        const p = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]); const j = await crypto.subtle.exportKey("jwk", p.publicKey);
+        const s = await sealOrder({ topic: "https://ntfy.sh/hana-testtopic0123456789", enc_key: { kty: "EC", crv: "P-256", x: j.x, y: j.y } }, { message: "x", code: "SIG123" });
+        const o = { code: "SIG123", status: "confirmed_signed", claimed: true, public_key: biz.pub, created: new Date().toISOString(), restaurant: "Test", restaurant_id: "x", items: [], subtotal: 0, fee: 0, mode: "delivery", channel: "hana", order_topic: s.orderTopic, order_key: s.key, sign_key: cust.jwk };
+        localStorage.setItem("hana.orders", JSON.stringify([o]));
+        await postSealed(s.orderTopic, s.key, { from: "b", t: "status", step: "delivered", text: "Delivered" });
+        const real = await signUpdate(biz.jwk, "SIG123", { from: "b", at: new Date().toISOString(), t: "status", step: "out", text: "Out for delivery", rider: { name: "Rahim", phone: "+8801711111111" } });
+        await postSealed(s.orderTopic, s.key, real);
+        await pollFeeds();
+        const got = JSON.parse(localStorage.getItem("hana.orders"))[0];
+        const mine = await customerUpdate(o, { t: "chat", text: "Thanks" });
+        const forged = Object.assign({}, mine, { text: "You never came" });
+        return { steps: (got.progress || []).map((x) => x.step + ":" + x.verified), mine: await checkUpdate(cust.pub, "SIG123", mine), forged: await checkUpdate(cust.pub, "SIG123", forged), summary: complaintText(got) };
+    }""")
+    ok("an unsigned update is ignored and a signed one is accepted", signing["steps"] == ["out:true"], signing["steps"])
+    ok("the customer's messages are signed and cannot be altered", signing["mine"] is True and signing["forged"] is False, signing)
+    ok("the complaint summary carries the signed records", "(signed by the business)" in signing["summary"] and "Signed records" in signing["summary"])
     dctx.close()
     ok("no script errors", not errors, errors)
     browser.close()

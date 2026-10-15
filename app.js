@@ -865,8 +865,10 @@ function viewBasket() {
     const ch = CHANNELS[c.app];
     let sentDirect = false, directError = "";
     let sealedInfo = null;
+    let orderKey = null;
     if (c.app === "hana") {
-      try { sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code }); await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; } catch (err) { directError = err.message; }
+      orderKey = await makeOrderKey();
+      try { sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code, cpub: orderKey ? orderKey.pub : null }); await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; } catch (err) { directError = err.message; }
       if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent in Hana. " + directError + " Choose another way to send it."))); return; }
     } else if (ch.direct) {
       try { await sendDirect(c.id, o.message); sentDirect = true; } catch (err) { directError = err.message; }
@@ -882,7 +884,7 @@ function viewBasket() {
       items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price })), subtotal: o.sub, fee: o.fee,
       message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
       window_start: windowStart, scheduled, business_phone: menu.business_phone, informal: menu.claimed !== true,
-      order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
+      order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, sign_key: sealedInfo && orderKey ? orderKey.jwk : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
       arrive_at: b.mode === "pickup" ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
       feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
@@ -976,6 +978,16 @@ const STATUS_TEXT = {
   confirmed_unchecked: ["Confirmed (this browser cannot check the signature)", "info"],
 };
 
+/* The customer's own messages on an order sent in Hana, signed with the order's key. */
+async function customerUpdate(o, obj) {
+  obj = Object.assign({ from: "c", at: new Date().toISOString() }, obj);
+  if (o.sign_key) { try { await signUpdate(o.sign_key, o.code, obj); } catch (e) { /* this browser cannot sign; sent unsigned */ } }
+  return obj;
+}
+
+function signedRecords(o) {
+  return [...(o.progress || []), ...(o.chat || [])].filter((x) => x.signed).map((x) => canonicalJSON(x.signed));
+}
 function complaintText(o) {
   return ["COMPLAINT SUMMARY (prepared on the customer's phone with Hana)",
     "Order code: " + o.code, "Order prepared: " + dateTime(o.created || o.at), "Business: " + o.restaurant,
@@ -983,12 +995,13 @@ function complaintText(o) {
     "Confirmation by the business: " + (STATUS_TEXT[o.status] || [o.status])[0],
     "Confirmation received: " + dateTime(o.confirmed_at), "Confirmation text: " + o.confirmation,
     "Menu version: " + o.menu_version, "Menu file SHA-256: " + o.menu_hash,
-    ...(o.progress || []).map((p) => "Update " + dateTime(p.at) + ": " + (p.text || p.step) + (p.rider ? " (rider " + p.rider.name + ", " + p.rider.phone + ")" : "")),
-    ...(o.chat || []).map((m) => "Message " + dateTime(m.at) + " from the " + (m.from === "c" ? "customer" : "business") + ": " + m.text),
+    ...(o.progress || []).map((p) => "Update " + dateTime(p.at) + ": " + (p.text || p.step) + (p.rider ? " (rider " + p.rider.name + ", " + p.rider.phone + ")" : "") + (p.verified === true ? " (signed by the business)" : p.verified === false ? " (not verified)" : "")),
+    ...(o.chat || []).map((m) => "Message " + dateTime(m.at) + " from the " + (m.from === "c" ? "customer" : "business") + ": " + m.text + (m.from === "b" && m.verified === true ? " (signed by the business)" : m.from === "b" && m.verified === false ? " (not verified)" : "")),
     "Items: " + o.items.map((i) => i.qty + " × " + (i.label || i.key)).join("; "),
     "Items subtotal: " + money(o.subtotal) + (o.items.some((i) => i.price === null || i.price === undefined) ? " (some prices not listed)" : ""), "Delivery fee: " + (o.mode === "pickup" ? "none (pickup)" : o.fee === null ? "not stated" : money(o.fee)),
     "", "Message sent to the business:", o.message || o.kitchen_message, "",
-    "Attach a screenshot of the chat showing the order and the business's confirmation.",
+    ...(signedRecords(o).length ? ["", "Signed records (each can be checked against the business's public key " + o.public_key + "; SPEC.md, section 21):", ...signedRecords(o)] : []),
+    "", "Attach a screenshot of the chat showing the order and the business's confirmation.",
     "Under the Hana Terms of Use, the business must keep its communications about this order for at least " + state.rules.record_retention_months + " months, or " + state.rules.record_retention_months_when_disputed + " months once a dispute is raised.",
     "", "Description of the problem:", "", "Amount in dispute (BDT):", ""].join("\n");
 }
@@ -1026,7 +1039,7 @@ function orderCard(o, orders) {
   if (chatOpen || (o.chat && o.chat.length)) {
     kids.push(h("details", { class: "info-list", open: !!(o.chat && o.chat.length) }, h("summary", { class: "row" }, icon("chat"), h("span", { class: "max" }, "Messages with the business" + (o.chat && o.chat.length ? " (" + o.chat.length + ")" : "")), icon("expand_more")),
       chatOpen ? chatBox(o.chat, "c", ["Where is my order?", "Please call me.", "I am at the gate."], async (text) => {
-        try { await postSealed(o.order_topic, o.order_key, { from: "c", t: "chat", text }); } catch (e) { snackbar("Could not send. Check your connection."); return; }
+        try { await postSealed(o.order_topic, o.order_key, await customerUpdate(o, { t: "chat", text })); } catch (e) { snackbar("Could not send. Check your connection."); return; }
         o.chat = (o.chat || []).concat({ from: "c", text, at: new Date().toISOString() }); save(); viewOrders();
       }) : h("ul", { class: "list border" }, o.chat.map((m) => h("li", null, h("div", { class: "max" }, (m.from === "c" ? "You: " : "Business: ") + m.text))))));
   }
@@ -1038,7 +1051,7 @@ function orderCard(o, orders) {
     const how = ch && ch.direct ? "The cancellation is sent to the business automatically." : "Your messaging app opens with the cancellation filled in; send it in the same chat as the order.";
     if (!(await ask("Cancel order " + o.code + "?", "You can cancel within " + win + " minutes of ordering. " + how, "Cancel order"))) return;
     const text = "Hello, I'd like to cancel order " + o.code + ", please. Sorry for the trouble, and thank you.\nCANCEL " + o.code;
-    if (o.channel === "hana" && o.order_topic) { try { await postSealed(o.order_topic, o.order_key, { from: "c", t: "cancel", code: o.code }); snackbar("Cancellation sent to the business."); } catch (e) { snackbar("Could not send the cancellation. Check your connection and try again."); return; } }
+    if (o.channel === "hana" && o.order_topic) { try { await postSealed(o.order_topic, o.order_key, await customerUpdate(o, { t: "cancel", code: o.code })); snackbar("Cancellation sent to the business."); } catch (e) { snackbar("Could not send the cancellation. Check your connection and try again."); return; } }
     else if (ch && ch.direct) { try { await sendDirect(o.channel_id, text); snackbar("Cancellation sent to the business."); } catch (e) { copy(text); snackbar("Could not send it directly. The cancellation was copied; send it to the business."); } }
     else if (ch && o.channel_id) { if (!ch.prefill) copy(text); window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener"); }
     else copy(text);
@@ -1132,15 +1145,20 @@ async function pollFeeds() {
       for (const m of await readSealed(o.order_topic, o.order_key, "24h")) {
         if (m.from !== "b" || (o.seen_msgs || []).includes(m.id)) continue;
         o.seen_msgs = (o.seen_msgs || []).concat(m.id).slice(-200);
+        /* Only the business holds its listing key: an update without a valid signature did not come
+           from it (anyone holding this order's key could have written it), so it is ignored. */
+        const verified = await checkUpdate(o.public_key, o.code, m.body);
+        if (o.public_key && verified === false) { changed = true; continue; }
+        const signed = verified ? m.body : null;
         if (m.t === "confirm" && o.status === "awaiting") {
           const res = await readConfirmation(m.line || "", o, o.public_key, win);
           if (!res.error) { Object.assign(o, { status: res.status === "declined" ? "declined" : "confirmed_" + res.status, confirmation: res.line, eta: res.eta, confirmed_at: new Date().toISOString(), confirmed_minute: res.minute }); note = "Your order was confirmed."; }
         } else if (m.t === "decline" && o.status === "awaiting") {
           Object.assign(o, { status: "declined", closed_at: new Date().toISOString() }); note = "The business declined your order.";
         } else if (m.t === "status") {
-          o.progress = (o.progress || []).concat({ step: m.step, at: m.at, text: m.text || "", rider: m.rider || null }); note = "Order update: " + (m.text || m.step) + ".";
+          o.progress = (o.progress || []).concat({ step: m.step, at: m.at, text: m.text || "", rider: m.rider || null, verified, signed }); note = "Order update: " + (m.text || m.step) + ".";
         } else if (m.t === "chat") {
-          o.chat = (o.chat || []).concat({ from: "b", text: String(m.text || "").slice(0, 500), at: m.at }); note = "New message from the business.";
+          o.chat = (o.chat || []).concat({ from: "b", text: String(m.text || "").slice(0, 500), at: m.at, verified, signed }); note = "New message from the business.";
         } else continue;
         changed = true;
       }

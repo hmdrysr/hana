@@ -170,6 +170,14 @@ async function signMenu(menu, key) {
   return menu;
 }
 
+/* Every update on an order sent in Hana is signed with the listing key (SPEC.md, section 21). */
+async function postUpdate(o, obj) {
+  if (!B.key) throw new Error("Load your key under Connections first.");
+  obj = Object.assign({ from: "b", at: new Date().toISOString() }, obj);
+  await signUpdate(B.key.jwk, o.code, obj);
+  await postSealed(o.reply, o.keyRaw, obj);
+}
+
 function keyFileText(key) {
   return JSON.stringify({ about: "Hana business key. Keep this file private and keep a backup. Anyone with it can sign as your business. Hana never asks for it.", key_id: key.id, created: new Date().toISOString(), jwk: key.jwk, enc: key.enc }, null, 2) + "\n";
 }
@@ -740,7 +748,7 @@ async function orderPanel(text, found, onDone, direct) {
     reply.textContent = textOut;
     if (direct) {
       try {
-        await postSealed(direct.reply, direct.keyRaw, { from: "b", t: /^DECLINED/m.test(textOut) ? "decline" : "confirm", line: textOut });
+        await postUpdate({ reply: direct.reply, keyRaw: direct.keyRaw, code: d.code }, { t: /^DECLINED/m.test(textOut) ? "decline" : "confirm", line: textOut });
         snackbar(label + ". The customer's app shows it now.");
       } catch (err) { snackbar("Could not reach the customer's app: " + err.message + " Try again."); return; }
     } else if (feed && (/S=[A-Za-z0-9_-]{86}/.test(textOut) || /^DECLINED/m.test(textOut))) {
@@ -786,7 +794,7 @@ function progressPanel(o, redraw) {
   const pickup = /Z=pickup /.test(o.text);
   const send = async (step, extra) => {
     try {
-      await postSealed(o.reply, o.keyRaw, Object.assign({ from: "b", t: "status", step, text: STEP_TEXT[step] }, extra || {}));
+      await postUpdate(o, Object.assign({ t: "status", step, text: STEP_TEXT[step] }, extra || {}));
       const l = inboxOrders(); const x = l.find((y) => y.id === o.id);
       if (x) { x.step = step; if (step === "delivered" || step === "picked") x.status = "done"; if (extra && extra.rider) x.rider = extra.rider; saveInbox(l); }
       snackbar(STEP_TEXT[step] + ". The customer's app shows it now.");
@@ -813,7 +821,7 @@ function progressPanel(o, redraw) {
 function bizChat(o, redraw) {
   return h("div", { class: "stack" }, sectionTitle("Messages with the customer"),
     chatBox(o.chat, "b", ["Running about 10 minutes late.", "The rider is outside.", "We cannot find the address. Please call us."], async (text) => {
-      try { await postSealed(o.reply, o.keyRaw, { from: "b", t: "chat", text }); } catch (e) { snackbar("Could not send. Check your connection."); return; }
+      try { await postUpdate(o, { t: "chat", text }); } catch (e) { snackbar("Could not send. Check your connection."); return; }
       const l = inboxOrders(); const x = l.find((y) => y.id === o.id);
       if (x) { x.chat = (x.chat || []).concat({ from: "b", text, at: new Date().toISOString() }); saveInbox(l); }
       redraw();
@@ -849,7 +857,7 @@ async function takeMessage(m) {
     let opened = null;
     try { opened = await openOrder(B.key.enc.priv, text); } catch (e) { return false; }
     if (!opened || !opened.order || !CHECK_LINE.test(opened.order.message || "")) return false;
-    list.unshift({ id: m.id, time: m.time, code: opened.order.code, text: opened.order.message, reply: opened.order.reply, keyRaw: opened.keyRaw, status: "new" });
+    list.unshift({ id: m.id, time: m.time, code: opened.order.code, text: opened.order.message, reply: opened.order.reply, keyRaw: opened.keyRaw, cpub: typeof opened.order.cpub === "string" ? opened.order.cpub : null, status: "new" });
   } else if (CHECK_LINE.test(text)) {
     list.unshift({ id: m.id, time: m.time, code: (/(?:CONFIRMED|Order reference|Order) ([0-9A-HJKMNP-TV-Z]{6})/.exec(text) || [])[1] || "?", text, status: "new" });
   } else if (/^HANA1R /.test(text)) {
@@ -858,8 +866,12 @@ async function takeMessage(m) {
     let msg = null;
     try { msg = await dUnseal(await aesFromRaw(o.keyRaw), text.slice(7)); } catch (e) { return false; }
     if (msg.from !== "c") return false;
+    /* The customer signs with the key named in the order: a message without a valid signature
+       is ignored, so the customer's messages cannot be made up later either. */
+    const verified = await checkUpdate(o.cpub, o.code, msg);
+    if (o.cpub && verified === false) return false;
     if (msg.t === "cancel") o.status = "cancelled";
-    else if (msg.t === "chat") o.chat = (o.chat || []).concat({ from: "c", text: String(msg.text || "").slice(0, 500), at: msg.at });
+    else if (msg.t === "chat") o.chat = (o.chat || []).concat({ from: "c", text: String(msg.text || "").slice(0, 500), at: msg.at, verified, signed: verified ? msg : null });
     else return false;
   } else {
     const cancel = CANCEL_LINE.exec(text);

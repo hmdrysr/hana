@@ -71,7 +71,7 @@ async function readSealed(topic, keyRaw, since) {
   for (const m of await ntfyPoll(topic, since || "24h")) {
     const t = /^HANA1R ([A-Za-z0-9_-]+)$/.exec(m.message || "");
     if (!t) continue;
-    try { out.push(Object.assign({ id: m.id, time: m.time }, await dUnseal(key, t[1]))); } catch (e) { /* not ours, or altered */ }
+    try { const body = await dUnseal(key, t[1]); out.push(Object.assign({ id: m.id, time: m.time }, body, { body })); } catch (e) { /* not ours, or altered */ }
   }
   return out;
 }
