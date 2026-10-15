@@ -5,7 +5,8 @@ Every Hana screen follows these rules so that the app looks and behaves the same
 ## Layout
 
 - One frame for every screen: the top bar with the brand mark and the colour-mode toggle, one content column (at most 45rem wide), the footer credit, and the main navigation.
-- The colour-mode toggle (`#theme-toggle`) cycles through: follow the phone, light, dark. The choice is kept on the device.
+- The top bar holds the Settings button and the colour-mode toggle (`#theme-toggle`, cycling through follow the phone, light, dark). People choose a colour scheme and text size in Settings; pages never set colours or sizes themselves.
+- Long lists are split into pages with the shared `pager()` control.
 - The business tools page (`business.html`) uses the same frame, with its own four destinations: Start, List or claim, Confirm, Update prices.
 - Main navigation has exactly four destinations, in this order: Restaurants, Basket, Orders, About. Phones show a bottom bar (`nav.bottom.s`); tablets and computers show a side rail (`nav.left.m.l`).
 - The brand mark is the 🥡 emoji and the word "Hana", set by `.brand`, `.brand-mark` and `.brand-name`. The emoji box is 2rem and the wordmark 1.375rem bold, centred on one line. Do not resize either one on a single screen.
@@ -74,6 +75,6 @@ Canadian English, plain and professional:
 
 `tools/check.py` rejects any class in those files that is not on this list:
 
-active, badge, bold, border, bottom, brand, brand-mark, brand-name, button, card-title, center-align, checkbox, chip, circle, dark, field, fill, flush, gap-top, group-title, l, label, left, left-align, link, list, m, max, medium, muted, no-border, no-elevate, no-space, overline-label, page-title, prefix, price, primary-container, radio, responsive, right-align, round, row, s, section-title, small, small-space, small-text, snackbar, space, suffix, surface-container-high, surface-container-highest, switch, tertiary-container, textarea, top-align, transparent, vertical, vertical-padding, wrap, light, field-label
+active, badge, bold, border, bottom, brand, brand-mark, brand-name, button, card-title, center-align, checkbox, chip, circle, dark, field, fill, flush, gap-top, group-title, l, label, left, left-align, link, list, m, max, medium, muted, no-border, no-elevate, no-space, overline-label, page-title, prefix, price, primary-container, radio, responsive, right-align, round, row, s, section-title, small, small-space, small-text, snackbar, space, suffix, surface-container-high, surface-container-highest, switch, tertiary-container, textarea, top-align, transparent, vertical, vertical-padding, wrap, light, field-label, cover, thumb, credit, text-large, text-larger, scheme-teal, scheme-indigo, scheme-green, scheme-plum, scheme-contrast
 
 Adding a class to this list is a theme change: it needs a recorded decision and a commit that updates this file and `tools/check.py` together.

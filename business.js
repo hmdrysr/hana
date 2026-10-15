@@ -227,21 +227,40 @@ async function versionsOf(row) {
   return out;
 }
 
+/* Finds a listing by its business phone. Owners look up their own listing this way; the
+   tools never show a list of unclaimed businesses. */
+async function findListingByPhone(phone, unclaimedOnly) {
+  const want = String(phone || "").replace(/[\s-]/g, "").replace(/^0/, "+880").replace(/^880/, "+880");
+  if (!/^\+8801\d{9}$/.test(want)) return { error: "Enter the business phone like +8801XXXXXXXXX." };
+  for (const row of B.index) {
+    if (unclaimedOnly && row.claimed) continue;
+    const vs = await versionsOf(row);
+    if (vs.length && vs[0].menu.business_phone === want) return { row, menu: vs[0].menu, versions: vs };
+  }
+  return { error: "No " + (unclaimedOnly ? "unclaimed " : "") + "listing uses that phone number." };
+}
+
 /* ---------------------------------------------------------------- start page */
 
 function viewHome() {
   show("home", "",
     pageTitle("Business tools"),
     h("p", null, "Free tools for restaurants and delivery-only kitchens in Chittagong. Listing on Hana costs nothing, and Hana takes no commission."),
-    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "List or claim your business"),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "List your business"),
       h("p", null, "Fill in one form. The page prepares your signed menu file and a request for the community to verify you."),
-      h("nav", null, h("a", { href: "#/join", class: "button" }, icon("add_business"), h("span", null, "Start")))),
+      h("nav", null, h("a", { href: "#/join", class: "button" }, icon("add_business"), h("span", null, "New listing")))),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Claim a listing"),
+      h("p", null, "If a volunteer has already listed your business, look it up with your business phone and claim it."),
+      h("nav", null, h("a", { href: "#/claim", class: "button border" }, icon("verified"), h("span", null, "Claim a listing")))),
     h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Confirm an order"),
       h("p", null, "Paste a customer's order. The page checks the prices against your published menu and prepares your confirmation reply."),
       h("nav", null, h("a", { href: "#/confirm", class: "button" }, icon("check_circle"), h("span", null, "Confirm an order")))),
     h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Update prices and delivery fees"),
       h("p", null, "Change prices, fees or minimum orders. The change is announced publicly in your menu file automatically."),
       h("nav", null, h("a", { href: "#/update", class: "button" }, icon("edit_note"), h("span", null, "Update prices")))),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Your own website"),
+      h("p", null, "Make a one-file website for your business that you can put on your own hosting. It stays in step with your Hana listing and carries the line \u201cCreated using Hana by Hamid Yasir & Co.\u201d"),
+      h("nav", null, h("a", { href: "#/site", class: "button border" }, icon("storefront"), h("span", null, "Make my website")))),
     sectionTitle("Rules for every business"),
     h("ul", { class: "list border" }, [
       "Cash on delivery only: payment is taken on delivery or at pickup, never in advance.",
@@ -297,10 +316,20 @@ function textToItems(text, oldItems) {
 
 function viewJoin() {
   const zones = zonesList();
-  const listings = B.index.slice().sort((a, b) => a.name.localeCompare(b.name, "en"));
   const out = h("div", { "aria-live": "polite" });
   const feeTable = h("div");
-  let existing = null; // the unclaimed listing being claimed, if any
+  let existing = null; // the unclaimed listing being claimed or merged, if any
+  const mergeBox = h("div", { "aria-live": "polite" });
+  /* Someone listing a new business may not know a volunteer already listed it. If the phone
+     number matches an unclaimed listing, offer to merge it so its history is kept. */
+  async function checkMerge() {
+    if (existing) return;
+    const found = await findListingByPhone(val("phone"), true);
+    if (found.error) { mergeBox.replaceChildren(); return; }
+    mergeBox.replaceChildren(notice("info", h("p", { class: "flush" }, "An unclaimed listing already uses this phone number: " + found.menu.name + ". Merge it into your listing, so its history is kept and there is no duplicate?"),
+      h("nav", { class: "wrap" }, h("button", { type: "button", on: { click: () => { fill(found.menu); mergeBox.replaceChildren(notice("info", h("p", { class: "flush" }, "Merged. Your listing will replace " + found.menu.name + "."))); } } }, h("span", null, "Merge")),
+        h("button", { type: "button", class: "border", on: { click: () => mergeBox.replaceChildren() } }, h("span", null, "It is a different business")))));
+  }
 
   const zoneOptions = [["", "Choose a zone"]].concat(zones.map((z) => [z.id, z.name]));
 
@@ -342,26 +371,20 @@ function viewJoin() {
     const wa = (m.contact || []).find((c) => c.app === "whatsapp");
     set("whatsapp", wa ? "+" + wa.id : "");
     set("items", itemsToText(m.items));
+    set("cuisine", m.cuisine || "");
     renderFees();
     snackbar("Filled in from the existing listing. Check every detail.");
   }
 
   const form = h("form", { novalidate: true, on: { submit: (e) => { e.preventDefault(); build(); } } },
-    sectionTitle("1. New listing or claim"),
-    select("claim", "Is your business already on Hana?", [["", "No, this is a new listing"]].concat(listings.filter((r) => !r.claimed).map((r) => [r.id, "Yes: " + r.name + " (not yet claimed)"])), ""),
-    h("nav", null, h("button", { type: "button", class: "border", on: { click: async () => {
-      const id = val("claim");
-      if (!id) { snackbar("Choose your listing first."); return; }
-      const row = B.index.find((r) => r.id === id);
-      const vs = row ? await versionsOf(row) : [];
-      if (!vs.length) { snackbar("The listing could not be loaded."); return; }
-      fill(vs[0].menu);
-    } } }, h("span", null, "Fill in from my listing"))),
-
-    sectionTitle("2. Your business"),
+    claimTarget ? notice("info", h("p", { class: "flush" }, "Claiming the existing listing for " + claimTarget.name + ". Its details are filled in below; check every one.")) : null,
+    sectionTitle("1. Your business"),
     textField("name", "Business name", input("name", { maxlength: 80 })),
     select("kind", "Type of business", KINDS.map((k) => [k, k]), KINDS[0]),
-    textField("phone", "Business phone", input("phone", { inputmode: "tel", maxlength: 14 })),
+    textField("cuisine", "Main cuisine (optional), like Pizza or Indian", input("cuisine", { maxlength: 40 })),
+    hint("Used to pick a default cover picture from Wikimedia Commons until you add your own."),
+    textField("phone", "Business phone", input("phone", { inputmode: "tel", maxlength: 14, on: { change: checkMerge } })),
+    mergeBox,
     hint("Write it like +8801XXXXXXXXX."),
     textField("whatsapp", "WhatsApp number (if any)", input("whatsapp", { inputmode: "tel", maxlength: 14 })),
     check("sms", "Customers may also send orders by text message to the business phone", true),
@@ -372,19 +395,23 @@ function viewJoin() {
       textField("ch-xmpp", "XMPP address, like kitchen@example.org", input("ch-xmpp")),
       textField("ch-signal", "Signal number, like +8801XXXXXXXXX", input("ch-signal", { inputmode: "tel" })),
       textField("ch-endpoint", "Order endpoint (https)", input("ch-endpoint", { type: "url" })),
+      textField("ch-feed", "Confirmation feed (https)", input("ch-feed", { type: "url" })),
+      hint("A feed lets customers' phones pick up your signed confirmations by themselves. Use an ntfy topic you control, for example https://ntfy.example.org/kitchen-confirmed; the Confirm page then publishes each confirmation to it."),
+      textField("cover", "Cover picture address (optional)", input("cover", { type: "url" })),
+      hint("A JPEG, PNG or WebP file on Wikimedia Commons (upload.wikimedia.org), your GitHub, Codeberg or GitLab repository, or i.ibb.co. Other addresses are not shown."),
       hint("An endpoint receives each order as plain text by HTTPS POST and must allow requests from the Hana site (CORS). A self-hosted ntfy topic works, for example https://ntfy.example.org/kitchen-orders. Customers then send orders without opening another app.")),
     textField("address", "Street address", input("address", { maxlength: 200 })),
     select("zone", "Zone (thana) the business is in", zoneOptions, ""),
     textField("plus", "Plus Code (optional)", input("plus", { maxlength: 13 })),
     hint("The full code from a map app, like 7MJH9R66+7MF."),
 
-    sectionTitle("3. Opening hours"),
+    sectionTitle("2. Opening hours"),
     textField("open", "Opens", input("open", { type: "time" })),
     textField("close", "Closes", input("close", { type: "time" })),
     hint("A closing time earlier than the opening time means the business closes after midnight, for example 7:00 p.m. to 3:30 a.m."),
     h("nav", { class: "wrap" }, DAYS.map((d) => check("day-" + d, DAY_NAMES[d], true))),
 
-    sectionTitle("4. Delivery, pickup and payment"),
+    sectionTitle("3. Delivery, pickup and payment"),
     select("scope", "Where do you deliver?", [["ccc", "The whole city (all CCC zones)"], ["zones", "Only some zones"]], "ccc"),
     feeTable,
     textField("min", "Minimum order (BDT)", input("min", { type: "number", min: 0 })),
@@ -392,14 +419,15 @@ function viewJoin() {
     textField("eta", "Usual delivery time (minutes)", input("eta", { type: "number", min: 5, max: 240 })),
     h("p", { class: "small-text muted" }, "Delivery fees may not exceed " + money(B.rules.max_delivery_fee) + ". You can change fees later with Update prices."),
     check("pickup", "Customers can pick up orders", true),
+    check("scheduled", "Customers may schedule orders for later, including while the business is closed", false),
     h("p", { class: "small-text bold" }, "Ways to pay at delivery or pickup (no prepayment)"),
     h("nav", { class: "vertical left-align" }, Object.entries(B.rules.payment_methods_on_delivery || {}).map(([k, label]) => check("pay-" + k, label, k === "cash"))),
 
-    sectionTitle("5. Menu"),
+    sectionTitle("4. Menu"),
     h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description (optional). Add a category after the section with a slash, like Indian / Starters. For sizes, write the prices like 8 inch: 529; 12 inch: 749. Prices are whole taka and include VAT and every other charge."),
     textField("items", "Menu items", h("textarea", { id: "items", rows: 10 })),
 
-    sectionTitle("6. Where your menu file will live"),
+    sectionTitle("5. Where your menu file will live"),
     h("p", { class: "small-text muted" }, "A claimed listing is edited from the business's own account on GitHub, Codeberg, GitLab or another open forge, so that only the business can change it. Create a free account and a public repository first."),
     textField("account", "Your account page", input("account", { type: "url" })),
     hint("For example https://github.com/yourbusiness or https://codeberg.org/yourbusiness."),
@@ -408,10 +436,10 @@ function viewJoin() {
     textField("raw", "Direct address of menu.json (optional)", input("raw", { type: "url" })),
     hint("The address of the raw file once uploaded, for example https://raw.githubusercontent.com/yourbusiness/hana-menu/main/menu.json."),
 
-    sectionTitle("7. Pledges"),
+    sectionTitle("6. Pledges"),
     h("nav", { class: "vertical left-align" }, Object.entries(PLEDGES).map(([k, text]) => check("pledge-" + k, text, false))),
 
-    sectionTitle("8. Your key"),
+    sectionTitle("7. Your key"),
     h("p", { class: "small-text muted" }, "Your key signs your menu and your order confirmations, so customers and the community can tell they really came from you. It stays on your device."),
     keyBox(),
     h("div", { class: "space" }),
@@ -465,6 +493,8 @@ function viewJoin() {
     if (val("ch-xmpp") && !/^[^@\s]+@[^@\s]+$/.test(val("ch-xmpp"))) errors.push("An XMPP address looks like name@server.org.");
     if (val("ch-signal") && !/^\+?8801\d{9}$/.test(val("ch-signal").replace(/[\s-]/g, ""))) errors.push("Write the Signal number like +8801XXXXXXXXX.");
     if (val("ch-endpoint") && !/^https:\/\/\S+$/.test(val("ch-endpoint"))) errors.push("The order endpoint must start with https://.");
+    if (val("ch-feed") && !/^https:\/\/\S+$/.test(val("ch-feed"))) errors.push("The confirmation feed must start with https://.");
+    if (val("cover") && !safeImageUrl(val("cover"))) errors.push("The cover picture must be a JPEG, PNG or WebP file on one of the listed hosts.");
     if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); out.scrollIntoView({ block: "start" }); return; }
 
     const hours = {};
@@ -484,11 +514,14 @@ function viewJoin() {
     if (plus) { menu.plus_code = plus; menu.location = loc; }
     Object.assign(menu, {
       business_phone: phone, hours, delivery: { zones: zonesOut }, contact,
-      pickup: checked("pickup"), payment_on_delivery: pay,
+      pickup: checked("pickup"), scheduled_orders: checked("scheduled"), payment_on_delivery: pay,
       pledges: Object.fromEntries(Object.keys(PLEDGES).map((k) => [k, { signed: true, date: stamp.slice(0, 10) }])),
       owner: { account, menu_source: source, public_key: B.key.publicB64 },
       items: parsed.items,
     });
+    if (val("cuisine")) menu.cuisine = val("cuisine");
+    if (val("cover")) menu.cover = { src: safeImageUrl(val("cover")) };
+    if (val("ch-feed")) menu.confirmation_feed = val("ch-feed");
     let changes = [];
     if (existing) {
       menu.replaces = existing.id;
@@ -529,6 +562,7 @@ function viewJoin() {
   show("join", "List or claim", pageTitle("List or claim your business"),
     h("p", { class: "muted" }, "Free. Everything is prepared on this device and nothing is sent until you submit the request."),
     form, out);
+  if (claimTarget) { fill(claimTarget); claimTarget = null; }
   document.getElementById("scope").addEventListener("change", renderFees);
   document.getElementById("zone").addEventListener("change", renderFees);
   renderFees();
@@ -573,6 +607,45 @@ function issueText(menu, hash, claimCode, raw, existing) {
   ].join("\n");
 }
 
+/* ---------------------------------------------------------------- claim a listing */
+
+let claimTarget = null;
+function viewClaim() {
+  const out = h("div", { "aria-live": "polite" });
+  const phone = input("claim-phone", { inputmode: "tel", maxlength: 14 });
+  show("join", "Claim a listing", pageTitle("Claim a listing"),
+    h("p", { class: "muted" }, "Enter your business phone number. If a volunteer has listed your business, you can claim it. Claims are verified by two community members (CLAIMS.md)."),
+    textField("claim-phone", "Business phone", phone),
+    h("nav", null, h("button", { type: "button", on: { click: async () => {
+      const found = await findListingByPhone(phone.value, true);
+      if (found.error) { out.replaceChildren(notice("info", h("p", { class: "flush" }, found.error + " If your business is not listed yet, create a new listing.")), h("nav", null, h("a", { href: "#/join", class: "button border" }, h("span", null, "New listing")))); return; }
+      out.replaceChildren(h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, found.menu.name), h("p", { class: "muted" }, found.menu.address),
+        h("nav", null, h("button", { type: "button", on: { click: () => { claimTarget = found.menu; location.hash = "#/join"; } } }, icon("verified"), h("span", null, "Claim this listing")))));
+    } } }, h("span", null, "Find my listing"))),
+    out);
+}
+
+/* ---------------------------------------------------------------- your own website */
+
+function viewSite() {
+  const out = h("div", { "aria-live": "polite" });
+  const phone = input("site-phone", { inputmode: "tel", maxlength: 14 });
+  show("home", "Your own website", pageTitle("Your own website"),
+    h("p", null, "This makes one HTML file for your business: your menu, ordering and confirmations, in the Hana design, with the line \u201cCreated using Hana by Hamid Yasir & Co.\u201d It reads your listing from the Hana directory whenever it is online, so your prices and hours stay the same everywhere, and it still works offline."),
+    h("ol", null, h("li", null, "Find your listing with your business phone."), h("li", null, "Download the file and upload it as index.html to any web host, for example GitHub Pages or Codeberg Pages in your menu repository."), h("li", null, "Keep your listing on Hana. Your site and the Hana app show the same listing.")),
+    textField("site-phone", "Business phone", phone),
+    h("nav", null, h("button", { type: "button", on: { click: async (e) => {
+      const found = await findListingByPhone(phone.value, false);
+      if (found.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, found.error))); return; }
+      try {
+        const html = await buildStandalone({ mode: "business", listingId: found.row.id, site: B.site });
+        download("index.html", html, "text/html");
+        out.replaceChildren(notice("info", h("p", { class: "flush" }, "Downloaded the website for " + found.menu.name + ". Upload it as index.html.")));
+      } catch (err) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The website could not be made: " + err.message))); }
+    } } }, icon("download"), h("span", null, "Make my website"))),
+    out);
+}
+
 /* ---------------------------------------------------------------- confirm an order */
 
 function decodeOrder(text, versions) {
@@ -609,16 +682,17 @@ function decodeOrder(text, versions) {
 }
 
 function viewConfirm() {
-  const rows = B.index.slice().sort((a, b) => a.name.localeCompare(b.name, "en"));
   const out = h("div", { "aria-live": "polite" });
   const msg = h("textarea", { id: "order-text", rows: 8, placeholder: " " });
   show("confirm", "Confirm an order", pageTitle("Confirm an order"),
     h("p", { class: "muted" }, "Paste the customer's whole message. Nothing leaves this device."),
-    select("listing", "Your listing", rows.map((r) => [r.id, r.name]), rows.length ? rows[0].id : ""),
+    textField("listing-phone", "Your business phone", input("listing-phone", { inputmode: "tel", maxlength: 14, value: (() => { try { return localStorage.getItem("hana.biz.phone") || ""; } catch (e) { return ""; } })() })),
     textField("order-text", "Customer's order message", msg),
     h("nav", null, h("button", { type: "button", on: { click: async () => {
-      const row = B.index.find((r) => r.id === val("listing"));
-      const versions = row ? await versionsOf(row) : [];
+      const found = await findListingByPhone(val("listing-phone"), false);
+      if (found.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, found.error))); return; }
+      try { localStorage.setItem("hana.biz.phone", val("listing-phone")); } catch (e) { /* ignore */ }
+      const versions = found.versions;
       const d = decodeOrder(msg.value, versions);
       if (d.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, d.error))); return; }
       const expected = await checkCode(d.hash, d.fields[2], d.fields[3], d.fields[4], d.fields[5]);
@@ -650,7 +724,11 @@ function viewConfirm() {
           h("button", { type: "button", on: { click: makeReply } }, icon("check_circle"), h("span", null, "Prepare a confirmation")),
           h("button", { type: "button", class: "border", on: { click: () => { reply.textContent = "Sorry, we cannot take order " + d.code + " right now.\nDECLINED " + d.code; } } }, icon("close"), h("span", null, "Prepare a decline"))),
         reply,
-        h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => reply.textContent ? copy(reply.textContent) : snackbar("Prepare the reply first.") } }, icon("content_copy"), h("span", null, "Copy reply"))),
+        h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: () => reply.textContent ? copy(reply.textContent) : snackbar("Prepare the reply first.") } }, icon("content_copy"), h("span", null, "Copy reply")),
+          d.menu.confirmation_feed ? h("button", { type: "button", class: "border", on: { click: async () => {
+            if (!/S=[A-Za-z0-9_-]{86}/.test(reply.textContent)) { snackbar("Prepare a signed confirmation first."); return; }
+            try { await sendDirect(d.menu.confirmation_feed, reply.textContent); snackbar("Published. The customer's phone will pick it up."); } catch (err) { snackbar("Could not publish: " + err.message); }
+          } } }, icon("send"), h("span", null, "Publish to my confirmation feed")) : null),
         h("p", { class: "small-text muted" }, "Send the reply in the same chat as the order. The customer pastes it into Hana, and only then does the order count. Take payment only on delivery or at pickup."));
     } } }, icon("check_circle"), h("span", null, "Check the order"))),
     out);
@@ -738,6 +816,8 @@ function route() {
   if (hash === "#/join") return viewJoin();
   if (hash === "#/confirm") return viewConfirm();
   if (hash === "#/update") return viewUpdate();
+  if (hash === "#/claim") return viewClaim();
+  if (hash === "#/site") return viewSite();
   return viewHome();
 }
 

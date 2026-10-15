@@ -14,6 +14,7 @@ const state = {
   area: store.get("hana.area", ""),
   showAll: false,
   query: "",
+  page: 0,
   basket: store.get("hana.basket", null),
 };
 
@@ -21,6 +22,8 @@ async function loadAll() {
   try {
     try { Object.assign(state.site, await fetchJson("site.json")); } catch (e) { /* optional file */ }
     try { Object.assign(state.rules, await fetchJson("rules.json")); } catch (e) { /* the built-in defaults apply */ }
+    if (SNAP) Object.assign(state.site, SNAP.site);
+    if (Array.isArray(state.rules.image_hosts)) IMAGE_HOSTS = state.rules.image_hosts.slice();
     const areas = await fetchJson("areas.json");
     state.areas = areas.areas || [];
     state.areaById = new Map(state.areas.map((a) => [a.id, a]));
@@ -169,7 +172,7 @@ function viewList() {
   const search = h("input", {
     type: "search", id: "q", placeholder: "Search restaurants and dishes", autocomplete: "off", value: state.query,
     "aria-label": "Search restaurants and dishes",
-    on: { input: (e) => { state.query = e.target.value; renderResults(); } },
+    on: { input: (e) => { state.query = e.target.value; state.page = 0; renderResults(); } },
   });
   const showAll = h("input", { type: "checkbox", id: "showall", checked: state.showAll, on: { change: (e) => { state.showAll = e.target.checked; renderResults(); } } });
 
@@ -190,8 +193,12 @@ function viewList() {
       if (norm(state.query) && !nameHit && !dishHits.length) continue;
       cards.push(restaurantCard(r, zone, delivers, dishHits));
     }
+    const PER = 12;
+    const pages = Math.max(1, Math.ceil(cards.length / PER));
+    if (state.page >= pages) state.page = pages - 1;
     const kids = [];
-    if (cards.length) kids.push(...cards);
+    if (cards.length) kids.push(...cards.slice(state.page * PER, state.page * PER + PER));
+    if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; renderResults(); results.scrollIntoView({ block: "start" }); }));
     else kids.push(h("p", { class: "muted" }, state.restaurants.length ? "No restaurants match. Try a shorter search or another zone." : "No restaurants are listed yet."));
     if (area && hidden) {
       kids.push(h("p", { class: "small-text muted" }, hidden + (hidden === 1 ? " restaurant does" : " restaurants do") + " not deliver to " + areaName(area) + " and " + (hidden === 1 ? "is" : "are") + " hidden."));
@@ -202,17 +209,51 @@ function viewList() {
   show("list", "",
     pageTitle("Restaurants in Chittagong"),
     h("p", { class: "muted" }, "Listed alphabetically. No listing is featured or paid for."),
-    zoneSelect("area", state.area, (v) => { state.area = v; store.set("hana.area", v); renderResults(); }, "Choose your zone"),
+    zoneSelect("area", state.area, (v) => { state.area = v; state.page = 0; store.set("hana.area", v); renderResults(); }, "Choose your zone"),
     h("div", { class: "field prefix round fill" }, icon("search"), search),
     h("div", { class: "row" }, h("label", { class: "switch" }, showAll, h("span")), h("label", { for: "showall", class: "max" }, "Include restaurants that do not deliver to my zone")),
     h("div", { class: "space" }),
-    results,
-    h("article", { class: "round no-elevate surface-container-high gap-top" },
-      h("h2", { class: "card-title" }, "Own a restaurant or a delivery-only kitchen?"),
-      h("p", null, "Listing is free and Hana takes no commission."),
-      h("nav", null, h("a", { href: "business.html#/join", class: "button" }, icon("add_business"), h("span", null, "Add or claim your business")))));
+    results);
   renderResults();
 }
+
+/* Page navigation for long lists: previous, "Page 2 of 5", next. */
+function pager(page, pages, go) {
+  return h("nav", { class: "wrap gap-top", "aria-label": "Pages" },
+    h("button", { type: "button", class: "border", disabled: page === 0, on: { click: () => go(page - 1) } }, icon("arrow_back"), h("span", null, "Previous")),
+    h("span", { class: "max center-align" }, "Page " + (page + 1) + " of " + pages),
+    h("button", { type: "button", class: "border", disabled: page >= pages - 1, on: { click: () => go(page + 1) } }, h("span", null, "Next")));
+}
+
+/* Ordering state for a business right now: open, closed with scheduled orders, or closed. */
+function orderingState(m) {
+  const open = openNow(m.hours);
+  if (open !== false) return { canOrder: true, closed: false };
+  const next = nextOpening(m.hours);
+  return { canOrder: m.scheduled_orders === true && !!next, closed: true, next };
+}
+/* Times a scheduled order can be placed for: every 30 minutes while open, over the next two days. */
+function scheduleSlots(m) {
+  if (m.scheduled_orders !== true || !m.hours) return [];
+  const out = [];
+  const now = Date.now() + 30 * 60000;
+  const base = new Date();
+  for (let d = 0; d < 3 && out.length < 48; d++) {
+    const day = new Date(base.getFullYear(), base.getMonth(), base.getDate() + d);
+    for (const [s, e] of m.hours[DAYS[(day.getDay() + 6) % 7]] || []) {
+      let a = hhmmToMin(s), b = hhmmToMin(e);
+      if (b <= a) b += 24 * 60;
+      for (let t = Math.ceil(a / 30) * 30; t < b && out.length < 48; t += 30) {
+        const when = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, t);
+        if (when.getTime() < now) continue;
+        const iso = when.getFullYear() + "-" + String(when.getMonth() + 1).padStart(2, "0") + "-" + String(when.getDate()).padStart(2, "0") + "T" + String(when.getHours()).padStart(2, "0") + ":" + String(when.getMinutes()).padStart(2, "0");
+        out.push({ value: iso, label: whenText(when) + ", " + longDate(iso) });
+      }
+    }
+  }
+  return out;
+}
+function whenText(d) { return DAY_NAMES[DAYS[(d.getDay() + 6) % 7]] + ", " + clock(String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0")); }
 
 function fromPrice(it) {
   return it.price !== undefined ? money(it.price) : "from " + money(Math.min(...it.options.map((o) => o.price)));
@@ -271,7 +312,14 @@ function viewRestaurant(id) {
     h("nav", null, h("a", { href: "#/", class: "button circle transparent", "aria-label": "Back to all restaurants" }, icon("arrow_back")), h("h1", { class: "page-title max" }, m.name)),
     h("p", { class: "muted" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
     h("nav", { class: "wrap small-space" }, statusChip(m)),
+    lazyPicture(m.cover, (m.cuisine || ((m.items || [])[0] || {}).section || m.kind || "food") + " food", "cover", "Picture of " + (m.cuisine || "the food")),
   ];
+  const os = orderingState(m);
+  if (os.closed) {
+    nodes.push(notice(os.canOrder ? "info" : "warn", h("p", { class: "flush" },
+      "Closed now." + (os.next ? " Opens " + whenText(os.next) + "." : "") +
+      (os.canOrder ? " You can place a scheduled order for when it is open." : " Ordering is available when the business is open."))));
+  }
   if (m.claimed === false) nodes.push(notice("warn", h("p", { class: "bold flush" }, "Not yet confirmed by the business"), h("p", { class: "flush" }, m.listing_note || "")));
   nodes.push(h("p", { class: "small-text muted" }, "Prices from version " + m.version + ", published " + longDate(m.announcement && m.announcement.published) + "."));
   if (m.price_history && m.price_history.length) {
@@ -301,6 +349,11 @@ function viewRestaurant(id) {
     if (!sections.has(sec)) sections.set(sec, []);
     sections.get(sec).push(it);
   }
+  if (sections.size > 1) {
+    nodes.push(h("nav", { class: "wrap small-space", "aria-label": "Menu sections" },
+      Array.from(sections.keys()).map((sec, i) => h("a", { href: "#/r/" + r.id, class: "chip small border", on: { click: (e) => { e.preventDefault(); const t = document.getElementById("sec-" + i); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, sec))));
+  }
+  let secIndex = 0;
   for (const [sec, items] of sections) {
     const lis = [];
     let lastCat = null;
@@ -308,23 +361,24 @@ function viewRestaurant(id) {
       if (it.category && it.category !== lastCat) { lastCat = it.category; lis.push(h("li", { class: "overline-label" }, it.category)); }
       const lines = it.options ? it.options.map((op) => ({ key: it.id + "." + op.id, label: op.label, price: op.price })) : [{ key: it.id, label: "", price: it.price }];
       lis.push(h("li", { class: "vertical-padding" },
+        it.image || settings().pictures ? lazyPicture(it.image, it.name + " food", "thumb", "") : null,
         h("div", { class: "max" },
           h("div", { class: "bold" }, it.name),
           it.description ? h("div", { class: "small-text muted" }, it.description) : null,
           h("nav", { class: "wrap small-space gap-top" }, lines.map((l) => h("button", {
-            type: "button", class: "chip medium border",
+            type: "button", class: "chip medium border", disabled: !os.canOrder,
             "aria-label": "Add " + it.name + (l.label ? ", " + l.label : "") + ", " + money(l.price),
             on: { click: () => addToBasket(r, l.key, it.name + (l.label ? " (" + l.label + ")" : "")) },
           }, icon("add"), h("span", { class: "price" }, (l.label ? l.label + " · " : "") + money(l.price))))))));
     }
-    nodes.push(h("h3", { class: "group-title" }, sec), h("ul", { class: "list border" }, lis));
+    nodes.push(h("h3", { class: "group-title", id: "sec-" + secIndex++ }, sec), h("ul", { class: "list border" }, lis));
   }
   nodes.push(h("nav", { class: "gap-top" }, h("a", { href: "#/basket", class: "button responsive" }, icon("shopping_bag"), h("span", null, "View basket"))));
 
   nodes.push(sectionTitle("Contact"));
   nodes.push(h("ul", { class: "list border" },
     (m.contact || []).map((c) => h("li", null, icon((CHANNELS[c.app] || {}).icon || "chat"),
-      h("div", { class: "max" }, h("div", null, (CHANNELS[c.app] ? CHANNELS[c.app].label : c.app) + (c.preferred ? " (preferred)" : "")), h("div", { class: "small-text muted" }, phoneText(c.id))))),
+      h("div", { class: "max" }, h("div", null, (CHANNELS[c.app] ? CHANNELS[c.app].label : c.app) + (c.preferred ? " (preferred)" : "")), h("div", { class: "small-text muted" }, contactText(c.app, c.id))))),
     h("li", null, icon("call"), h("div", { class: "max" }, h("div", null, "Business phone"), h("div", { class: "small-text muted" }, m.business_phone))),
     h("li", null, icon("location_on"), h("div", { class: "max" }, h("div", null, "Address"), h("div", { class: "small-text muted" }, m.address)))));
 
@@ -382,7 +436,8 @@ async function buildOrder(r, f) {
   const check = "CHECK hana1 H=" + r.hash.slice(0, 12) + " Z=" + zoneId + " I=" + items + " S=" + sub + " F=" + feeStr + " C=" + await checkCode(r.hash, zoneId, items, sub, feeStr);
   const where = pickup ? ["Pickup: I will collect the order"] :
     ["Delivery to: " + f.address, "Zone: " + areaName(f.zone) + (f.ward ? ", " + areaName(f.ward) : "")];
-  const lines = ["Order " + code + " (sent with Hana)", "To: " + menu.name, "", ...text, "",
+  const lines = ["Order " + code + " (sent with Hana)", "To: " + menu.name,
+    f.scheduled ? "Scheduled for: " + longDate(f.scheduled.slice(0, 10)) + ", " + clock(f.scheduled.slice(11, 16)) : null, "", ...text, "",
     "Items: " + money(sub),
     pickup ? "Pickup: no delivery fee" : (fee === null ? "Delivery fee: not stated; please confirm" : "Delivery fee: " + money(fee)),
     fee === null ? null : "Total: " + money(sub + fee),
@@ -449,6 +504,12 @@ function viewBasket() {
   const deliveryBox = h("div");
   const out = h("div", { "aria-live": "polite" });
   const pickupOffered = menu.pickup !== false;
+  const os = orderingState(menu);
+  const slots = scheduleSlots(menu);
+  const when = h("select", { id: "when" },
+    os.closed ? null : h("option", { value: "" }, "As soon as possible"),
+    slots.map((s) => h("option", { value: s.value }, s.label)));
+  const whenBox = (os.closed && os.canOrder) || (!os.closed && menu.scheduled_orders === true && slots.length) ? selectField("when", os.closed ? "Schedule for (the business is closed now)" : "When", when) : null;
 
   const deliveryZone = () => (b.mode === "delivery" && b.zone ? zoneFor(menu, b.zone) : null);
 
@@ -527,9 +588,15 @@ function viewBasket() {
     if (!name.value.trim()) errors.push("Enter a first name or nickname.");
     if (b.mode === "delivery" && !address.value.trim()) errors.push("Enter an address or landmark.");
     if (!channels.length) errors.push("This listing has no way to send a written order.");
+    if (os.closed && !os.canOrder) errors.push("This business is closed and does not take scheduled orders.");
+    if (os.closed && os.canOrder && !when.value) errors.push("Choose a time for your scheduled order.");
+    const waiting = store.get("hana.orders", []).filter((x) => x.status === "awaiting");
+    if (waiting.some((x) => x.restaurant_id === r.id)) errors.push("You already have an order waiting for this business's reply. Wait for it, or cancel it on the Orders page.");
+    else if (waiting.length >= 3) errors.push("You have three orders waiting for replies. Wait for them, or cancel one, before placing another.");
     if (errors.length) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, errors.join(" ")))); return; }
     store.set("hana.me", remember.checked ? { name: name.value.trim(), address: address.value.trim() } : { name: "", address: "" });
-    const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), address: address.value.trim(), note: note.value.trim() });
+    const scheduled = when.value || null;
+    const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), address: address.value.trim(), note: note.value.trim(), scheduled });
     const c = channels[Number((form.querySelector("input[name=channel]:checked") || { value: 0 }).value)];
     const ch = CHANNELS[c.app];
     let sentDirect = false, directError = "";
@@ -539,12 +606,14 @@ function viewBasket() {
     }
     const link = ch.direct ? null : ch.link(c.id, o.message, o.code);
     const created = new Date().toISOString();
+    const windowStart = os.closed && os.next ? os.next.toISOString() : created;
     const orders = store.get("hana.orders", []);
     orders.unshift({ code: o.code, status: "awaiting", created, restaurant_id: r.id, restaurant: menu.name,
       claimed: menu.claimed === true, public_key: menu.owner && menu.owner.public_key ? menu.owner.public_key : null,
       menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
       items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price })), subtotal: o.sub, fee: o.fee,
-      message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw });
+      message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
+      window_start: windowStart, scheduled, feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
     log("Prepared order " + o.code + " for " + menu.name + (sentDirect ? "; sent directly to the business." : "."));
     state.basket = null; saveBasket();
@@ -553,7 +622,7 @@ function viewBasket() {
       h("h2", { class: "section-title" }, sentDirect ? "Order " + o.code + " sent" : "Order " + o.code + ": send it now"),
       savedOk ? null : notice("warn", h("p", { class: "flush" }, "This phone could not save a copy of the order. Copy the message below to keep a record.")),
       h("p", null, sentDirect ? "Your order went straight to " + menu.name + "." : (ch.prefill ? "Your app opens with the message ready. Press send there." : "Copy the message, open " + ch.label + " and paste it there.")),
-      h("p", null, menu.name + " has " + win + " minutes to confirm. If it does not, the order is cancelled automatically."),
+      h("p", null, menu.name + " has " + win + " minutes to confirm" + (windowStart !== created ? " once it opens (" + whenText(new Date(windowStart)) + ")" : "") + ". If it does not, the order is cancelled automatically." + (menu.confirmation_feed && menu.claimed ? " Its confirmation will appear on the Orders page by itself." : "")),
       h("pre", null, o.message),
       h("nav", { class: "wrap gap-top" },
         link ? h("a", { href: link, class: "button", rel: "noopener", target: "_blank", on: { click: () => { if (!ch.prefill) copy(o.message); } } }, icon(ch.icon), h("span", null, ch.prefill ? "Open " + ch.label : "Copy and open " + ch.label)) : null,
@@ -564,6 +633,7 @@ function viewBasket() {
     out.scrollIntoView({ behavior: "smooth", block: "start" });
   } } },
     sectionTitle("Checkout"),
+    whenBox,
     modeRadios,
     deliveryBox,
     textField("name", "First name or nickname", name),
@@ -606,7 +676,8 @@ function expireOrders() {
   const keep = orders.filter((o) => {
     if (!o.status) { o.status = o.confirmation ? "confirmed_unsigned" : "awaiting"; changed = true; }
     const age = now - new Date(o.created || o.at).getTime();
-    if (o.status === "awaiting" && age > win * 60000) {
+    const sinceStart = now - new Date(o.window_start || o.created || o.at).getTime();
+    if (o.status === "awaiting" && sinceStart > win * 60000) {
       o.status = "expired";
       o.closed_at = new Date().toISOString();
       changed = true;
@@ -658,7 +729,7 @@ function orderCard(o, orders) {
   ];
   const save = () => store.set("hana.orders", orders);
   const win = Number(state.rules.confirmation_window_minutes) || 15;
-  const deadline = new Date(new Date(o.created || o.at).getTime() + win * 60000);
+  const deadline = new Date(new Date(o.window_start || o.created || o.at).getTime() + win * 60000);
   const reminder = () => {
     const ch = CHANNELS[o.channel];
     const text = "Reminder: order " + o.code + " is waiting for your confirmation. To confirm, reply: CONFIRMED " + o.code;
@@ -711,28 +782,56 @@ function orderCard(o, orders) {
   return h("article", { class: "round border no-elevate" }, ...kids);
 }
 
+/* Businesses that publish signed confirmations to their own feed (for example a self-hosted
+   ntfy topic) confirm orders without the customer doing anything. Only signed confirmations
+   are accepted from a feed, so nobody else can confirm an order by posting to it. */
+let feedTimer = null;
+async function pollFeeds() {
+  const orders = store.get("hana.orders", []);
+  const win = Number(state.rules.confirmation_window_minutes) || 15;
+  let changed = false;
+  for (const o of orders.filter((x) => x.status === "awaiting" && x.feed && x.public_key)) {
+    try {
+      const since = Math.floor(new Date(o.window_start || o.created).getTime() / 1000) - 120;
+      const r = await fetch(o.feed.replace(/\/$/, "") + "/json?poll=1&since=" + since, { cache: "no-store" });
+      if (!r.ok) continue;
+      for (const line of (await r.text()).split("\n")) {
+        let msg = "";
+        try { msg = (JSON.parse(line) || {}).message || ""; } catch (e) { continue; }
+        if (msg.indexOf("O=" + o.code) < 0) continue;
+        const res = await readConfirmation(msg, o, o.public_key, win);
+        if (res.status === "signed") {
+          Object.assign(o, { status: "confirmed_signed", confirmation: res.line, eta: res.eta, confirmed_at: new Date().toISOString(), confirmed_minute: res.minute });
+          log("Order " + o.code + " confirmed automatically through the business's confirmation feed.");
+          changed = true;
+          break;
+        }
+      }
+    } catch (e) { /* the feed is unreachable; try again later */ }
+  }
+  if (changed) { store.set("hana.orders", orders); if (location.hash === "#/orders") viewOrders(); snackbar("An order was confirmed."); }
+}
+function startFeedPolling() {
+  clearInterval(feedTimer);
+  feedTimer = setInterval(() => { if (document.visibilityState === "visible") pollFeeds(); }, 30000);
+  pollFeeds();
+}
+
 function viewOrders() {
   expireOrders();
   const orders = store.get("hana.orders", []);
   const nodes = [pageTitle("Orders"), h("p", { class: "muted" }, "Orders are stored only on this phone. An order counts once the business confirms it within " + state.rules.confirmation_window_minutes + " minutes; otherwise it is cancelled automatically.")];
   if (!orders.length) nodes.push(h("p", { class: "muted" }, "No orders yet."));
-  for (const o of orders) nodes.push(orderCard(o, orders));
+  const PER = 10;
+  const pages = Math.max(1, Math.ceil(orders.length / PER));
+  state.ordersPage = Math.min(state.ordersPage || 0, pages - 1);
+  for (const o of orders.slice(state.ordersPage * PER, state.ordersPage * PER + PER)) nodes.push(orderCard(o, orders));
+  if (pages > 1) nodes.push(pager(state.ordersPage, pages, (n) => { state.ordersPage = n; viewOrders(); }));
   const entries = store.get("hana.log", []);
   nodes.push(sectionTitle("Activity on this phone"),
     entries.length ? h("details", null, h("summary", { class: "link" }, "Show the record (" + entries.length + ")"),
       h("ul", { class: "list" }, entries.map((e) => h("li", null, h("div", { class: "max" }, h("div", { class: "small-text muted" }, dateTime(e.at)), h("div", null, e.text)))))) :
-      h("p", { class: "muted" }, "Nothing recorded yet."),
-    sectionTitle("Your data"),
-    h("nav", { class: "wrap" },
-      h("button", { type: "button", class: "border", on: { click: exportData } }, icon("download"), h("span", null, "Download my data")),
-      h("button", { type: "button", class: "border", on: { click: () => document.getElementById("restore-file").click() } }, icon("upload"), h("span", null, "Restore from a download")),
-      h("input", { type: "file", id: "restore-file", accept: ".json,application/json", hidden: true, "aria-label": "Restore from a download", on: { change: (e) => importData(e.target) } }),
-      h("button", { type: "button", class: "border", on: { click: async () => {
-        if (await ask("Delete everything on this phone?", "This removes your orders, saved details, record, area and basket. It cannot be undone. Download your data first if you want a copy.", "Delete")) {
-          for (const k of ["hana.orders", "hana.me", "hana.basket", "hana.area", "hana.log"]) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
-          state.basket = null; state.area = ""; updateBasketBadge(); viewOrders(); snackbar("Deleted.");
-        }
-      } } }, icon("delete"), h("span", null, "Delete everything"))));
+      h("p", { class: "muted" }, "Nothing recorded yet."));
   show("orders", "Orders", ...nodes);
 }
 
@@ -834,12 +933,91 @@ function viewAbout() {
 async function viewTerms() {
   show("about", "Terms of Use", pageTitle("Terms of Use"), h("p", { class: "muted" }, "Loading…"));
   try {
-    const r = await fetch("TERMS.md", { cache: "no-cache" });
-    if (!r.ok) throw new Error();
-    show("about", "Terms of Use", ...renderMarkdown(await r.text()));
+    show("about", "Terms of Use", ...renderMarkdown(await getText("TERMS.md")));
   } catch (e) {
     show("about", "Terms of Use", pageTitle("Terms of Use"), notice("warn", h("p", { class: "flush" }, "The terms could not be loaded. They are also in TERMS.md on the project page.")));
   }
+}
+
+/* ---------------------------------------------------------------- settings */
+
+function viewSettings() {
+  const st = settings();
+  const radios = (name, options, value, onPick) => h("nav", { class: "vertical left-align" },
+    Object.entries(options).map(([k, label]) => h("label", { class: "radio" },
+      h("input", { type: "radio", name, value: k, checked: k === value, on: { change: () => onPick(k) } }), h("span", null, label))));
+  const me = store.get("hana.me", { name: "", address: "" });
+  const pname = h("input", { type: "text", id: "p-name", value: me.name || "", maxlength: 60, autocomplete: "off" });
+  const paddr = h("textarea", { id: "p-address", rows: 3, maxlength: 300 }, me.address || "");
+  const pictures = h("input", { type: "checkbox", id: "pictures", checked: st.pictures, on: { change: (e) => saveSettings(Object.assign(settings(), { pictures: e.target.checked })) } });
+  show("settings", "Settings", pageTitle("Settings"),
+    h("p", { class: "muted" }, "Settings are kept on this device only."),
+    sectionTitle("Colour scheme"),
+    radios("scheme", SCHEMES, st.scheme, (k) => saveSettings(Object.assign(settings(), { scheme: k }))),
+    sectionTitle("Light or dark"),
+    radios("mode", { system: "Follow my phone", light: "Light", dark: "Dark" }, themeMode(), (k) => { try { localStorage.setItem("hana.theme", k); } catch (e) { /* ignore */ } applyTheme(); }),
+    sectionTitle("Text size"),
+    radios("text", TEXT_SIZES, st.text, (k) => saveSettings(Object.assign(settings(), { text: k }))),
+    sectionTitle("Pictures"),
+    h("div", { class: "row" }, h("label", { class: "switch" }, pictures, h("span")), h("label", { for: "pictures", class: "max" }, "Show pictures of food")),
+    h("p", { class: "small-text muted" }, "Pictures come from the business or from Wikimedia Commons, an openly licensed library. Pictures from Commons are approximate. Loading them lets Wikimedia see your network address, as any website you visit would."),
+    sectionTitle("Profile (optional)"),
+    h("p", { class: "small-text muted" }, "Filled in at checkout so you do not have to type it each time. Kept on this phone only."),
+    textField("p-name", "First name or nickname", pname),
+    textField("p-address", "Address or landmark", paddr),
+    zoneSelect("p-zone", state.area, (v) => { state.area = v; store.set("hana.area", v); }, "Not set", "Usual zone (thana)"),
+    h("nav", { class: "wrap gap-top" },
+      h("button", { type: "button", on: { click: () => { store.set("hana.me", { name: pname.value.trim(), address: paddr.value.trim() }); log("Profile saved."); snackbar("Profile saved."); } } }, h("span", null, "Save profile")),
+      h("button", { type: "button", class: "border", on: { click: () => { store.set("hana.me", { name: "", address: "" }); pname.value = ""; paddr.value = ""; log("Profile cleared."); snackbar("Profile cleared."); } } }, h("span", null, "Clear profile"))),
+    sectionTitle("Your data"),
+    h("p", { class: "small-text muted" }, "Updates to Hana never touch your orders. Clearing your browser's site data does, so download a copy first if you need one."),
+    h("nav", { class: "wrap" },
+      h("button", { type: "button", class: "border", on: { click: exportData } }, icon("download"), h("span", null, "Download my data")),
+      h("button", { type: "button", class: "border", on: { click: () => document.getElementById("restore-file").click() } }, icon("upload"), h("span", null, "Restore from a download")),
+      h("input", { type: "file", id: "restore-file", accept: ".json,application/json", hidden: true, "aria-label": "Restore from a download", on: { change: (e) => importData(e.target) } }),
+      h("button", { type: "button", class: "border", on: { click: async () => {
+        if (await ask("Delete everything on this phone?", "This removes your orders, profile, record, area, basket and settings. It cannot be undone. Download your data first if you want a copy.", "Delete")) {
+          for (const k of ["hana.orders", "hana.me", "hana.basket", "hana.area", "hana.log", "hana.settings", "hana.theme"]) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+          state.basket = null; state.area = ""; applyTheme(); updateBasketBadge(); viewSettings(); snackbar("Deleted.");
+        }
+      } } }, icon("delete"), h("span", null, "Delete everything"))),
+    sectionTitle("Other regions"),
+    h("p", { class: "small-text muted" }, "Hana may run in other cities, each as its own community-run directory. Your phone can check which one covers where you are. Your position is compared on this phone only and is never sent anywhere."),
+    h("nav", null, h("button", { type: "button", class: "border", on: { click: findRegion } }, icon("location_on"), h("span", null, "Find the Hana for my area"))),
+    h("div", { id: "region-out", "aria-live": "polite" }),
+    sectionTitle("Offline copy"),
+    h("p", { class: "small-text muted" }, "Download Hana as a single file. Open it from your phone's files at any time; it works without a connection and brings itself up to date whenever you are online."),
+    h("nav", null, h("button", { type: "button", class: "border", on: { click: async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try { downloadText("hana-offline.html", await buildStandalone({ mode: "directory", site: state.site }), "text/html"); snackbar("Offline copy downloaded."); }
+      catch (err) { snackbar("The offline copy could not be made: " + err.message); }
+      btn.disabled = false;
+    } } }, icon("download"), h("span", null, "Download offline copy"))),
+    h("nav", { class: "gap-top" }, h("button", { type: "button", class: "border", on: { click: () => { try { localStorage.removeItem("hana.settings"); localStorage.removeItem("hana.theme"); } catch (e) { /* ignore */ } applyTheme(); viewSettings(); } } }, h("span", null, "Reset appearance"))));
+}
+
+/* Matches the phone's position against regions.json on the phone itself (browser Geolocation only). */
+function findRegion() {
+  const out = document.getElementById("region-out");
+  if (!navigator.geolocation) { out.replaceChildren(notice("info", h("p", { class: "flush" }, "This browser cannot read your position."))); return; }
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    let regions = [];
+    try { regions = (await fetchJson("regions.json")).regions || []; } catch (e) { /* none listed */ }
+    const { latitude: lat, longitude: lon } = pos.coords;
+    const hit = regions.find((r) => Array.isArray(r.bbox) && lon >= r.bbox[0] && lat >= r.bbox[1] && lon <= r.bbox[2] && lat <= r.bbox[3]);
+    const here = new URL(".", location.href).href;
+    if (!hit) out.replaceChildren(notice("info", h("p", { class: "flush" }, "No Hana directory covers your position yet. ADOPTING.md explains how a community can start one.")));
+    else if (!/^https:\/\//.test(hit.url) || hit.url === here) out.replaceChildren(notice("info", h("p", { class: "flush" }, "You are in the " + hit.name + " area, which this directory covers.")));
+    else out.replaceChildren(notice("info", h("p", { class: "flush" }, "You are in the " + hit.name + " area. "), h("a", { class: "link", href: hit.url, rel: "noopener" }, "Open Hana " + hit.name)));
+  }, () => out.replaceChildren(notice("info", h("p", { class: "flush" }, "Your position was not shared, so nothing was checked."))), { timeout: 15000, maximumAge: 600000 });
+}
+
+function downloadText(name, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type: type || "text/plain" }));
+  const a = h("a", { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /* ---------------------------------------------------------------- routing and start-up */
@@ -855,6 +1033,8 @@ function route() {
   if (hash === "#/orders") return viewOrders();
   if (hash === "#/about") return viewAbout();
   if (hash === "#/terms") return viewTerms();
+  if (hash === "#/settings") return viewSettings();
+  if (state.site.mode === "business" && state.site.listing_id) return viewRestaurant(state.site.listing_id);
   return viewList();
 }
 
@@ -862,12 +1042,21 @@ function fixFooterLink() {
   const a = document.getElementById("repo-link");
   const u = repoUrl();
   a.setAttribute("href", u || "#/about");
+  /* A business's own site carries the Hana credit and a link to the full directory. */
+  if (state.site.mode === "business") {
+    const main = state.site.main_app_url || "https://hmdrysr.github.io/hana/";
+    const p = document.querySelector("footer p");
+    p.replaceChildren("Created using ", h("a", { class: "link", href: main, rel: "noopener" }, "Hana"), " by ",
+      h("a", { class: "link", href: "https://hamidyasir.com", rel: "noopener" }, "Hamid Yasir & Co."), " ",
+      h("a", { class: "link", href: "#/terms" }, "Terms"), " ", h("a", { class: "link", href: main, rel: "noopener" }, "All restaurants on Hana"));
+    for (const n of document.querySelectorAll('[data-nav="list"] span')) n.textContent = "Menu";
+  }
 }
 
 for (const i of document.querySelectorAll("i[data-icon]")) i.replaceWith(icon(i.getAttribute("data-icon")));
 window.addEventListener("hashchange", route);
 updateBasketBadge();
 route();
-loadAll().then(() => { expireOrders(); fixFooterLink(); updateBasketBadge(); route(); });
+loadAll().then(() => { expireOrders(); fixFooterLink(); updateBasketBadge(); route(); startFeedPolling(); });
 
-setupUpdates(["index.html", "core.js", "app.js", "theme/theme.css"]);
+if (!SNAP) setupUpdates(["index.html", "core.js", "app.js", "theme/theme.css"]);

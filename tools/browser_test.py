@@ -29,8 +29,8 @@ BASE = ROOT_URL + "/index.html"
 BIZ = ROOT_URL + "/business.html"
 TAVA = "6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7"
 MEAL = "bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b"
-SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BASE + "#/about", BASE + "#/terms",
-           BIZ, BIZ + "#/join", BIZ + "#/confirm", BIZ + "#/update"]
+SCREENS = [BASE, BASE + "#/r/" + TAVA, BASE + "#/basket", BASE + "#/orders", BASE + "#/about", BASE + "#/terms", BASE + "#/settings",
+           BIZ, BIZ + "#/join", BIZ + "#/claim", BIZ + "#/confirm", BIZ + "#/update", BIZ + "#/site"]
 failed = 0
 
 # Finds text that is cut off: any text whose box extends past an ancestor that clips its overflow.
@@ -96,6 +96,9 @@ with sync_playwright() as p:
 
     page = browser.new_page(viewport={"width": 360, "height": 800})
     page.on("pageerror", lambda e: errors.append(str(e)))
+    # Fix the clock at 8 p.m. on a Thursday, when every listed business is open.
+    import datetime
+    page.clock.install(time=datetime.datetime(2026, 10, 15, 20, 0, 0))
     page.goto(BASE)
     page.wait_for_selector("#results article")
     names = lambda: page.eval_on_selector_all("#results .card-title", "e => e.map(x => x.textContent)")
@@ -160,7 +163,7 @@ with sync_playwright() as p:
     stale = page.evaluate("""() => {
         const orders = JSON.parse(localStorage.getItem("hana.orders"));
         const o = Object.assign({}, orders[0], { code: "AAAAAA", status: "awaiting", confirmation: null,
-            created: new Date(Date.now() - 20 * 60000).toISOString() });
+            created: new Date(Date.now() - 20 * 60000).toISOString(), window_start: null });
         orders.unshift(o);
         localStorage.setItem("hana.orders", JSON.stringify(orders));
         return o.code;

@@ -45,7 +45,7 @@ class Repo:
         self.dir = self.root / "menus" / TAVA
         (self.root / "menus").mkdir()
         shutil.copytree(ROOT / "menus" / TAVA, self.dir)
-        for f in ("areas.json", "peers.json", "vouchers.json", "rules.json"):
+        for f in ("areas.json", "peers.json", "vouchers.json", "rules.json", "regions.json"):
             shutil.copy(ROOT / f, self.root / f)
         self.versions = {1: json.loads((self.dir / "versions" / "1.json").read_bytes())}
         self.raw = {1: (self.dir / "versions" / "1.json").read_bytes()}
@@ -352,6 +352,44 @@ with tempfile.TemporaryDirectory() as d:
     rr = order_line.decode(oldline, [(repo.raw[1], repo.versions[1]), (repo.raw[2], repo.versions[2])])
     check_true("order on an older menu version is flagged", (not rr["ok"]) and any("current version" in f for f in rr["flags"]), str(rr))
 
+
+
+# pictures, feeds and regions
+check_case("cover picture on an allowed host passes", False, "0 error(s)",
+           edit_v1(lambda m: m.update(cover={"src": "https://upload.wikimedia.org/wikipedia/commons/a/ab/Pizza.jpg"})))
+check_case("picture on another host", True, "image_hosts" if False else "must be an https JPEG",
+           edit_v1(lambda m: m.update(cover={"src": "https://evil.example/x.jpg"})))
+check_case("picture that is a script", True, "must be an https JPEG",
+           edit_v1(lambda m: m["items"][0].update(image={"src": "https://upload.wikimedia.org/x.svg"})))
+check_case("bad Commons file name", True, "Wikimedia Commons file name",
+           edit_v1(lambda m: m["items"][0].update(image={"commons": "File:<script>.jpg"})))
+check_case("confirmation feed on an unclaimed listing", True, "only for claimed",
+           edit_v1(lambda m: m.update(confirmation_feed="https://ntfy.example.org/x")))
+def regions_edit(fn):
+    def go(r):
+        reg = json.loads((ROOT / "regions.json").read_text())
+        fn(reg)
+        (r.root / "regions.json").write_text(json.dumps(reg))
+    return go
+check_case("region with a swapped box", True, "bbox", regions_edit(lambda x: x["regions"][0].update(bbox=[22.2, 91.7, 22.5, 91.95])))
+
+
+def contrast(a, b):
+    def lum(hx):
+        c = [int(hx[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        c = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    la, lb = lum(a), lum(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+css = (ROOT / "theme" / "theme.css").read_text()
+for blk in re.finditer(r"(body\.scheme-[a-z]+[^{]*)\{([^}]*)\}", css):
+    v = dict(re.findall(r"--([a-z-]+):\s*(#[0-9a-f]{6})", blk.group(2)))
+    worst = min(contrast(v["on-surface"], v["surface"]), contrast(v["primary"], v["surface"]),
+                contrast(v["on-primary"], v["primary"]), contrast(v["on-primary-container"], v["primary-container"]),
+                contrast(v["on-surface-variant"], v["surface-container-high"]))
+    check_true("colour scheme " + blk.group(1).strip() + " meets WCAG AA text contrast", worst >= 4.5, worst)
 
 # ------------------------------------------------------------ claimed listings, rules and confirmations
 import hana_sign  # noqa: E402

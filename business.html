@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; connect-src 'self' https:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https://upload.wikimedia.org https://raw.githubusercontent.com https://codeberg.org https://gitlab.com https://i.ibb.co; connect-src 'self' https:; style-src 'self'; script-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#9a3412">
 <meta name="description" content="Free tools for businesses listed on Hana: list or claim a business, confirm orders and publish price changes.">
@@ -15,13 +15,13 @@
 <body>
 <nav class="left m l" aria-label="Business tools" id="nav-rail">
   <a href="#/" data-nav="home"><i data-icon="storefront"></i><span>Start</span></a>
-  <a href="#/join" data-nav="join"><i data-icon="add_business"></i><span>List or claim</span></a>
+  <a href="#/join" data-nav="join"><i data-icon="add_business"></i><span>New listing</span></a>
   <a href="#/confirm" data-nav="confirm"><i data-icon="check_circle"></i><span>Confirm</span></a>
   <a href="#/update" data-nav="update"><i data-icon="edit_note"></i><span>Update prices</span></a>
 </nav>
 <nav class="bottom s" aria-label="Business tools" id="nav-bar">
   <a href="#/" data-nav="home"><i data-icon="storefront"></i><span>Start</span></a>
-  <a href="#/join" data-nav="join"><i data-icon="add_business"></i><span>List or claim</span></a>
+  <a href="#/join" data-nav="join"><i data-icon="add_business"></i><span>New listing</span></a>
   <a href="#/confirm" data-nav="confirm"><i data-icon="check_circle"></i><span>Confirm</span></a>
   <a href="#/update" data-nav="update"><i data-icon="edit_note"></i><span>Prices</span></a>
 </nav>
@@ -38,7 +38,7 @@
 <footer class="responsive">
   <p class="small-text center-align muted">
     Built by <a class="link" href="https://hamidyasir.com" rel="noopener">Hamid Yasir &amp; Co.</a> for the people of Chittagong.
-    Managed by the <a class="link" href="{{REPO_URL}}" id="repo-link" rel="noopener">Hana Community</a>.
+    Managed by the <a class="link" href="https://github.com/hmdrysr/hana" id="repo-link" rel="noopener">Hana Community</a>.
     <a class="link" href="index.html#/terms">Terms</a>
     <a class="link" href="index.html">Restaurant list</a>
   </p>

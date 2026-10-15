@@ -16,5 +16,12 @@
   "community_review_days": 180,
   "confirmation_window_minutes": 15,
   "record_retention_months": 6,
-  "record_retention_months_when_disputed": 12
+  "record_retention_months_when_disputed": 12,
+  "image_hosts": [
+    "upload.wikimedia.org",
+    "raw.githubusercontent.com",
+    "codeberg.org",
+    "gitlab.com",
+    "i.ibb.co"
+  ]
 }

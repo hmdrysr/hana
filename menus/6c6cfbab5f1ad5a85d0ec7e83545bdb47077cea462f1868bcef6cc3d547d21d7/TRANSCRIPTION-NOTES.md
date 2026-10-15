@@ -1,6 +1,6 @@
 # Transcription notes: Tava Restaurant
 
-Listing ID: `6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7` (temporary, unclaimed). Entered by a volunteer on October 15, 2026.
+Listing ID: `6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7` (temporary, unclaimed). Entered by volunteer hmdrysr on October 15, 2026.
 
 ## Source
 

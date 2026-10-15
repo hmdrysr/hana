@@ -20,7 +20,8 @@ This is the first working version. The app:
 - counts an order only once the business confirms it, with a signed confirmation for claimed listings;
 - keeps one basket for one restaurant at a time;
 - prepares the order message, which you send from your own phone; and
-- works offline after the first visit.
+- works offline after the first visit, and can be downloaded as a single offline file that updates itself when online;
+- lets each person choose a colour scheme, text size and pictures, with an optional profile kept on the phone.
 
 Businesses use the business tools page (`business.html`) to list or claim a listing, confirm orders and publish price changes. Claims are verified by two community members (`CLAIMS.md`).
 
@@ -64,6 +65,7 @@ Read `CONTRIBUTING.md`. You can list a restaurant, report a wrong listing, fix a
 | `index.html`, `core.js`, `app.js`, `sw.js`, `site.json`, `manifest.webmanifest`, `icon*` | The customer app. Plain files, no build step |
 | `business.html`, `business.js` | Business tools: list or claim, confirm orders, update prices |
 | `rules.json` | Rules every listing follows: cash on delivery only, all-inclusive prices, the delivery fee limit |
+| `ADOPTING.md`, `regions.json` | How another region runs its own Hana, and the list of regional directories |
 | `TERMS.md` | Terms of Use: rules for businesses and customers, records, disputes and liability |
 | `CLAIMS.md`, `claims/` | How claims are verified by the community, and the claim records |
 | `SPEC.md` | The full design, with open items and what is still unverified |

@@ -7,6 +7,7 @@
    @material-symbols/svg-400 version 0.47.5, Apache License 2.0, copyright Google LLC.
    See theme/material-symbols-LICENSE.txt. */
 const ICONS = {
+  settings: "m388-80-20-126q-19-7-40-19t-37-25l-118 54-93-164 108-79q-2-9-2.5-20.5T185-480q0-9 .5-20.5T188-521L80-600l93-164 118 54q16-13 37-25t40-18l20-127h184l20 126q19 7 40.5 18.5T669-710l118-54 93 164-108 77q2 10 2.5 21.5t.5 21.5q0 10-.5 21t-2.5 21l108 78-93 164-118-54q-16 13-36.5 25.5T592-206L572-80H388Zm48-60h88l14-112q33-8 62.5-25t53.5-41l106 46 40-72-94-69q4-17 6.5-33.5T715-480q0-17-2-33.5t-7-33.5l94-69-40-72-106 46q-23-26-52-43.5T538-708l-14-112h-88l-14 112q-34 7-63.5 24T306-642l-106-46-40 72 94 69q-4 17-6.5 33.5T245-480q0 17 2.5 33.5T254-413l-94 69 40 72 106-46q24 24 53.5 41t62.5 25l14 112Zm44-210q54 0 92-38t38-92q0-54-38-92t-92-38q-54 0-92 38t-38 92q0 54 38 92t92 38Zm0-130Z",
   light_mode: "M579-381q41-41 41-99t-41-99q-41-41-99-41t-99 41q-41 41-41 99t41 99q41 41 99 41t99-41Zm-240.5 42.5Q280-397 280-480t58.5-141.5Q397-680 480-680t141.5 58.5Q680-563 680-480t-58.5 141.5Q563-280 480-280t-141.5-58.5ZM200-450H40v-60h160v60Zm720 0H760v-60h160v60ZM450-760v-160h60v160h-60Zm0 720v-160h60v160h-60ZM262-658l-100-97 43-44 96 100-39 41Zm494 496-98-100 41-41 99 98-42 43Zm-99-537 98-99 44 42-99 98-43-41ZM162-205l99-98 42 42-98 99-43-43Zm318-275Z",
   dark_mode: "M480-120q-150 0-255-105T120-480q0-150 105-255t255-105q8 0 17 .5t23 1.5q-36 32-56 79t-20 99q0 90 63 153t153 63q52 0 99-18.5t79-51.5q1 12 1.5 19.5t.5 14.5q0 150-105 255T480-120Zm0-60q109 0 190-67.5T771-406q-25 11-53.67 16.5Q688.67-384 660-384q-114.69 0-195.34-80.66Q384-545.31 384-660q0-24 5-51.5t18-62.5q-98 27-162.5 109.5T180-480q0 125 87.5 212.5T480-180Zm-4-297Z",
   brightness_auto: "M310-305h55l37-109h159l38 109h53L505-697h-48L310-305Zm107-157 61-163h5l62 163H417Zm64 433L346-160H160v-186L26-480l134-134v-186h186l135-134 133 134h186v186l134 134-134 134v186H614L481-29Zm0-84 108-107h151v-151l109-109-109-109v-151H589L481-849 371-740H220v151L111-480l109 109v151h150l111 107Zm0-368Z",
@@ -52,7 +53,22 @@ function themeMode() {
   try { const m = localStorage.getItem("hana.theme"); return THEME_MODES.includes(m) ? m : "system"; } catch (e) { return "system"; }
 }
 
+/* ---------------------------------------------------------------- settings (kept on this device) */
+
+const SCHEMES = { clay: "Clay (default)", teal: "Teal", indigo: "Indigo", green: "Green", plum: "Plum", contrast: "High contrast" };
+const TEXT_SIZES = { normal: "Default", large: "Large", larger: "Larger" };
+function settings() {
+  const d = { scheme: "clay", text: "normal", pictures: true };
+  try { return Object.assign(d, JSON.parse(localStorage.getItem("hana.settings") || "{}")); } catch (e) { return d; }
+}
+function saveSettings(s) { try { localStorage.setItem("hana.settings", JSON.stringify(s)); } catch (e) { /* this visit only */ } applyTheme(); }
+
 function applyTheme() {
+  const st = settings();
+  const SCHEME_CLASS = { teal: "scheme-teal", indigo: "scheme-indigo", green: "scheme-green", plum: "scheme-plum", contrast: "scheme-contrast" };
+  for (const [k, cls] of Object.entries(SCHEME_CLASS)) document.body.classList.toggle(cls, st.scheme === k);
+  document.documentElement.classList.toggle("text-large", st.text === "large");
+  document.documentElement.classList.toggle("text-larger", st.text === "larger");
   const mode = themeMode();
   const dark = mode === "dark" || (mode === "system" && !!(themeQuery && themeQuery.matches));
   document.body.classList.toggle("dark", dark);
@@ -248,17 +264,32 @@ function fuzzyMatches(query, text) {
 
 /* ---------------------------------------------------------------- loading files */
 
-async function fetchJson(url) {
-  const r = await fetch(url, { cache: "no-cache" });
-  if (!r.ok) throw new Error(url + " returned " + r.status);
-  return r.json();
-}
+/* Where data comes from. A hosted copy reads its own folder. A standalone copy (one HTML file
+   kept offline, or a business's own site) carries a snapshot and refreshes from directory_url
+   whenever it is online; the latest copy it fetched is kept on the device. */
+const SNAP = (typeof window.HANA_SNAPSHOT === "object" && window.HANA_SNAPSHOT) || null;
+const DATA_BASE = SNAP && SNAP.site && SNAP.site.directory_url ? SNAP.site.directory_url : new URL(".", location.href).href;
+function dataUrl(path) { return new URL(path, DATA_BASE).href; }
 
-async function fetchBytes(url) {
-  const r = await fetch(url, { cache: "no-cache" });
-  if (!r.ok) throw new Error(url + " returned " + r.status);
-  return new Uint8Array(await r.arrayBuffer());
+async function getText(path) {
+  try {
+    const r = await fetch(dataUrl(path), { cache: "no-cache" });
+    if (!r.ok) throw new Error(String(r.status));
+    const text = await r.text();
+    if (SNAP) { try { localStorage.setItem("hana.data:" + path, text); } catch (e) { /* storage full: the snapshot still works */ } }
+    return text;
+  } catch (e) {
+    if (SNAP) {
+      let cached = null;
+      try { cached = localStorage.getItem("hana.data:" + path); } catch (x) { /* ignore */ }
+      if (cached !== null) return cached;
+      if (SNAP.files && typeof SNAP.files[path] === "string") return SNAP.files[path];
+    }
+    throw new Error(path + " could not be loaded");
+  }
 }
+async function fetchJson(path) { return JSON.parse(await getText(path)); }
+async function fetchBytes(path) { return utf8(await getText(path)); }
 
 function priceLines(menu) {
   const out = [];
@@ -319,7 +350,7 @@ async function ed25519Verify(publicRaw, message, signature) {
    windowMinutes: the business must confirm within this many minutes of the order (rules.json). */
 async function readConfirmation(text, order, publicB64, windowMinutes) {
   const win = Number(windowMinutes) || 15;
-  const created = unixMinutes(order.created || order.at);
+  const created = unixMinutes(order.window_start || order.created || order.at);
   const decline = SIMPLE_DECLINE.exec(text || "");
   if (decline) {
     if (decline[1].toUpperCase() !== order.code) return { error: "This reply is for a different order." };
@@ -478,6 +509,132 @@ function setupUpdates(files) {
     })
     .catch(() => { /* the page still works online without the service worker */ });
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+}
+
+/* ---------------------------------------------------------------- pictures */
+
+/* Pictures come only from these hosts (rules.json image_hosts), over https, as JPEG, PNG,
+   WebP or AVIF. They are shown with <img>, which never runs code, and the page's Content
+   Security Policy blocks every other image host. */
+let IMAGE_HOSTS = ["upload.wikimedia.org", "raw.githubusercontent.com", "codeberg.org", "gitlab.com", "i.ibb.co"];
+function safeImageUrl(u) {
+  try {
+    const x = new URL(u);
+    return x.protocol === "https:" && IMAGE_HOSTS.includes(x.hostname) && /\.(jpe?g|png|webp|avif)$/i.test(x.pathname) ? x.href : null;
+  } catch (e) { return null; }
+}
+
+const OPEN_LICENCE = /^(cc0|cc[ -]by(-sa)?( \d\.\d)?|public domain|pdm)/i;
+function plainText(html) { return new DOMParser().parseFromString(String(html || ""), "text/html").body.textContent.trim().replace(/\s+/g, " "); }
+
+/* Finds an openly licensed photo on Wikimedia Commons (free, no key, no account).
+   want: { file: "File:Name.jpg" } for a chosen file, or { search: "words" }.
+   Results are kept on the device for 30 days. Returns { src, credit, page } or null. */
+async function commonsImage(want) {
+  const key = "hana.img:" + (want.file || "q:" + want.search);
+  try {
+    const hit = JSON.parse(localStorage.getItem(key) || "null");
+    if (hit && Date.now() - hit.at < 30 * 86400000) return hit.v;
+  } catch (e) { /* ignore */ }
+  const p = new URLSearchParams({ action: "query", format: "json", origin: "*", prop: "imageinfo", iiprop: "url|extmetadata|mime", iiurlwidth: "640" });
+  if (want.file) p.set("titles", want.file);
+  else { p.set("generator", "search"); p.set("gsrnamespace", "6"); p.set("gsrlimit", "8"); p.set("gsrsearch", want.search + " filetype:bitmap"); }
+  let v = null;
+  try {
+    const r = await fetch("https://commons.wikimedia.org/w/api.php?" + p.toString(), { cache: "force-cache" });
+    const pages = Object.values(((await r.json()).query || {}).pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
+    for (const pg of pages) {
+      const ii = (pg.imageinfo || [])[0];
+      if (!ii || !/^image\/(jpeg|png|webp)$/.test(ii.mime)) continue;
+      const meta = ii.extmetadata || {};
+      const lic = plainText(meta.LicenseShortName && meta.LicenseShortName.value);
+      const src = safeImageUrl(ii.thumburl || ii.url);
+      if (!src || !OPEN_LICENCE.test(lic)) continue;
+      const artist = plainText(meta.Artist && meta.Artist.value) || "Unknown author";
+      v = { src, credit: "Photo: " + artist.slice(0, 80) + ", " + lic + ", Wikimedia Commons", page: /^https:\/\/commons\.wikimedia\.org\//.test(ii.descriptionurl || "") ? ii.descriptionurl : null };
+      break;
+    }
+  } catch (e) { return null; }
+  try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), v })); } catch (e) { /* ignore */ }
+  return v;
+}
+
+/* A picture element that fills itself in when it scrolls into view. spec: an item or menu
+   "image" field ({ src } or { commons }), with a search phrase as the fallback. */
+function lazyPicture(spec, fallbackSearch, cls, alt) {
+  const wrap = h("figure", { class: "flush" });
+  if (!settings().pictures) return wrap;
+  const fill = async () => {
+    let v = null;
+    if (spec && spec.src && safeImageUrl(spec.src)) v = { src: safeImageUrl(spec.src), credit: spec.credit ? String(spec.credit).slice(0, 120) : "Photo supplied by the business", page: null };
+    else if (spec && spec.commons) v = await commonsImage({ file: String(spec.commons) });
+    if (!v && fallbackSearch) v = await commonsImage({ search: fallbackSearch });
+    if (!v) { wrap.remove(); return; }
+    wrap.replaceChildren(h("img", { src: v.src, alt: alt || "", class: cls, loading: "lazy", decoding: "async", referrerpolicy: "no-referrer" }),
+      cls === "cover" ? h("figcaption", { class: "credit" }, v.page ? h("a", { href: v.page, class: "link", rel: "noopener", target: "_blank" }, v.credit) : v.credit, spec ? "" : ". Approximate picture.") : null);
+  };
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); fill(); } }, { rootMargin: "200px" });
+    setTimeout(() => io.observe(wrap), 0);
+  } else fill();
+  return wrap;
+}
+
+/* ---------------------------------------------------------------- standalone copy */
+
+/* Builds one HTML file containing the app, its styles and a snapshot of the directory.
+   Opened from a phone's files or put on any web host, it works offline and refreshes from
+   directory_url when online. mode "business" shows one listing, with the Hana credit. */
+async function buildStandalone(opts) {
+  const fetchText = (u) => fetch(u, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error(u + " could not be loaded"); return r.text(); });
+  const [page, coreJs, appJs, beer, theme, fontBuf] = await Promise.all(["index.html", "core.js", "app.js", "theme/beer.min.css", "theme/theme.css"].map(fetchText)
+    .concat([fetch("theme/material-symbols-subset.woff2").then((r) => r.arrayBuffer())]));
+  const fontB64 = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(fontBuf))));
+  const files = {};
+  for (const f of ["rules.json", "areas.json", "index.json", "TERMS.md"]) files[f] = await getText(f);
+  const index = JSON.parse(files["index.json"]);
+  if (opts.mode === "business") {
+    index.restaurants = index.restaurants.filter((r) => r.id === opts.listingId);
+    if (!index.restaurants.length) throw new Error("That listing is not in the directory yet.");
+  }
+  for (const r of index.restaurants) for (const loc of r.locations || []) { try { files[loc] = await getText(loc); break; } catch (e) { /* next */ } }
+  const directory = SNAP ? DATA_BASE : new URL(".", location.href).href;
+  const site = { repo_url: (opts.site && opts.site.repo_url) || "", company_url: "https://hamidyasir.com", directory_url: directory,
+    main_app_url: (SNAP && SNAP.site.main_app_url) || directory, mode: opts.mode || "directory", listing_id: opts.listingId || null };
+  const snapshot = { built: new Date().toISOString(), site, files };
+  const esc = (s) => s.replace(/<\/(script)/gi, "<\\/$1");
+  const snapJs = "window.HANA_SNAPSHOT=" + JSON.stringify(snapshot).replace(/</g, "\\u003c") + ";";
+  const css = beer + "\n" + theme.replace("url(material-symbols-subset.woff2)", "url(data:font/woff2;base64," + fontB64 + ")");
+  const hash = async (s) => "'sha256-" + btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", utf8(s)))))) + "'";
+  const scripts = [snapJs, esc(coreJs), esc(appJs)];
+  const csp = "default-src 'none'; img-src 'self' data: blob: https://upload.wikimedia.org https://raw.githubusercontent.com https://codeberg.org https://gitlab.com https://i.ibb.co; " +
+    "connect-src https:; font-src data:; style-src " + (await hash(css)) + "; script-src " + (await Promise.all(scripts.map(hash))).join(" ") + "; base-uri 'none'; form-action 'none'";
+  let html = page
+    .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '<meta http-equiv="Content-Security-Policy" content="' + csp + '">')
+    .replace(/<link rel="(icon|apple-touch-icon|manifest)"[^>]*>\n?/g, "")
+    .replace('<link rel="stylesheet" href="theme/beer.min.css">\n<link rel="stylesheet" href="theme/theme.css">', () => "<style>" + css + "</style>")
+    .replace('<script src="core.js" defer></script>\n<script src="app.js" defer></script>', () => scripts.map((s) => "<script>" + s + "</script>").join("\n"))
+    .replace(/{{REPO_URL}}/g, site.repo_url || "#");
+  return html;
+}
+
+/* ---------------------------------------------------------------- opening hours */
+
+function hhmmToMin(hhmm) { const p = hhmm.split(":"); return Number(p[0]) * 60 + Number(p[1]); }
+/* The next moment the business opens, from "when" (a Date), within 7 days; null if never. */
+function nextOpening(hours, when) {
+  if (!hours) return null;
+  const DAYKEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const start = when || new Date();
+  for (let d = 0; d <= 7; d++) {
+    const day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + d);
+    const spans = (hours[DAYKEYS[(day.getDay() + 6) % 7]] || []).slice().sort((a, b) => hhmmToMin(a[0]) - hhmmToMin(b[0]));
+    for (const [s] of spans) {
+      const t = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(hhmmToMin(s) / 60), hhmmToMin(s) % 60);
+      if (t > start) return t;
+    }
+  }
+  return null;
 }
 
 setupThemeToggle();

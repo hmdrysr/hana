@@ -120,7 +120,7 @@ The full rules, with the allowed classes, are in `theme/UNIFORMITY.md`. In short
 3. One spacing grid in steps of 0.5rem. Pages never use Beer CSS margin helpers (see `theme/UNIFORMITY.md` for the reason) or inline styles.
 4. One colour scheme in Material 3 roles, generated from the seed colour #9a3412. Light and dark follow the phone's setting by default; a toggle in the top bar switches between following the phone, light and dark, and the choice is kept on the device.
 5. Only the components listed in `theme/UNIFORMITY.md` are used: cards, lists, chips, buttons, text fields, selects, radio buttons, checkboxes, switches, the snackbar and the dialog.
-6. A short, fixed list of screen types: restaurant list, restaurant page, basket and checkout, orders and complaint summary, about, terms of use, and the business tools (start, list or claim, confirm an order, update prices). The courier card comes later. New screen types need a recorded decision.
+6. A short, fixed list of screen types: restaurant list, restaurant page, basket and checkout, orders and complaint summary, settings, about, terms of use, and the business tools (start, new listing, claim a listing, confirm an order, update prices, your own website) (start, list or claim, confirm an order, update prices). The courier card comes later. New screen types need a recorded decision.
 7. Menu files carry data only. The app shows every value from a menu file as plain text. It never renders HTML, CSS or scripts from a menu file, and ignores them if present.
 8. Every change to the theme is a recorded commit.
 
@@ -666,3 +666,56 @@ The project lives in an open git repo that anyone can fork or mirror. Full rules
 31. Agree the delivery fee limit (proposed BDT 150 in `rules.json`) and review it yearly.
 32. Test Ed25519 in the Web Crypto API on the phones customers and businesses use; older browsers cannot create keys or check signatures.
 33. Decide how a business without a forge account is helped to create one (volunteers, a guide in Bengali-language community channels).
+
+## 13. Settings, pictures, standalone copies, opening hours and regions
+
+### 13.1 Settings (customers)
+
+The top bar has a Settings button. Everything is kept on the device: colour scheme (Clay, Teal, Indigo, Green, Plum, High contrast; each checked for WCAG AA contrast by `tools/selftest.py`), light or dark, text size, whether to show pictures, an optional profile (name, address, usual zone) that fills in checkout, download, restore and delete of the person's data, an offline copy, and "Find the Hana for my area". A profile is never required; a customer can order without one.
+
+### 13.2 Long lists
+
+The restaurant list shows 12 listings per page and the Orders page 10 orders per page, with Previous and Next. A restaurant page has a row of section chips that jump to each menu section.
+
+### 13.3 Pictures
+
+- A listing may give a `cover` and each item an `image`: either `{"src": "<https address>"}` on a host in `rules.json` `image_hosts` (Wikimedia Commons, GitHub, Codeberg, GitLab and ImgBB at first), or `{"commons": "File:Name.jpg"}`.
+- Without one, the app looks up an approximate, openly licensed photo on Wikimedia Commons (free, no key, no account), using the item name or the listing's `cuisine`, and labels it as approximate with its author and licence. Only CC0, public-domain, CC BY and CC BY-SA files are used.
+- Safeguards: only https JPEG, PNG, WebP or AVIF files from the allowed hosts; shown with `<img>`, which never runs code; the page's Content Security Policy blocks every other image host; text from Commons is reduced to plain text; `tools/check.py` rejects anything else in menu files. Pictures can be turned off in Settings. Unsplash is not used because its service requires an API key and its own terms.
+
+### 13.4 Standalone copies and a business's own website
+
+- Settings offers "Download offline copy": one HTML file with the app, styles and a snapshot of the directory. Opened from the phone's files it works offline; whenever it is online it refreshes from the directory it came from and keeps the newest data on the device.
+- The business tools offer "Your own website": the same single file in business mode, showing one listing with ordering and confirmations, and the credit "Created using Hana by Hamid Yasir & Co." with a link to the full directory. The business uploads it to any host. Its listing stays in the Hana directory, so both always show the same menu, prices and hours.
+- Standalone files carry a Content Security Policy with hashes of their own inline code, so nothing else can run in them.
+
+### 13.5 Opening hours and scheduled orders
+
+When a business is closed, its order buttons are disabled and a notice gives the next opening time. A business may allow scheduled orders (`scheduled_orders: true`): customers then choose a time while the business is open over the next two days, even when it is closed now. The 15-minute confirmation window for an order placed while the business is closed starts when it opens.
+
+### 13.6 Claims and merges
+
+The business tools never list unclaimed businesses. An owner finds their own listing by entering its business phone ("Claim a listing"). Someone creating a new listing whose phone matches an unclaimed listing is offered a merge, so the history is kept and no duplicate appears.
+
+### 13.7 Automatic confirmation (optional for businesses)
+
+A claimed business may name a `confirmation_feed`: an https ntfy topic it controls (ntfy is free, open-source and self-hostable). The Confirm page then publishes each signed confirmation to it, and customers' phones pick it up by themselves while the order waits. Only signed confirmations are accepted from a feed. Without a feed, the customer pastes the reply.
+
+### 13.8 Regions
+
+`regions.json` lists public regional Hana directories; `ADOPTING.md` sets the requirements for a new region. "Find the Hana for my area" uses only the browser's own Geolocation, compares the position with the regions on the phone itself, and offers a link. No position leaves the phone and no third-party location service is used.
+
+### 13.9 Abuse and how it is handled
+
+| Abuse | Safeguard |
+|---|---|
+| Fake or prank orders | An order counts only when the business confirms it; the business sees the customer's real chat account or number; at most three orders may wait for replies at once, and one per business |
+| Customer edits prices in the message | The check line is re-priced from the signed menu on the business tools page |
+| Forged confirmations | Claimed listings sign confirmations; time window checked; unsigned replies refused for claimed listings; feeds accept signed lines only |
+| Unsent or never-confirmed orders used for complaints | Only confirmed orders produce a complaint summary; unconfirmed orders are cancelled automatically |
+| Business changes prices silently | Version chain, public price history and announcements checked by `tools/check.py`; customers' phones refuse older menus |
+| Fake claims or impersonation | Two independent vouchers, phone check with a claim code, owner key, regular reviews |
+| Prepayment or hidden charges | Forbidden fields rejected by `tools/check.py`; checkout warning; reports trigger an immediate review and removal |
+| Malicious text or links in menus | Plain text only; links only to allowed image hosts; Content Security Policy |
+| Tampered offline copies | Standalone files refresh from the directory when online; claimed menus are signed |
+| Deleted evidence | Record-keeping rule and pledge; adverse-inference guidance in `TERMS.md` |

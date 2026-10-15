@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "note": "Public Hana directories, one per region. A region is added by a pull request that meets ADOPTING.md. The app compares the phone's position with these boxes on the phone itself; nothing is sent anywhere.",
+  "regions": [
+    {
+      "id": "chittagong",
+      "name": "Chittagong",
+      "url": "https://hmdrysr.github.io/hana/",
+      "repository": "https://github.com/hmdrysr/hana",
+      "bbox": [91.70, 22.20, 91.95, 22.50]
+    }
+  ]
+}

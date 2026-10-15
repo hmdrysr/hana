@@ -175,8 +175,38 @@ def check_rules(root):
     if not (is_int(data.get("record_retention_months_when_disputed")) and
             data["record_retention_months_when_disputed"] >= data.get("record_retention_months", 6)):
         err(rel, "record_retention_months_when_disputed must be at least record_retention_months")
+    hosts = data.get("image_hosts")
+    if not (isinstance(hosts, list) and hosts and all(isinstance(x, str) and re.match(r"^[a-z0-9.-]+\.[a-z]{2,}$", x) for x in hosts)):
+        err(rel, "image_hosts must list the host names pictures may come from")
     if not isinstance(data.get("payment_methods_on_delivery"), dict) or not data["payment_methods_on_delivery"]:
         err(rel, "payment_methods_on_delivery must list the ways to pay at delivery")
+
+
+def check_regions(root):
+    """regions.json: public regional directories (ADOPTING.md)."""
+    p = root / "regions.json"
+    if not p.exists():
+        return
+    data = load_json(p, root)
+    rel = "regions.json"
+    if not isinstance(data, dict) or not isinstance(data.get("regions"), list):
+        err(rel, "'regions' must be a list")
+        return
+    ids = set()
+    for i, r in enumerate(data["regions"]):
+        w = f"regions[{i}]"
+        if not isinstance(r, dict) or not SLUG.match(str(r.get("id", ""))) or r.get("id") in ids:
+            err(rel, f"{w}: id must be a unique slug")
+            continue
+        ids.add(r["id"])
+        for f in ("url", "repository"):
+            v = r.get(f)
+            if not (isinstance(v, str) and (HTTPS.match(v) or v.startswith("{{"))):
+                err(rel, f"{w}.{f} must be an https address")
+        b = r.get("bbox")
+        if not (isinstance(b, list) and len(b) == 4 and all(is_num(x) for x in b)
+                and -180 <= b[0] < b[2] <= 180 and -90 <= b[1] < b[3] <= 90):
+            err(rel, f"{w}.bbox must be [west, south, east, north] in degrees")
 
 
 def check_areas(root):
@@ -437,6 +467,32 @@ def check_photos(photos, where, rel):
             err(rel, f"{w}.bytes must be a whole number from 1 to {PHOTO_MAX_BYTES}")
 
 
+# ---------------------------------------------------------------- pictures in menus
+
+IMAGE_EXT = re.compile(r"\.(jpe?g|png|webp|avif)$", re.I)
+COMMONS_FILE = re.compile(r"^File:[^<>|{}\[\]#]+\.(jpe?g|png|webp)$", re.I)
+
+
+def check_image(img, where, rel):
+    """A picture is either {"src": address on an allowed host} or {"commons": "File:Name.jpg"}."""
+    if img is None:
+        return
+    if not isinstance(img, dict):
+        err(rel, f"{where} must be an object")
+        return
+    hosts = RULES.get("image_hosts") or []
+    if "src" in img:
+        from urllib.parse import urlparse
+        u = urlparse(str(img["src"]))
+        if u.scheme != "https" or u.hostname not in hosts or not IMAGE_EXT.search(u.path or ""):
+            err(rel, f"{where}.src must be an https JPEG, PNG, WebP or AVIF file on one of: {', '.join(hosts)}")
+    elif "commons" in img:
+        if not (isinstance(img["commons"], str) and COMMONS_FILE.match(img["commons"])):
+            err(rel, f"{where}.commons must be a Wikimedia Commons file name like File:Pizza.jpg")
+    else:
+        err(rel, f"{where} needs src or commons")
+
+
 # ---------------------------------------------------------------- menu
 
 def temp_id(name, phone):
@@ -587,6 +643,21 @@ def check_menu(menu_path, root, area_ids):
             err(rel, f"pledge '{p}' must be signed by the owner for a claimed listing")
         elif not claimed and entry["signed"] is True:
             err(rel, f"pledge '{p}' cannot be signed on an unclaimed listing: only the owner can sign it")
+    for f in ("pickup", "scheduled_orders"):
+        if f in data and data[f] not in (True, False, None):
+            err(rel, f"{f} must be true, false or null (not stated)")
+    if "cuisine" in data and not (isinstance(data["cuisine"], str) and 0 < len(data["cuisine"]) <= 40):
+        err(rel, "cuisine must be a short text, at most 40 characters")
+    check_image(data.get("cover"), "cover", rel)
+    for i, it in enumerate(data.get("items") or []):
+        if isinstance(it, dict):
+            check_image(it.get("image"), f"items[{i}].image", rel)
+    feed = data.get("confirmation_feed")
+    if feed is not None:
+        if not claimed:
+            err(rel, "confirmation_feed is only for claimed listings, whose confirmations are signed")
+        elif not (isinstance(feed, str) and HTTPS.match(feed)):
+            err(rel, "confirmation_feed must be an https address")
     if data.get("pickup") not in (True, False, None):
         err(rel, "pickup must be true, false or null (not stated)")
     elif claimed and data.get("pickup") is None:
@@ -849,7 +920,8 @@ UI_CLASSES = set("""active badge bold border bottom brand brand-mark brand-name 
 chip circle dark field fill flush gap-top group-title l label left left-align link list m max medium muted no-border
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
-tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label""".split())
+tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label
+cover thumb credit text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
 
 
 def check_ui(root):
@@ -881,6 +953,7 @@ def main():
     ap.add_argument("--root", default=".", help="repo root to check")
     root = Path(ap.parse_args().root).resolve()
     check_rules(root)
+    check_regions(root)
     area_ids = check_areas(root)
     check_index(root, area_ids)
     check_peers(root)
