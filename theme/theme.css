@@ -397,6 +397,61 @@ body {
 }
 
 /* ---------- Colour schemes (Settings). Material 3 roles; neutral surfaces. Contrast checked by tools/selftest.py. ---------- */
+/* Black and white (the default): clean and minimal. Clay, the original, is the base above. */
+body.scheme-mono:not(.dark) {
+  --primary: #000000;
+  --on-primary: #ffffff;
+  --primary-container: #eeeeee;
+  --on-primary-container: #000000;
+  --secondary: #545454;
+  --on-secondary: #ffffff;
+  --secondary-container: #eeeeee;
+  --on-secondary-container: #000000;
+  --tertiary: #000000;
+  --inverse-primary: #ffffff;
+  --background: #ffffff;
+  --on-background: #000000;
+  --surface: #ffffff;
+  --on-surface: #000000;
+  --surface-variant: #f3f3f3;
+  --on-surface-variant: #4b4b4b;
+  --outline: #757575;
+  --outline-variant: #e2e2e2;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f6f6f6;
+  --surface-container: #f3f3f3;
+  --surface-container-high: #eeeeee;
+  --surface-container-highest: #e8e8e8;
+  --inverse-surface: #000000;
+  --inverse-on-surface: #ffffff;
+}
+body.scheme-mono.dark {
+  --primary: #ffffff;
+  --on-primary: #000000;
+  --primary-container: #2a2a2a;
+  --on-primary-container: #ffffff;
+  --secondary: #afafaf;
+  --on-secondary: #000000;
+  --secondary-container: #2a2a2a;
+  --on-secondary-container: #ffffff;
+  --tertiary: #ffffff;
+  --inverse-primary: #000000;
+  --background: #000000;
+  --on-background: #ffffff;
+  --surface: #000000;
+  --on-surface: #ffffff;
+  --surface-variant: #1f1f1f;
+  --on-surface-variant: #c6c6c6;
+  --outline: #8a8a8a;
+  --outline-variant: #333333;
+  --surface-container-lowest: #000000;
+  --surface-container-low: #141414;
+  --surface-container: #1a1a1a;
+  --surface-container-high: #242424;
+  --surface-container-highest: #2e2e2e;
+  --inverse-surface: #ffffff;
+  --inverse-on-surface: #000000;
+}
 body.scheme-teal:not(.dark) {
   --primary: #006a6a;
   --on-primary: #ffffff;
@@ -1304,4 +1359,17 @@ ul.list > li > .price {
   flex: 0 0 auto;
   max-inline-size: 45%;
   text-align: end;
+}
+/* An item note opens on its own full-width row under the item. */
+ul.list > li:has(> details.item-note),
+ul.list > li:has(> details.item-note[open]) {
+  flex-wrap: wrap;
+  padding-inline: 1rem;
+}
+ul.list > li > details.item-note {
+  flex: 1 0 100%;
+  margin: 0;
+}
+ul.countdowns > li > .price {
+  font-variant-numeric: tabular-nums;
 }

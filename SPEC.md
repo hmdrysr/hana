@@ -820,4 +820,7 @@ Every hosted copy and every one-file copy carries the whole directory and serves
 - A demo order is never sent anywhere. It is confirmed after about 4 seconds, then moves through Accepted, Ready, Out for delivery (rider Rice Uddin, 012RICEUDDIN, whose Call button only shows a message) and Delivered at about 75 seconds ("Hope you enjoyed your dopamine hit"), with a countdown. Progress is worked out from the order's creation time, so it survives reloads.
 - Demo orders never expire, never count toward the limit of waiting orders and offer no complaint summary.
 - The live directory holds only TONG and DUWAN. The earlier volunteer listings (Meal Master, Sliced, Tava Restaurant) are kept in `tools/fixtures/` as test data; `tools/browser_test.py` serves a temporary copy of the repository with them added.
+- **After placing an order** (any listing), the app goes straight to Orders. For orders sent from the customer's own app, the top of Orders shows the message and the button that opens that app; the basket is emptied. Each order shows live countdowns: time left for the business to confirm, the estimated arrival (plus any "running late" notices) and, for demo orders, one per upcoming step.
+- **Colour scheme:** the default is now black and white (`scheme-mono`); Clay and the others stay in Settings. People who chose a scheme before keep it.
+- **Covers:** tea stalls and coffee places use "Masala tea" by Sarkar Sayantan (CC BY-SA 4.0); grocery stores use "BD Mohanganj 7" (a rice shop in Mohanganj, Bangladesh), both from Wikimedia Commons.
 

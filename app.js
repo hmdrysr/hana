@@ -909,7 +909,8 @@ function viewBasket() {
     nodes.push(notice("warn", h("p", { class: "bold flush" }, "Prices have changed"),
       h("p", { class: "flush" }, "You added items from version " + b.version + " of the menu. It is now version " + menu.version + ", and the current prices are shown. " + (menu.announcement ? menu.announcement.summary : ""))));
   }
-  if (menu.claimed === false) nodes.push(notice("warn", h("p", { class: "flush" }, "This listing is not yet confirmed by the business. Check the prices when the business confirms your order.")));
+  if (menu.demo === true) nodes.push(demoNotice());
+  else if (menu.claimed === false) nodes.push(notice("warn", h("p", { class: "flush" }, "This listing is not yet confirmed by the business. Check the prices when the business confirms your order.")));
 
   const list = h("ul", { class: "list border" });
   const totals = h("article", { class: "round no-elevate surface-container-high stack" });
@@ -930,7 +931,7 @@ function viewBasket() {
     const cur = (b.notes && b.notes[k]) || "";
     const inp = h("input", { type: "text", id: "note-" + k, maxlength: 80, autocomplete: "off", placeholder: " ", value: cur,
       on: { change: () => { b.notes = Object.assign({}, b.notes, { [k]: inp.value.trim() }); if (!b.notes[k]) delete b.notes[k]; saveBasket(); refresh(); } } });
-    return h("details", null, h("summary", { class: "link small-text" }, cur ? "Note: " + cur : "Add a note for this item"),
+    return h("details", { class: "item-note" }, h("summary", { class: "link small-text" }, cur ? "Note: " + cur : "Add a note for this item"),
       textField("note-" + k, "Note, for example no onion", inp));
   };
   function refresh() {
@@ -940,12 +941,12 @@ function viewBasket() {
       if (p === null || p === undefined) unpriced++; else sub += p * q;
       return h("li", null,
         h("div", { class: "max" }, h("div", { class: "bold" }, prices[k].label),
-          h("div", { class: "small-text muted price" }, p === null || p === undefined ? "Price on request" : q + " × " + money(p) + " = " + money(p * q)),
-          itemNote(k)),
+          h("div", { class: "small-text muted price" }, p === null || p === undefined ? "Price on request" : q + " × " + money(p) + " = " + money(p * q))),
         h("nav", { class: "no-space", role: "group", "aria-label": "Quantity of " + prices[k].label },
           h("button", { type: "button", class: "circle transparent", "aria-label": "Remove one " + prices[k].label, on: { click: () => change(k, -1) } }, icon(q === 1 ? "delete" : "remove")),
           h("span", { class: "bold price" }, String(q)),
-          h("button", { type: "button", class: "circle transparent", "aria-label": "Add one " + prices[k].label, on: { click: () => change(k, 1) } }, icon("add"))));
+          h("button", { type: "button", class: "circle transparent", "aria-label": "Add one " + prices[k].label, on: { click: () => change(k, 1) } }, icon("add"))),
+        itemNote(k));
     }));
     const z = deliveryZone();
     let feeText;
@@ -1094,29 +1095,21 @@ function viewBasket() {
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
     log("Prepared order " + o.code + " for " + menu.name + (sentDirect ? "; sent directly to the business." : "."));
     state.basket = null; saveBasket();
-    if (menu.demo === true) {
-      out.replaceChildren(h("h2", { class: "section-title" }, "Demo order " + o.code + " placed"),
-        demoNotice(),
-        h("p", null, "Nothing was sent to anyone. Head to Orders to watch it get confirmed, prepared and brought to you by Rice Uddin, all in about a minute."),
-        h("nav", null, h("a", { href: "#/orders", class: "button" }, icon("receipt_long"), h("span", null, "Watch my order"))));
-      form.remove();
-      out.scrollIntoView({ behavior: "smooth", block: "start" });
-      return;
-    }
+    /* The order is placed: the basket is gone, and the customer goes straight to the order. For
+       an order sent from the customer's own app, the top of Orders shows the message and the
+       button that opens that app. */
     const win = state.rules.confirmation_window_minutes;
-    out.replaceChildren(...[
+    state.justPlaced = menu.demo === true ? { code: o.code, nodes: [] } : { code: o.code, nodes: [
       h("h2", { class: "section-title" }, sentDirect ? "Order " + o.code + " sent" : "Order " + o.code + ": send it now"),
       savedOk ? null : notice("warn", h("p", { class: "flush" }, "This phone could not save a copy of the order. Copy the message below to keep a record.")),
-      h("p", null, sentDirect ? "Your order went straight to " + menu.name + "." : (ch.prefill ? "Your app opens with the message ready. Press send there." : "Copy the message, open " + ch.label + " and paste it there.")),
-      h("p", null, menu.name + " has " + win + " minutes to confirm" + (windowStart !== created ? " once it opens (" + whenText(new Date(windowStart)) + ")" : "") + ". If it does not, the order is cancelled automatically." + (menu.confirmation_feed && menu.claimed ? " Its confirmation will appear on the Orders page by itself." : "")),
+      h("p", null, sentDirect ? "Your order went straight to " + menu.name + "." : (ch.prefill ? "Your app opens with the message ready. Press send there." : "Copy the message, open " + ch.label + " and send it to " + contactText(c.app, c.id) + ".")),
+      h("p", null, menu.name + " has " + win + " minutes to confirm" + (windowStart !== created ? " once it opens (" + whenText(new Date(windowStart)) + ")" : "") + ". If it does not, the order is cancelled automatically."),
       h("pre", null, o.message),
       h("nav", { class: "wrap gap-top" },
         link ? h("a", { href: link, class: "button", rel: "noopener", target: "_blank", on: { click: () => { if (!ch.prefill) copy(o.message); } } }, icon(ch.icon), h("span", null, ch.prefill ? "Open " + ch.label : "Copy and open " + ch.label)) : null,
-        h("button", { type: "button", class: "border", on: { click: () => copy(o.message) } }, icon("content_copy"), h("span", null, "Copy message"))),
-      h("p", { class: "small-text muted" }, "When the business replies, paste its reply on the Orders page."),
-      h("nav", null, h("a", { href: "#/orders", class: "button border" }, icon("receipt_long"), h("span", null, "Go to Orders")))].filter(Boolean));
+        h("button", { type: "button", class: "border", on: { click: () => copy(o.message) } }, icon("content_copy"), h("span", null, "Copy message")))].filter(Boolean) };
     form.remove();
-    out.scrollIntoView({ behavior: "smooth", block: "start" });
+    location.hash = "#/orders";
   } } },
     sectionTitle("Checkout"),
     whenBox,
@@ -1184,17 +1177,38 @@ function demoAdvance(orders) {
   }
   return changed;
 }
-let demoTimer = null;
-function demoTicker() {
-  clearInterval(demoTimer);
-  demoTimer = setInterval(() => {
-    if (location.hash !== "#/orders") { clearInterval(demoTimer); return; }
+/* Live countdowns on the Orders page: each element with data-until (a time in milliseconds)
+   counts down every second. Demo orders show one per upcoming step. */
+function mmss(ms) { const t = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); }
+function countdowns(o) {
+  if (!o || o.status === "cancelled" || o.status === "declined" || o.status === "expired") return null;
+  const rows = [];
+  const done = (step) => (o.progress || []).some((p) => p.step === step);
+  if (o.demo) {
+    const start = new Date(o.created).getTime();
+    for (const [at, step, text] of DEMO_STEPS[o.mode === "pickup" ? "pickup" : "delivery"]) {
+      if (step === "confirm" ? o.status !== "awaiting" : done(step)) continue;
+      rows.push([start + at * 1000, step === "confirm" ? "Confirmed" : DEMO_LABEL[step]]);
+    }
+  } else if (o.status === "awaiting" && !o.informal) {
+    const win = Number(state.rules.confirmation_window_minutes) || 15;
+    rows.push([new Date(o.window_start || o.created).getTime() + win * 60000, "Time left for the business to confirm"]);
+  } else if (o.status.startsWith("confirmed") && o.arrive_at && !done("delivered") && !done("picked")) {
+    rows.push([new Date(o.arrive_at).getTime() + (o.progress || []).filter((p) => p.step === "late").length * 15 * 60000, "Estimated arrival"]);
+  }
+  if (!rows.length) return null;
+  return h("ul", { class: "list border countdowns" }, rows.map(([until, label]) => h("li", null, icon("schedule"),
+    h("div", { class: "max" }, label), h("span", { class: "price bold", "data-until": String(until) }, mmss(until - Date.now())))));
+}
+const DEMO_LABEL = { accepted: "Accepted", ready: "Ready", out: "Out for delivery", delivered: "Delivered", picked: "Picked up" };
+let ordersTimer = null;
+function ordersTicker() {
+  clearInterval(ordersTimer);
+  ordersTimer = setInterval(() => {
+    if (location.hash !== "#/orders") { clearInterval(ordersTimer); return; }
     const orders = store.get("hana.orders", []);
     if (demoAdvance(orders)) { store.set("hana.orders", orders); viewOrders(); return; }
-    for (const el of document.querySelectorAll("[data-demo-start]")) {
-      const left = Math.max(0, Math.ceil(Number(el.dataset.demoStart) / 1000 + DEMO_DONE_S - Date.now() / 1000));
-      el.textContent = "Arriving in " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") + " (demo time runs fast)";
-    }
+    for (const el of document.querySelectorAll("[data-until]")) el.textContent = mmss(Number(el.dataset.until) - Date.now());
   }, 1000);
 }
 
@@ -1272,8 +1286,7 @@ function orderCard(o, orders) {
     h("p", { class: "flush" }, (o.items.some((i) => i.price === null || i.price === undefined) ? "Prices to be confirmed by the business" : money(o.subtotal)) + (o.mode === "pickup" ? " (pickup)" : o.fee === null ? " plus delivery (fee not stated)" : " plus " + money(o.fee) + " delivery")),
     h("nav", { class: "wrap small-space" }, chip(st[0], st[1])),
     o.demo ? demoNotice() : null,
-    o.demo && o.status !== "cancelled" && o.mode !== "pickup" && !(o.progress || []).some((p) => p.step === "delivered")
-      ? h("p", { class: "bold", "data-demo-start": String(new Date(o.created).getTime()) }, "Arriving soon (demo time runs fast)") : null,
+    countdowns(o),
   ].filter(Boolean);
   const save = () => store.set("hana.orders", orders);
   const win = Number(state.rules.confirmation_window_minutes) || 15;
@@ -1463,8 +1476,9 @@ function viewOrders() {
   expireOrders();
   const orders = store.get("hana.orders", []);
   if (demoAdvance(orders)) store.set("hana.orders", orders);
-  if (orders.some((o) => o.demo && o.status !== "cancelled" && !(o.progress || []).some((p) => p.step === "delivered" || p.step === "picked"))) demoTicker();
-  const nodes = [pageTitle("Orders"), h("p", { class: "muted" }, "Orders are stored only on this phone. An order counts once the business confirms it within " + state.rules.confirmation_window_minutes + " minutes; otherwise it is cancelled automatically.")];
+  ordersTicker();
+  const placed = state.justPlaced;
+  const nodes = [pageTitle("Orders"), placed && placed.nodes.length ? h("article", { class: "round border no-elevate" }, ...placed.nodes) : null, h("p", { class: "muted" }, "Orders are stored only on this phone. An order counts once the business confirms it within " + state.rules.confirmation_window_minutes + " minutes; otherwise it is cancelled automatically.")];
   if (!orders.length) nodes.push(h("p", { class: "muted" }, "No orders yet."));
   const PER = 10;
   const pages = Math.max(1, Math.ceil(orders.length / PER));
@@ -1476,7 +1490,7 @@ function viewOrders() {
     entries.length ? h("details", null, h("summary", { class: "link" }, "Show the record (" + entries.length + ")"),
       h("ul", { class: "list" }, entries.map((e) => h("li", null, h("div", { class: "max" }, h("div", { class: "small-text muted" }, dateTime(e.at)), h("div", null, e.text)))))) :
       h("p", { class: "muted" }, "Nothing recorded yet."));
-  show("orders", "Orders", ...nodes);
+  show("orders", "Orders", ...nodes.filter(Boolean));
 }
 
 /* Adds orders and records from a downloaded copy. Nothing on this phone is overwritten or removed. */
@@ -1923,6 +1937,7 @@ function fixFooterLink() {
 }
 
 for (const i of document.querySelectorAll("i[data-icon]")) i.replaceWith(icon(i.getAttribute("data-icon")));
+window.addEventListener("hashchange", () => { if (location.hash !== "#/orders") state.justPlaced = null; });
 window.addEventListener("hashchange", route);
 updateBasketBadge();
 route();

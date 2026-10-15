@@ -67,17 +67,17 @@ function themeMode() {
 
 /* ---------------------------------------------------------------- settings (kept on this device) */
 
-const SCHEMES = { clay: "Clay (default)", teal: "Teal", indigo: "Indigo", green: "Green", plum: "Plum", contrast: "High contrast" };
+const SCHEMES = { mono: "Black and white (default)", clay: "Clay", teal: "Teal", indigo: "Indigo", green: "Green", plum: "Plum", contrast: "High contrast" };
 const TEXT_SIZES = { normal: "Default", large: "Large", larger: "Larger" };
 function settings() {
-  const d = { scheme: "clay", text: "normal", pictures: true };
+  const d = { scheme: "mono", text: "normal", pictures: true };
   try { return Object.assign(d, JSON.parse(localStorage.getItem("hana.settings") || "{}")); } catch (e) { return d; }
 }
 function saveSettings(s) { try { localStorage.setItem("hana.settings", JSON.stringify(s)); } catch (e) { /* this visit only */ } applyTheme(); }
 
 function applyTheme() {
   const st = settings();
-  const SCHEME_CLASS = { teal: "scheme-teal", indigo: "scheme-indigo", green: "scheme-green", plum: "scheme-plum", contrast: "scheme-contrast" };
+  const SCHEME_CLASS = { mono: "scheme-mono", teal: "scheme-teal", indigo: "scheme-indigo", green: "scheme-green", plum: "scheme-plum", contrast: "scheme-contrast" };
   for (const [k, cls] of Object.entries(SCHEME_CLASS)) document.body.classList.toggle(cls, st.scheme === k);
   document.documentElement.classList.toggle("text-large", st.text === "large");
   document.documentElement.classList.toggle("text-larger", st.text === "larger");
@@ -752,6 +752,8 @@ const COVERS = {
   fried_chicken: { file: "Fried-Chicken-Set.jpg", path: "2/2c", credit: "Fried chicken" },
   burger: { file: "NCI_Visuals_Food_Hamburger.jpg", path: "6/62", credit: "Hamburger, by Renee Comet, public domain" },
   chinese: { file: "Chinese_meal.jpg", path: "1/14", credit: "Chinese meal, by ZiCheng Xu, CC BY-SA" },
+  coffee: { file: "Masala_Tea_-_2.jpg", path: "d/d7", credit: "Masala tea, by Sarkar Sayantan, CC BY-SA 4.0" },
+  grocery: { file: "BD_Mohanganj_7.jpg", path: "a/a8", credit: "Rice shop in Mohanganj, Bangladesh" },
 };
 /* Food categories: used for search, section tabs, cuisine covers and item drawings.
    [key, label, icon in icons/food.svg, words that place a dish in it]. Order matters: the first match wins. */
