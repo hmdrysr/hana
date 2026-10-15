@@ -1265,31 +1265,16 @@ main .field + :not(.field):not([hidden]),
 .field > textarea {
   padding-block: 0.75rem;
 }
-.map-box {
-  position: relative;
-  block-size: 14rem;
-  border-radius: 1rem;
-  overflow: hidden;
-  margin-block: 0.5rem;
-}
-iframe.map-frame {
+canvas.map-pin {
   display: block;
   inline-size: 100%;
-  block-size: 100%;
-  border: 0;
-}
-button.map-tap {
-  position: absolute;
-  inset: 0;
-  inline-size: 100%;
-  block-size: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  max-inline-size: 100%;
+  block-size: auto;
+  aspect-ratio: 2 / 1;
+  border-radius: 1rem;
   cursor: crosshair;
+  touch-action: manipulation;
+  margin-block: 0.5rem;
 }
 /* A clear (x) button inside search boxes. */
 .field > button.clear-search {

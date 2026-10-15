@@ -772,9 +772,9 @@ function pinMap(pin, onMove) {
   const draw = () => {
     const my = ++gen, c = cv.getContext("2d"), g = toPx(pin), left = g.x - W / 2, top = g.y - H / 2;
     const pinDraw = () => {
-      c.fillStyle = "#b3261e"; c.strokeStyle = "#fff"; c.lineWidth = 3;
-      c.beginPath(); c.arc(W / 2, H / 2 - 22, 13, Math.PI, 0); c.lineTo(W / 2, H / 2); c.closePath(); c.fill(); c.stroke();
-      c.fillStyle = "#fff"; c.beginPath(); c.arc(W / 2, H / 2 - 22, 5, 0, 2 * Math.PI); c.fill();
+      c.fillStyle = "#b3261e"; c.strokeStyle = "#fff"; c.lineWidth = 4;
+      c.beginPath(); c.arc(W / 2, H / 2 - 34, 20, Math.PI, 0); c.lineTo(W / 2, H / 2); c.closePath(); c.fill(); c.stroke();
+      c.fillStyle = "#fff"; c.beginPath(); c.arc(W / 2, H / 2 - 34, 7, 0, 2 * Math.PI); c.fill();
     };
     c.fillStyle = "#e5e3df"; c.fillRect(0, 0, W, H);
     for (let tx = Math.floor(left / T); tx * T < left + W; tx++) for (let ty = Math.floor(top / T); ty * T < top + H; ty++) {
