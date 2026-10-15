@@ -872,7 +872,7 @@ async function buildStandalone(opts) {
   const css = beer + "\n" + theme.replace("url(material-symbols-subset.woff2)", "url(data:font/woff2;base64," + fontB64 + ")");
   const hash = async (s) => "'sha256-" + btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", utf8(s)))))) + "'";
   const scripts = [snapJs, esc(coreJs), esc(directJs), esc(appJs), esc(bookJs)];
-  const csp = "default-src 'none'; img-src 'self' data: blob: https://upload.wikimedia.org https://raw.githubusercontent.com https://codeberg.org https://gitlab.com https://i.ibb.co; " +
+  const csp = "default-src 'none'; img-src 'self' data: blob: https://upload.wikimedia.org https://raw.githubusercontent.com https://codeberg.org https://gitlab.com https://i.ibb.co https://tile.openstreetmap.org; " +
     "connect-src https:; font-src data:; style-src " + (await hash(css)) + "; script-src " + (await Promise.all(scripts.map(hash))).join(" ") + "; base-uri 'none'; form-action 'none'";
   let html = page
     .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '<meta http-equiv="Content-Security-Policy" content="' + csp + '">')

@@ -84,6 +84,7 @@ with sync_playwright() as p:
             for screen in SCREENS:
                 page = browser.new_page(viewport={"width": width, "height": 800}, color_scheme=scheme)
                 page.on("pageerror", lambda e: errors.append(str(e)))
+                page.on("console", lambda m: "Content Security Policy" in m.text and errors.append("CSP: " + m.text[:160]))
                 page.goto(screen)
                 page.wait_for_timeout(500)
                 normal = page.evaluate("document.documentElement.scrollWidth - innerWidth")
@@ -108,6 +109,7 @@ with sync_playwright() as p:
     page.route("**/list.json", lambda r: r.fulfill(status=200, content_type="application/json", body=json.dumps(stand_in)))
     page.route("**/menus/" + TAVA + "/menu.json", lambda r: r.fulfill(status=200, content_type="application/json", body=claimed_bytes))
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: "Content Security Policy" in m.text and errors.append("CSP: " + m.text[:160]))
     # Fix the clock at 8 p.m. on a Thursday, when every listed business is open.
     page.clock.install(time=datetime(2026, 10, 15, 20, 0, 0))
     page.goto(BASE)
@@ -320,6 +322,7 @@ with sync_playwright() as p:
     ok("an @handle opens that listing", "Sliced" in page.inner_text("main .page-title"), page.inner_text("main")[:120])
     # Volunteer-entered listings skip the protocol: a plain, polite message and a manual note.
     ip = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block", geolocation={"latitude": 22.36012, "longitude": 91.80981}, permissions=["geolocation"]).new_page()
+    ip.on("console", lambda m: "Content Security Policy" in m.text and errors.append("CSP: " + m.text[:160]))
     ip.goto(BASE + "#/r/" + TAVA)
     ip.wait_for_selector(".page-title")
     ip.click("button[aria-label^='Add Dahi Bara']")
@@ -331,9 +334,8 @@ with sync_playwright() as p:
     pgap = ip.evaluate("(() => { const t = document.querySelector('#address').closest('.field').getBoundingClientRect(); const m = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Add a map pin')).getBoundingClientRect(); return m.top - t.bottom; })()")
     ok("the map pin button keeps its distance from the address box", pgap >= 8, pgap)
     ip.click("text=Add a map pin for the rider")
-    ip.wait_for_selector("iframe.map-frame")
-    gap = ip.evaluate("(() => { const t = document.querySelector('#address').closest('.field').getBoundingClientRect(); const m = document.querySelector('.map-box').getBoundingClientRect(); return m.top - t.bottom; })()")
-    ok("the map shows the pin from OpenStreetMap", "marker=22.36012%2C91.80981" in ip.get_attribute("iframe.map-frame", "src"))
+    ip.wait_for_selector("canvas.map-pin")
+    gap = ip.evaluate("(() => { const t = document.querySelector('#address').closest('.field').getBoundingClientRect(); const m = document.querySelector('canvas.map-pin').getBoundingClientRect(); return m.top - t.bottom; })()")
     ok("the map pin shows a map below the address, with space between", gap >= 8 and ip.locator("text=Open in a map app").count() == 1, gap)
     ip.fill("#addr-label", "Home")
     ip.evaluate("() => { const x = document.querySelector('button[type=submit]'); x.click(); x.click(); x.click(); }")

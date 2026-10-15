@@ -760,20 +760,38 @@ function newCode() {
     .map((x) => Object.assign(x, { items: Array.isArray(x.items) ? x.items.filter((i) => i && typeof i === "object") : [] }));
   if (!Array.isArray(o) || c.length !== o.length || c.some((x, i) => x !== o[i])) store.set("hana.orders", c);
 })();
-/* A small map of the pin: OpenStreetMap's own embeddable map (free, no key, attribution
-   included). A transparent layer on top takes taps, so a tap moves the pin there. */
+/* A small map of the pin, drawn from OpenStreetMap tiles (free, no key, about six small
+   images). Tapping the map moves the pin there. The tile host is allowed in the page's
+   Content-Security-Policy (index.html). */
 function pinMap(pin, onMove) {
-  const DLON = 0.0045, DLAT = 0.0022;
-  const frame = h("iframe", { class: "map-frame", title: "Map with your pin", loading: "lazy", referrerpolicy: "strict-origin-when-cross-origin" });
-  const set = () => { frame.src = "https://www.openstreetmap.org/export/embed.html?bbox=" + [pin.lon - DLON, pin.lat - DLAT, pin.lon + DLON, pin.lat + DLAT].map((x) => x.toFixed(5)).join("%2C") + "&layer=mapnik&marker=" + pin.lat + "%2C" + pin.lon; };
-  const tap = h("button", { type: "button", class: "map-tap", "aria-label": "Tap the map to move the pin", on: { click: (e) => {
-    const r = tap.getBoundingClientRect();
-    pin = { lat: Number((pin.lat + DLAT - (e.clientY - r.top) / r.height * 2 * DLAT).toFixed(5)), lon: Number((pin.lon - DLON + (e.clientX - r.left) / r.width * 2 * DLON).toFixed(5)) };
-    set(); onMove(pin);
-  } } });
-  set();
-  return h("div", null, h("div", { class: "map-box" }, frame, tap),
-    h("p", { class: "small-text muted flush" }, "Tap the map to move the pin to your door."));
+  const W = 640, H = 320, Z = 17, T = 256, N = T * Math.pow(2, Z);
+  const cv = h("canvas", { class: "map-pin", width: W, height: H, role: "img", "aria-label": "Map with your pin. Tap the map to move the pin." });
+  const toPx = (p) => ({ x: (p.lon + 180) / 360 * N, y: (1 - Math.log(Math.tan(p.lat * Math.PI / 180) + 1 / Math.cos(p.lat * Math.PI / 180)) / Math.PI) / 2 * N });
+  const toLL = (x, y) => ({ lat: Number((Math.atan(Math.sinh(Math.PI * (1 - 2 * y / N))) * 180 / Math.PI).toFixed(5)), lon: Number((x / N * 360 - 180).toFixed(5)) });
+  let gen = 0;
+  const draw = () => {
+    const my = ++gen, c = cv.getContext("2d"), g = toPx(pin), left = g.x - W / 2, top = g.y - H / 2;
+    const pinDraw = () => {
+      c.fillStyle = "#b3261e"; c.strokeStyle = "#fff"; c.lineWidth = 3;
+      c.beginPath(); c.arc(W / 2, H / 2 - 22, 13, Math.PI, 0); c.lineTo(W / 2, H / 2); c.closePath(); c.fill(); c.stroke();
+      c.fillStyle = "#fff"; c.beginPath(); c.arc(W / 2, H / 2 - 22, 5, 0, 2 * Math.PI); c.fill();
+    };
+    c.fillStyle = "#e5e3df"; c.fillRect(0, 0, W, H);
+    for (let tx = Math.floor(left / T); tx * T < left + W; tx++) for (let ty = Math.floor(top / T); ty * T < top + H; ty++) {
+      const img = new Image();
+      img.onload = () => { if (my === gen) { c.drawImage(img, tx * T - left, ty * T - top); pinDraw(); } };
+      img.src = "https://tile.openstreetmap.org/" + Z + "/" + tx + "/" + ty + ".png";
+    }
+    pinDraw();
+  };
+  cv.addEventListener("click", (e) => {
+    const r = cv.getBoundingClientRect(), g = toPx(pin);
+    pin = toLL(g.x + ((e.clientX - r.left) * W / r.width - W / 2), g.y + ((e.clientY - r.top) * H / r.height - H / 2));
+    draw(); onMove(pin);
+  });
+  draw();
+  return h("div", null, cv, h("p", { class: "small-text muted flush" }, "Tap the map to move the pin to your door. Map © ",
+    h("a", { href: "https://www.openstreetmap.org/copyright", class: "link", target: "_blank", rel: "noopener" }, "OpenStreetMap contributors"), "."))
 }
 function pinLink(p) { return "https://www.openstreetmap.org/?mlat=" + p.lat + "&mlon=" + p.lon + "#map=18/" + p.lat + "/" + p.lon; }
 /* Saved delivery addresses, on this phone only (up to five). */
