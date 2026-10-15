@@ -89,7 +89,9 @@ function applyTheme() {
   if (meta) meta.setAttribute("content", dark ? "#1a110f" : "#9a3412");
   const btn = document.getElementById("theme-toggle");
   if (btn) {
-    btn.replaceChildren(icon(THEME_ICON[mode]));
+    /* The icon shows the look on screen now (a sun or a moon), so it is never mistaken for Settings. */
+    const darkNow = mode === "dark" || (mode === "system" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+    btn.replaceChildren(icon(darkNow ? "dark_mode" : "light_mode"));
     btn.setAttribute("aria-label", THEME_LABEL[mode] + ". Select to change.");
     btn.setAttribute("title", THEME_LABEL[mode]);
   }
@@ -156,7 +158,12 @@ const store = {
     } catch (e) { return fallback; }
   },
   set(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); return true; } catch (e) { return false; }
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (e) {
+      /* Storage full or blocked: say so, because an order record must never vanish silently. */
+      if (typeof snackbar === "function") snackbar("This phone's browser storage is full or blocked, so this could not be saved. Download your data under Settings, then clear old orders.");
+      return false;
+    }
   },
 };
 
@@ -450,6 +457,8 @@ async function readConfirmation(text, order, publicB64, windowMinutes) {
 
 let snackTimer = null;
 
+/* A notice belongs to the page it was shown on. */
+window.addEventListener("hashchange", () => { const s = document.getElementById("snackbar"); if (s) s.classList.remove("active"); clearTimeout(snackTimer); });
 function snackbar(text) {
   const s = document.getElementById("snackbar");
   s.textContent = text;
@@ -776,7 +785,7 @@ const FOOD_BY_KEY = Object.fromEntries(GROCERY.concat([["grocery", "Groceries", 
 function isGrocery(m) { return !!m && /grocery|supermarket|super ?shop|convenience/i.test(m.kind || ""); }
 const COVER_OF = { biryani: "bangladeshi" };
 function foodCat(text, list) { for (const f of list || FOOD) if (text && f[3].test(text)) return f[0]; return null; }
-function itemCat(it, m) { const l = isGrocery(m) ? GROCERY : FOOD; return foodCat(it.name, l) || foodCat(it.category, l) || foodCat(it.section, l); }
+function itemCat(it, m) { const l = isGrocery(m) ? GROCERY : FOOD; return foodCat(it.category, l) || foodCat(it.name, l) || foodCat(it.section, l); }
 function cuisineKey(m) {
   if (m.cuisine_key !== undefined) return m.cuisine_key;
   if (isGrocery(m)) return "grocery";

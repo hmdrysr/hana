@@ -747,7 +747,8 @@ function newCode() {
 /* Orders saved by older versions, or damaged by hand, must never stop the app. */
 (function cleanOrders() {
   const o = store.get("hana.orders", []);
-  const c = (Array.isArray(o) ? o : []).filter((x) => x && typeof x === "object" && typeof x.code === "string" && x.code)
+  /* Keep the newest 300 orders (newest first), so the record never fills the phone's storage. */
+  const c = (Array.isArray(o) ? o : []).filter((x) => x && typeof x === "object" && typeof x.code === "string" && x.code).slice(0, 300)
     .map((x) => Object.assign(x, { items: Array.isArray(x.items) ? x.items.filter((i) => i && typeof i === "object") : [] }));
   if (!Array.isArray(o) || c.length !== o.length || c.some((x, i) => x !== o[i])) store.set("hana.orders", c);
 })();
