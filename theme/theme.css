@@ -785,7 +785,7 @@ article.rcard > a {
 nav.cat-strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
-  gap: 0.25rem;
+  gap: 0.5rem;
   align-items: start;
   margin-block: 0.5rem;
 }
@@ -1245,4 +1245,31 @@ nav.page-head {
 }
 .hero + .row {
   flex-wrap: wrap;
+}
+li.dish:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 0.75rem;
+}
+
+/* One vertical rhythm: anything that follows a field starts 0.75rem below it, and multi-line
+   fields use a gentler curve so text never touches the border. Checked by browser_test.py. */
+main .field + :not(.field):not([hidden]) {
+  margin-block-start: 0.75rem;
+}
+.field.textarea,
+.field > textarea {
+  border-radius: 1.25rem;
+}
+.field > textarea {
+  padding-block: 0.75rem;
+}
+canvas.map-pin {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  border-radius: 1rem;
+  cursor: crosshair;
+  touch-action: manipulation;
+  margin-block: 0.5rem;
 }

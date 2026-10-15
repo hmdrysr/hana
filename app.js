@@ -314,12 +314,14 @@ function viewList() {
       const nameHit = fuzzyMatches(state.query.replace(/^@/, ""), r.name + " " + (m ? (m.kind || "") + " " + (m.handle || "") : ""));
       const hits = q ? searchItems(r).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
       if (q && !nameHit && !hits.length) continue;
-      cards.push([r, zone, delivers]);
+      /* While searching, a place appears under Places only when its own name matches; places
+         that sell a matching item are listed under the item instead. */
+      if (!q || nameHit) cards.push([r, zone, delivers]);
       for (const it of hits) dishes.push({ r, it });
     }
 
     const label = state.tab === "grocery" ? "Grocery stores" : state.tab === "food" ? "Restaurants" : "All places";
-    const head = [sectionTitle(q ? "Places" : label + " (" + cards.length + ")")];
+    const head = q ? [] : [sectionTitle(label + " (" + cards.length + ")")];
     if (!q) head.push(h("p", { class: "small-text muted flush" }, "Listed alphabetically. No listing is featured or paid for."));
     if (state.cat) {
       head.push(h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "chip small", "aria-label": "Clear the category filter",
@@ -338,17 +340,29 @@ function viewList() {
     const pages = Math.max(1, Math.ceil(cards.length / PER));
     if (state.page >= pages) state.page = pages - 1;
     /* Cards are built only for the page on screen. */
+    if (q && dishes.length) {
+      /* What is available where: one line per place with its first matching item, then every
+         match in every place on request. Places stay in alphabetical order. */
+      const by = new Map();
+      for (const d of dishes) { if (!by.has(d.r)) by.set(d.r, []); by.get(d.r).push(d.it); }
+      const word = state.tab === "grocery" ? "Products" : "Dishes";
+      /* Tapping an item opens the place at that item. */
+      const open = (r, it) => { state.focusItem = it.name; location.hash = "#/r/" + r.id; };
+      const row = (r, it, extra) => h("li", null, foodIcon(itemCat(it, r.lite) || "plate", "large"),
+        h("a", { href: "#/r/" + r.id, class: "max dish-hit", on: { click: (e) => { e.preventDefault(); open(r, it); } } },
+          h("div", null, it.name), h("div", { class: "small-text muted" }, r.name + (extra ? " · " + extra : ""))),
+        h("span", { class: "price" }, fromPrice(it)));
+      const list = state.allDishes
+        ? Array.from(by, ([r, its]) => [h("li", null, h("div", { class: "max bold" }, r.name)), ...its.map((it) => row(r, it))]).flat()
+        : Array.from(by, ([r, its]) => row(r, its[0], its.length > 1 ? its.length - 1 + " more" : ""));
+      kids.push(sectionTitle(word + " (" + dishes.length + " at " + by.size + (by.size === 1 ? " place)" : " places)")), h("ul", { class: "list border" }, list));
+      if (dishes.length > by.size || state.allDishes) kids.push(h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { state.allDishes = !state.allDishes; render(); } } },
+        h("span", null, state.allDishes ? "Show one per place" : "Show every match (" + dishes.length + ")"))));
+    }
+    if (q && cards.length) kids.push(sectionTitle("Places"));
     kids.push(...cards.slice(state.page * PER, state.page * PER + PER).map(([r, zone, delivers]) =>
       restaurantCard(r, zone, delivers, !q && state.cat ? searchItems(r).filter((it) => itemCat(it, r.lite) === state.cat) : [])));
     if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; render(); listHead.scrollIntoView({ block: "start" }); }));
-    if (q && dishes.length) {
-      const shown = state.allDishes ? dishes : dishes.slice(0, 8);
-      kids.push(sectionTitle(state.tab === "grocery" ? "Products" : "Dishes"), h("ul", { class: "list border" }, shown.map(({ r, it }) => h("li", null,
-        foodIcon(itemCat(it, r.lite) || "plate", "large"),
-        h("a", { href: "#/r/" + r.id, class: "max" }, h("div", null, it.name), h("div", { class: "small-text muted" }, r.name)),
-        h("span", { class: "price" }, fromPrice(it))))));
-      if (dishes.length > shown.length) kids.push(h("button", { type: "button", class: "border gap-top", on: { click: () => { state.allDishes = true; render(); } } }, "Show all " + dishes.length));
-    }
     if (!cards.length && !dishes.length) {
       kids.push(h("p", { class: "muted" }, state.tab === "grocery" && !state.restaurants.some((r) => isGrocery(r.lite))
         ? "No grocery stores are listed yet. A store can be added from About, under For businesses."
@@ -563,6 +577,36 @@ function viewRestaurant(id) {
     if (!sections.has(sec)) sections.set(sec, []);
     sections.get(sec).push(it);
   }
+  /* Fuzzy search inside this menu: matching dishes stay, the rest are hidden. */
+  if ((m.items || []).length > 1) {
+    const box = h("input", { type: "search", id: "menu-search", autocomplete: "off", placeholder: " " });
+    const none = h("p", { class: "muted", hidden: true }, "Nothing on this menu matches. Try a shorter word.");
+    const byId = new Map((m.items || []).map((it) => [it.id, it]));
+    const filter = () => {
+      const q = box.value.trim();
+      let any = false;
+      for (const ul of document.querySelectorAll("main ul.list.border")) {
+        const dishesHere = ul.querySelectorAll("li.dish");
+        if (!dishesHere.length) continue;
+        let shown = 0;
+        for (const li of dishesHere) {
+          const it = byId.get(li.dataset.id);
+          const hit = !q || (it && fuzzyMatches(q, [it.name, it.description, it.section, it.category, ...((it.options || []).map((o) => o.label))].filter(Boolean).join(" ")));
+          li.hidden = !hit; if (hit) shown++;
+        }
+        for (const lab of ul.querySelectorAll("li.overline-label")) lab.hidden = !!q;
+        ul.hidden = !shown;
+        const title = ul.previousElementSibling;
+        if (title && title.classList.contains("group-title")) title.hidden = !shown;
+        if (shown) any = true;
+      }
+      none.hidden = any;
+      const tabs = document.querySelector("main nav.dish-tabs");
+      if (tabs) tabs.hidden = !!q;
+    };
+    box.addEventListener("input", filter);
+    nodes.push(textField("menu-search", "Search this menu", box), none);
+  }
   if (sections.size > 1) {
     nodes.push(h("nav", { class: "dish-tabs", "aria-label": "Menu sections" },
       Array.from(sections.keys()).map((sec, i) => h("a", { href: "#/r/" + r.id, class: "chip small border",
@@ -594,6 +638,10 @@ function viewRestaurant(id) {
         } } }, icon("send"), h("span", null, "Send the report"))))));
   }
   show("list", m.name, ...nodes);
+  if (state.focusItem) {
+    const li = Array.from(document.querySelectorAll("main li.dish")).find((x) => { const t = x.querySelector(".bold"); return t && t.textContent === state.focusItem; });
+    if (li) { state.focusItem = ""; li.tabIndex = -1; li.scrollIntoView({ block: "center" }); li.focus({ preventScroll: true }); }
+  }
   updateBasketBar();
   /* A business that takes orders in Hana is available only while its business tools are open. */
   if (m.direct && m.claimed !== false) presence(m.direct).then((p) => {
@@ -703,6 +751,37 @@ function newCode() {
     .map((x) => Object.assign(x, { items: Array.isArray(x.items) ? x.items.filter((i) => i && typeof i === "object") : [] }));
   if (!Array.isArray(o) || c.length !== o.length || c.some((x, i) => x !== o[i])) store.set("hana.orders", c);
 })();
+/* A small map of the pin, drawn from OpenStreetMap tiles (no key, no account). Tapping the map
+   moves the pin there. */
+function pinMap(pin, onMove) {
+  const W = 640, H = 320, Z = 17, T = 256, N = T * Math.pow(2, Z);
+  const cv = h("canvas", { class: "map-pin", width: W, height: H, role: "img", "aria-label": "Map with your pin. Tap the map to move the pin." });
+  const toPx = (p) => ({ x: (p.lon + 180) / 360 * N, y: (1 - Math.log(Math.tan(p.lat * Math.PI / 180) + 1 / Math.cos(p.lat * Math.PI / 180)) / Math.PI) / 2 * N });
+  const toLL = (x, y) => ({ lat: Number((Math.atan(Math.sinh(Math.PI * (1 - 2 * y / N))) * 180 / Math.PI).toFixed(5)), lon: Number((x / N * 360 - 180).toFixed(5)) });
+  const draw = () => {
+    const c = cv.getContext("2d"), g = toPx(pin), left = g.x - W / 2, top = g.y - H / 2;
+    c.fillStyle = "#e5e3df"; c.fillRect(0, 0, W, H);
+    const pinDraw = () => {
+      c.fillStyle = "#b3261e"; c.strokeStyle = "#fff"; c.lineWidth = 3;
+      c.beginPath(); c.arc(W / 2, H / 2 - 22, 13, Math.PI, 0); c.lineTo(W / 2, H / 2); c.closePath(); c.fill(); c.stroke();
+      c.fillStyle = "#fff"; c.beginPath(); c.arc(W / 2, H / 2 - 22, 5, 0, 2 * Math.PI); c.fill();
+    };
+    for (let tx = Math.floor(left / T); tx * T < left + W; tx++) for (let ty = Math.floor(top / T); ty * T < top + H; ty++) {
+      const img = new Image();
+      img.onload = () => { c.drawImage(img, tx * T - left, ty * T - top); pinDraw(); };
+      img.src = "https://tile.openstreetmap.org/" + Z + "/" + tx + "/" + ty + ".png";
+    }
+    pinDraw();
+  };
+  cv.addEventListener("click", (e) => {
+    const r = cv.getBoundingClientRect(), g = toPx(pin);
+    const x = g.x + ((e.clientX - r.left) * W / r.width - W / 2), y = g.y + ((e.clientY - r.top) * H / r.height - H / 2);
+    pin = toLL(x, y); draw(); onMove(pin);
+  });
+  draw();
+  return h("div", null, cv, h("p", { class: "small-text muted flush" }, "Tap the map to move the pin to your door. Map © ",
+    h("a", { href: "https://www.openstreetmap.org/copyright", class: "link", target: "_blank", rel: "noopener" }, "OpenStreetMap contributors"), "."));
+}
 function pinLink(p) { return "https://www.openstreetmap.org/?mlat=" + p.lat + "&mlon=" + p.lon + "#map=18/" + p.lat + "/" + p.lon; }
 /* Saved delivery addresses, on this phone only (up to five). */
 function savedAddresses() { return store.get("hana.addresses", []); }
@@ -878,8 +957,9 @@ function viewBasket() {
   let pin = b.pin || null;
   const pinBox = h("div");
   const drawPin = () => pinBox.replaceChildren(pin
-    ? h("nav", { class: "wrap" }, h("a", { href: pinLink(pin), target: "_blank", rel: "noopener", class: "button border" }, icon("location_on"), h("span", null, "Map pin added")),
-        h("button", { type: "button", class: "border", on: { click: () => { pin = null; b.pin = null; saveBasket(); drawPin(); } } }, icon("close"), h("span", null, "Remove the pin")))
+    ? h("div", null, pinMap(pin, (p2) => { pin = p2; b.pin = pin; saveBasket(); }),
+      h("nav", { class: "wrap" }, h("a", { href: pinLink(pin), target: "_blank", rel: "noopener", class: "button border" }, icon("open_in_new"), h("span", null, "Open in a map app")),
+        h("button", { type: "button", class: "border", on: { click: () => { pin = null; b.pin = null; saveBasket(); drawPin(); } } }, icon("close"), h("span", null, "Remove the pin"))))
     : h("nav", null, h("button", { type: "button", class: "border", on: { click: () => {
         if (!navigator.geolocation) { snackbar("This browser cannot share your location."); return; }
         navigator.geolocation.getCurrentPosition((p) => {
