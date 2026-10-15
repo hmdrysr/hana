@@ -116,6 +116,7 @@ with sync_playwright() as p:
     ok("colour-mode toggle switches to dark", "dark" in page.evaluate("document.body.className"), (before, page.evaluate("document.body.className")))
     page.click("#theme-toggle")
     page.fill("#q", "piza")
+    page.wait_for_timeout(400)
     ok("fuzzy search finds pizza", set(names()) == {"Meal Master", "Sliced"}, names())
     ok("search shows dishes as their own group", "Dishes" in page.inner_text("#results"))
     page.fill("#q", "")
@@ -336,6 +337,69 @@ with sync_playwright() as p:
     back = json.loads(Path(dl.value.path()).read_text())
     ok("the point-of-sale backup file holds the sales", back.get("format") == "hana-pos-backup-1" and any(r["store"] == "sales" for r in back["records"]))
     bp.close()
+    sp = browser.new_page(viewport={"width": 360, "height": 800})
+    seen_urls = []
+    sp.on("request", lambda req: seen_urls.append(req.url))
+    sp.goto(BASE + "#/")
+    sp.wait_for_selector(".cat-tile")
+    sp.wait_for_timeout(500)
+    ok("the home page loads no full menus and no search data", not any("/menus/" in u or "search.json" in u for u in seen_urls), [u for u in seen_urls if "menus/" in u])
+    sp.close()
+    # Orders sent in Hana, through a stand-in for ntfy that keeps messages in memory.
+    box = {}
+    def fake_ntfy(route):
+        req = route.request
+        path = req.url.split("https://ntfy.sh/", 1)[1]
+        if req.method == "POST":
+            topic = path.strip("/")
+            msg = {"id": "m" + str(sum(len(v) for v in box.values()) + 1), "time": int(datetime.now().timestamp()), "event": "message", "topic": topic, "message": req.post_data}
+            box.setdefault(topic, []).append(msg)
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(msg))
+        elif "/json" in path:
+            topic = path.split("/json")[0]
+            route.fulfill(status=200, content_type="application/x-ndjson", body="".join(json.dumps(m) + "\n" for m in box.get(topic, [])))
+        else:
+            route.fulfill(status=404, body="")
+    dctx = browser.new_context(viewport={"width": 360, "height": 800})
+    dctx.route("https://ntfy.sh/**", fake_ntfy)
+    dp = dctx.new_page()
+    dp.goto(BIZ + "#/")
+    dp.wait_for_selector(".page-title")
+    sealed = dp.evaluate("""async () => {
+        const k = await createEncKey();
+        const direct = { topic: "https://ntfy.sh/hana-testtopic0123456789", enc_key: k.pub };
+        const s = await sealOrder(direct, { message: "Order ABC123 (sent with Hana)", code: "ABC123" });
+        await ntfyPost(direct.topic, s.envelope);
+        const opened = await openOrder(k.priv, s.envelope);
+        await postSealed(opened.order.reply, opened.keyRaw, { from: "b", t: "confirm", line: "CONFIRMED ABC123" });
+        const back = await readSealed(s.orderTopic, s.key, "24h");
+        return { text: opened.order.message, reply: back[0] && back[0].line, plain: s.envelope.includes("ABC123") };
+    }""")
+    ok("an order sent in Hana is encrypted, opened only with the business key, and answered on its own channel",
+       sealed["text"].startswith("Order ABC123") and sealed["reply"] == "CONFIRMED ABC123" and not sealed["plain"], sealed)
+    online = dp.evaluate("""async () => { const d = { topic: "https://ntfy.sh/hana-presence0123456789" };
+        const before = await isOnline(d); await ntfyPost(presenceTopic(d.topic), "online"); const after = await isOnline(d); return [before, after]; }""")
+    ok("a business shows as available only after its tools say so", online == [False, True], online)
+    dp.evaluate("""() => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-testtopic0123456789" }));
+        localStorage.setItem("hana.biz.inbox", JSON.stringify([{ id: "x1", time: Math.floor(Date.now() / 1000), code: "ABC123", text: "Order ABC123 Z=pickup ", reply: "https://ntfy.sh/hana-o-test0123456789", keyRaw: "", status: "accepted", step: "accepted", accepted_at: Date.now() }])); }""")
+    dp.evaluate("""() => { document.getElementById("main").replaceChildren(progressPanel(inboxOrders()[0], () => {})); }""")
+    ok("an accepted pickup order offers Ready next", "Ready for pickup" in dp.inner_text("main"))
+    dp.evaluate("""() => { const o = inboxOrders()[0]; o.text = "Order ABC123 Z=khulshi "; document.getElementById("main").replaceChildren(progressPanel(o, () => {})); }""")
+    dp.click("button:has-text('Out for delivery')")
+    dp.wait_for_timeout(200)
+    ok("out for delivery needs the rider's name and mobile number", "rider's name and mobile" in dp.inner_text("#snackbar"))
+    dp.goto(BASE + "#/")
+    dp.wait_for_selector(".cat-tile")
+    dp.evaluate("""async () => { const p = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]); const j = await crypto.subtle.exportKey("jwk", p.publicKey);
+        const s = await sealOrder({ topic: "https://ntfy.sh/hana-testtopic0123456789", enc_key: { kty: "EC", crv: "P-256", x: j.x, y: j.y } }, { message: "x", code: "CHT123" });
+        localStorage.setItem("hana.orders", JSON.stringify([{ code: "CHT123", status: "awaiting", created: new Date().toISOString(), window_start: new Date().toISOString(), restaurant: "Test", restaurant_id: "x", items: [], subtotal: 0, fee: 0, mode: "pickup", channel: "hana", order_topic: s.orderTopic, order_key: s.key }])); }""")
+    dp.goto(BASE + "#/orders")
+    dp.wait_for_selector("text=Messages with the business")
+    dp.click("summary:has-text('Messages with the business')")
+    dp.click("button:has-text('Where is my order?')")
+    dp.wait_for_timeout(500)
+    ok("a customer can message the business about an open order", any("HANA1R" in m["message"] for v in box.values() for m in v) and "Where is my order?" in dp.inner_text("main"))
+    dctx.close()
     ok("no script errors", not errors, errors)
     browser.close()
 

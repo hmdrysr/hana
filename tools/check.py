@@ -650,6 +650,15 @@ def check_menu(menu_path, root, area_ids):
             err(rel, f"{f} must be true, false or null (not stated)")
     if "cuisine" in data and not (isinstance(data["cuisine"], str) and 0 < len(data["cuisine"]) <= 40):
         err(rel, "cuisine must be short text of no more than 40 characters")
+    if "direct" in data and data["direct"] is not None:
+        d = data["direct"]
+        ek = d.get("enc_key") if isinstance(d, dict) else None
+        if not claimed:
+            err(rel, "direct (orders sent in Hana) is only for claimed listings")
+        elif not (isinstance(d.get("topic"), str) and re.match(r"^https://[a-z0-9.-]+/[A-Za-z0-9_-]{16,64}$", d["topic"])):
+            err(rel, "direct.topic must be an https ntfy topic address with a long random name")
+        elif not (isinstance(ek, dict) and ek.get("kty") == "EC" and ek.get("crv") == "P-256" and set(ek) == {"kty", "crv", "x", "y"}):
+            err(rel, "direct.enc_key must be a public P-256 key (kty, crv, x, y only)")
     if "handle" in data and not (isinstance(data["handle"], str) and HANDLE.match(data["handle"])):
         err(rel, "handle must be 3 to 30 lowercase letters or numbers, for example mealmaster")
     check_image(data.get("cover"), "cover", rel)
@@ -889,6 +898,38 @@ def check_pages(root):
             err(rel, "no listing has this handle any more; run python3 tools/build.py")
 
 
+def check_list(root):
+    """list.json and search.json must match the listings, and every file stays within the
+    size budget that keeps Hana fast on slow phones and connections (SPEC.md, section 20)."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import build_list
+    want_list, want_search = build_list.build(root)
+    for name, want in (("list.json", want_list), ("search.json", want_search)):
+        p = root / name
+        if not p.is_file() or p.read_text(encoding="utf-8") != want:
+            err(name, "missing or out of date; run python3 tools/build.py")
+    budgets = {"list.json": (250_000, 500_000), "search.json": (1_000_000, 2_000_000), "app.js": (150_000, 200_000),
+               "core.js": (90_000, 120_000), "business.js": (120_000, 160_000), "pos.js": (60_000, 80_000), "theme/theme.css": (40_000, 60_000)}
+    for name, (soft, hard) in budgets.items():
+        p = root / name
+        if not p.is_file():
+            continue
+        n = p.stat().st_size
+        if n > hard:
+            err(name, f"{n:,} bytes is over the {hard:,}-byte limit. Split it (for list.json, by zone) or trim it.")
+        elif n > soft:
+            warn(name, f"{n:,} bytes; plan to split or trim it before it passes {hard:,} bytes")
+    for p in sorted((root / "menus").glob("*/menu.json")):
+        rel = p.relative_to(root)
+        if p.stat().st_size > 100_000:
+            err(rel, f"{p.stat().st_size:,} bytes is over the 100,000-byte limit for one menu")
+        try:
+            if len(json.loads(p.read_text(encoding="utf-8")).get("items") or []) > 400:
+                err(rel, "more than 400 items; split the menu or remove old items")
+        except Exception:
+            pass
+
+
 def check_feed(root):
     """feed.xml must match the listings, so Fediverse followers see every change."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -938,7 +979,7 @@ def check_text_files(root):
         for w in FORBIDDEN_WORDS:
             if w.lower() in low:
                 err(rel, 'uses the spelling this project never uses. Write "Chittagong".')
-        in_menu = rel.parts[0] in ("menus", "tools", "restaurants", "groceries")
+        in_menu = rel.parts[0] in ("menus", "tools", "restaurants", "groceries", "list.json", "search.json")
         for m in LOCAL_OR_INTL_MOBILE.finditer(text):
             if in_menu:
                 continue  # a restaurant's own business number belongs in its menu
@@ -955,7 +996,7 @@ chip circle dark field fill flush gap-top group-title l label left left-align li
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
 tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label
-cover thumb credit field-row receipt receipt-wide receipt-head receipt-title receipt-row receipt-total receipt-small receipt-foot print-me print-a4 more-list icon-preview swatch-f7f5f2 swatch swatch-any swatch-40e0d0 swatch-9a3412 swatch-0f766e swatch-3730a3 swatch-15803d swatch-7e22ce swatch-facc15 swatch-ffffff swatch-111827 stack menu-editor edit-section edit-item edit-main edit-tools size-list size-row order-panel handle zone-row kind-tabs food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
+cover thumb credit chat-list chat-mine chat-theirs field-row receipt receipt-wide receipt-head receipt-title receipt-row receipt-total receipt-small receipt-foot print-me print-a4 more-list icon-preview swatch-f7f5f2 swatch swatch-any swatch-40e0d0 swatch-9a3412 swatch-0f766e swatch-3730a3 swatch-15803d swatch-7e22ce swatch-facc15 swatch-ffffff swatch-111827 stack menu-editor edit-section edit-item edit-main edit-tools size-list size-row order-panel handle zone-row kind-tabs food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
 
 
 def check_ui(root):
@@ -999,6 +1040,7 @@ def main():
                 check_version_chain(d, root)
     check_vouches(root)
     check_feed(root)
+    check_list(root)
     check_pages(root)
     check_text_files(root)
     check_ui(root)

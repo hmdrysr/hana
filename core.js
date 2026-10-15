@@ -197,6 +197,7 @@ const CHANNELS = {
   signal: { label: "Signal", icon: "chat", prefill: false, link: (id) => "https://signal.me/#p/+" + String(id).replace(/^\+/, "") },
   telegram: { label: "Telegram", icon: "send", prefill: false, link: (id) => "https://t.me/" + encodeURIComponent(id) },
   messenger: { label: "Messenger", icon: "chat", prefill: false, link: (id) => "https://m.me/" + encodeURIComponent(id) },
+  hana: { label: "Send in Hana (recommended): the business replies here", icon: "send", prefill: true, direct: true, link: () => null },
   endpoint: { label: "Send directly to the business", icon: "send", prefill: true, direct: true, link: () => null },
   phone: { label: "Phone call", icon: "call", prefill: false, link: (id) => "tel:+" + id },
 };
@@ -459,9 +460,9 @@ function sectionTitle(text) { return h("h2", { class: "section-title" }, text); 
 /* The person can choose the app icon's background colour. The icon is drawn on the
    device, then used for the browser tab, for Add to Home Screen and in a manifest written on the
    device. The standard icon (the files in the repository) is used until something is changed. */
-const ICON_BGS = [["#F7F5F2", "Rice paper"], ["#0F766E", "Teal"], ["#40E0D0", "Turquoise"], ["#9A3412", "Clay"], ["#3730A3", "Indigo"],
+const ICON_BGS = [["#0F766E", "Teal"], ["#F7F5F2", "Rice paper"], ["#40E0D0", "Turquoise"], ["#9A3412", "Clay"], ["#3730A3", "Indigo"],
   ["#15803D", "Green"], ["#7E22CE", "Plum"], ["#FACC15", "Yellow"], ["#111827", "Black"]];
-const ICON_DEFAULT = { bg: "#F7F5F2" };
+const ICON_DEFAULT = { bg: "#0F766E" };
 function iconChoice() { return Object.assign({}, ICON_DEFAULT, store.get("hana.icon", {})); }
 /* The logo (logo.svg, the smiling rice ball) drawn on the chosen background. */
 let logoImage = null;
@@ -549,6 +550,19 @@ function installCard(dismissible) {
       h("button", { type: "button", on: { click: installApp } }, icon("download"), h("span", null, "Install")),
       dismissible ? h("button", { type: "button", class: "border", on: { click: () => { store.set("hana.install.dismissed", true); card.remove(); } } }, h("span", null, "Not now")) : null));
   return card;
+}
+
+/* In-app chat for an open order sent in Hana (both sides). Messages are sealed on the order's
+   own topic and kept on each device with the order. */
+function chatBox(messages, mine, quick, onSend) {
+  const list = h("ul", { class: "list border chat-list" }, (messages || []).map((m) => h("li", { class: m.from === mine ? "chat-mine" : "chat-theirs" },
+    h("div", { class: "max" }, h("div", null, m.text), h("div", { class: "small-text muted" }, (m.from === mine ? "You" : mine === "c" ? "Business" : "Customer") + " · " + dateTime(m.at))))));
+  const box = h("input", { type: "text", maxlength: 300, placeholder: " ", id: "chat-" + Math.random().toString(36).slice(2) });
+  const send = async (text) => { text = String(text || "").trim(); if (!text) return; box.value = ""; await onSend(text); };
+  return h("div", { class: "stack" },
+    messages && messages.length ? list : h("p", { class: "small-text muted flush" }, "No messages yet."),
+    h("nav", { class: "wrap small-space" }, quick.map((q) => h("button", { type: "button", class: "chip small border", on: { click: () => send(q) } }, q))),
+    h("div", { class: "field-row" }, textField(box.id, "Message", box), h("button", { type: "button", class: "circle", "aria-label": "Send message", on: { click: () => send(box.value) } }, icon("send"))));
 }
 
 function pageTitle(text) { return h("h1", { class: "page-title" }, text); }
@@ -731,6 +745,7 @@ const COVER_OF = { biryani: "bangladeshi" };
 function foodCat(text, list) { for (const f of list || FOOD) if (text && f[3].test(text)) return f[0]; return null; }
 function itemCat(it, m) { const l = isGrocery(m) ? GROCERY : FOOD; return foodCat(it.name, l) || foodCat(it.category, l) || foodCat(it.section, l); }
 function cuisineKey(m) {
+  if (m.cuisine_key !== undefined) return m.cuisine_key;
   if (isGrocery(m)) return "grocery";
   const own = foodCat(m.cuisine);
   if (own) return own;
@@ -787,13 +802,13 @@ try { Object.keys(localStorage).filter((k) => k.startsWith("hana.img:")).forEach
    directory_url when online. mode "business" shows one listing, with the Hana credit. */
 async function buildStandalone(opts) {
   const fetchText = (u) => fetch(u, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error(u + " could not be loaded"); return r.text(); });
-  const [page, coreJs, appJs, beer, theme, bookJs, fontBuf] = await Promise.all(["index.html", "core.js", "app.js", "theme/beer.min.css", "theme/theme.css", "phonebook.js"].map(fetchText)
+  const [page, coreJs, appJs, beer, theme, bookJs, directJs, fontBuf] = await Promise.all(["index.html", "core.js", "app.js", "theme/beer.min.css", "theme/theme.css", "phonebook.js", "direct.js"].map(fetchText)
     .concat([fetch("theme/material-symbols-subset.woff2").then((r) => r.arrayBuffer())]));
   const sprite = (await fetchText("icons/food.svg")).replace("<svg ", "<svg hidden ");
   const logoUri = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(await fetchText("logo.svg"))));
   const fontB64 = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(fontBuf))));
   const files = {};
-  for (const f of ["rules.json", "areas.json", "index.json", "TERMS.md"]) files[f] = await getText(f);
+  for (const f of ["rules.json", "areas.json", "index.json", "list.json", "search.json", "TERMS.md"]) files[f] = await getText(f);
   const index = JSON.parse(files["index.json"]);
   /* Every copy carries the whole directory, so each one is also a backup of it. A business
      site opens on its own listing. */
@@ -807,14 +822,14 @@ async function buildStandalone(opts) {
   const snapJs = "window.HANA_SNAPSHOT=" + JSON.stringify(snapshot).replace(/</g, "\\u003c") + ";";
   const css = beer + "\n" + theme.replace("url(material-symbols-subset.woff2)", "url(data:font/woff2;base64," + fontB64 + ")");
   const hash = async (s) => "'sha256-" + btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", utf8(s)))))) + "'";
-  const scripts = [snapJs, esc(coreJs), esc(appJs), esc(bookJs)];
+  const scripts = [snapJs, esc(coreJs), esc(directJs), esc(appJs), esc(bookJs)];
   const csp = "default-src 'none'; img-src 'self' data: blob: https://upload.wikimedia.org https://raw.githubusercontent.com https://codeberg.org https://gitlab.com https://i.ibb.co; " +
     "connect-src https:; font-src data:; style-src " + (await hash(css)) + "; script-src " + (await Promise.all(scripts.map(hash))).join(" ") + "; base-uri 'none'; form-action 'none'";
   let html = page
     .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '<meta http-equiv="Content-Security-Policy" content="' + csp + '">')
     .replace(/<link rel="(icon|apple-touch-icon|manifest)"[^>]*>\n?/g, "")
     .replace('<link rel="stylesheet" href="theme/beer.min.css">\n<link rel="stylesheet" href="theme/theme.css">', () => "<style>" + css + "</style>")
-    .replace('<script src="core.js" defer></script>\n<script src="app.js" defer></script>', () => scripts.map((s) => "<script>" + s + "</script>").join("\n"))
+    .replace('<script src="core.js" defer></script>\n<script src="direct.js" defer></script>\n<script src="app.js" defer></script>', () => scripts.map((s) => "<script>" + s + "</script>").join("\n"))
     .replace('<header class="responsive">', () => sprite + '\n<header class="responsive">')
     .replace('src="logo.svg"', () => 'src="' + logoUri + '"')
     .replace(/{{REPO_URL}}/g, site.repo_url || "#");

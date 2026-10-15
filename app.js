@@ -26,8 +26,8 @@ const state = {
 async function loadAll() {
   try {
     /* All four files load at once rather than one after another. */
-    const [site, rules, areas, index] = await Promise.all([
-      fetchJson("site.json").catch(() => ({})), fetchJson("rules.json").catch(() => ({})), fetchJson("areas.json"), fetchJson("index.json")]);
+    const [site, rules, areas, list] = await Promise.all([
+      fetchJson("site.json").catch(() => ({})), fetchJson("rules.json").catch(() => ({})), fetchJson("areas.json"), fetchJson("list.json")]);
     Object.assign(state.site, site);
     fetch(dataUrl("peers.json"), { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).then((p) => {
       if (p) store.set("hana.peers", (p.peers || []).map((x) => (typeof x === "string" ? x : x.url)).filter((u) => /^https:\/\/.+\/$/.test(u || "")).slice(0, 10));
@@ -39,31 +39,8 @@ async function loadAll() {
     state.areaById = new Map(state.areas.map((a) => [a.id, a]));
     const a = state.areaById.get(state.area);
     if (state.area && (!a || a.kind !== "zone")) { state.area = ""; store.set("hana.area", ""); }
-    const seen = store.get("hana.seen", {});
-    state.restaurants = await Promise.all((index.restaurants || []).map(async (row) => {
-      const out = { id: row.id, name: row.name, menu: null, raw: null, problem: "" };
-      for (const loc of row.locations || []) {
-        try {
-          const bytes = await fetchBytes(loc);
-          const hash = await sha256Hex(bytes);
-          if (hash !== row.menu_hash) { out.problem = "The menu file does not match the directory record, so it is not trusted."; continue; }
-          const text = new TextDecoder("utf-8").decode(bytes);
-          out.menu = JSON.parse(text);
-          out.raw = text;
-          out.hash = hash;
-          out.problem = "";
-          break;
-        } catch (e) { out.problem = "The menu could not be loaded."; }
-      }
-      if (out.menu && seen[out.id] && out.menu.version < seen[out.id]) {
-        out.problem = "This menu is older than one this phone has already seen (version " + out.menu.version + " after version " + seen[out.id] + "), so it is not trusted.";
-        out.menu = null;
-      } else if (out.menu) {
-        seen[out.id] = Math.max(seen[out.id] || 0, out.menu.version);
-      }
-      return out;
-    }));
-    store.set("hana.seen", seen);
+    /* One small summary file for the whole directory. Full menus load only when needed. */
+    state.restaurants = (list.listings || []).map((L) => ({ id: L.id, name: L.name, lite: L, cats: new Set(L.cats || []), hash: L.menu_hash, menu: null, raw: null, problem: "" }));
     state.restaurants.sort((a, b) => norm(a.name).localeCompare(norm(b.name), "en"));
     state.loaded = true;
   } catch (e) {
@@ -72,6 +49,41 @@ async function loadAll() {
 }
 
 function restaurantById(id) { return state.restaurants.find((r) => r.id === id); }
+
+/* Loads one listing's full menu, checks it against the directory's hash and refuses a
+   version older than one this phone has already seen. Returns the menu, or null. */
+async function ensureMenu(r) {
+  if (!r || r.menu) return r ? r.menu : null;
+  if (r.loading) return r.loading;
+  r.loading = (async () => {
+    try {
+      const bytes = await fetchBytes(r.lite.location);
+      const hash = await sha256Hex(bytes);
+      if (hash !== r.lite.menu_hash) { r.problem = "The menu file does not match the directory record, so it is not trusted."; return null; }
+      const text = new TextDecoder("utf-8").decode(bytes);
+      const menu = JSON.parse(text);
+      const seen = store.get("hana.seen", {});
+      if (seen[r.id] && menu.version < seen[r.id]) { r.problem = "This menu is older than one this phone has already seen (version " + menu.version + " after version " + seen[r.id] + "), so it is not trusted."; return null; }
+      seen[r.id] = Math.max(seen[r.id] || 0, menu.version);
+      store.set("hana.seen", seen);
+      Object.assign(r, { menu, raw: text, hash, problem: "" });
+      return menu;
+    } catch (e) { r.problem = "The menu could not be loaded. Check your connection and try again."; return null; }
+    finally { r.loading = null; }
+  })();
+  return r.loading;
+}
+function ensureMenus(list) { return Promise.all(list.map(ensureMenu)); }
+
+/* Item names and prices for dish search, loaded the first time someone searches. */
+async function ensureSearch() {
+  if (state.search) return state.search;
+  if (!state.searchLoading) state.searchLoading = fetchJson("search.json").then((d) => (state.search = d.items || {})).catch(() => (state.search = {}));
+  return state.searchLoading;
+}
+function searchItems(r) {
+  return ((state.search || {})[r.id] || []).map(([name, section, category, price, options]) => ({ name, section, category, price: options ? undefined : price, options: options ? [{ price }] : undefined }));
+}
 
 /* The selected area and every area it belongs to (ward, then Station, then the city). */
 function areaChain(areaId) {
@@ -194,13 +206,8 @@ function inTab(m) { return state.tab === "all" || !m || (state.tab === "grocery"
 function availableCategories() {
   const count = {};
   for (const r of state.restaurants) {
-    if (!r.menu) continue;
-    const keys = new Set((r.menu.items || []).map((it) => itemCat(it, r.menu)).filter(Boolean));
-    const c = cuisineKey(r.menu);
-    if (c && c !== "grocery") keys.add(c);
-    r.cats = keys;
-    if (!inTab(r.menu)) continue;
-    for (const k of keys) count[k] = (count[k] || 0) + 1;
+    if (!inTab(r.lite)) continue;
+    for (const k of r.cats) count[k] = (count[k] || 0) + 1;
   }
   const list = state.tab === "grocery" ? GROCERY : state.tab === "food" ? FOOD : FOOD.concat(GROCERY.filter((g) => !FOOD.some((f) => f[0] === g[0])));
   return list.filter((f) => count[f[0]]).map((f) => ({ key: f[0], label: f[1], count: count[f[0]] }));
@@ -291,17 +298,18 @@ function viewList() {
     }
     const cards = [], dishes = [];
     let hidden = 0;
+    if ((q || state.cat) && !state.search) { ensureSearch().then(render); }
     for (const r of state.restaurants) {
-      const m = r.menu;
+      const m = r.lite;
       if (!inTab(m)) continue;
       const zone = m ? zoneFor(m, state.area) : null;
       const delivers = !state.area || !m || !!zone;
       if (!delivers && !state.showAll) { hidden++; continue; }
       if (state.cat && !(r.cats && r.cats.has(state.cat))) continue;
       const nameHit = fuzzyMatches(state.query.replace(/^@/, ""), r.name + " " + (m ? (m.kind || "") + " " + (m.handle || "") : ""));
-      const hits = m && q ? (m.items || []).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
+      const hits = q ? searchItems(r).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
       if (q && !nameHit && !hits.length) continue;
-      cards.push(restaurantCard(r, zone, delivers, !q && state.cat && m ? (m.items || []).filter((it) => itemCat(it, m) === state.cat) : []));
+      cards.push([r, zone, delivers]);
       for (const it of hits) dishes.push({ r, it });
     }
 
@@ -321,18 +329,20 @@ function viewList() {
     const PER = 12;
     const pages = Math.max(1, Math.ceil(cards.length / PER));
     if (state.page >= pages) state.page = pages - 1;
-    kids.push(...cards.slice(state.page * PER, state.page * PER + PER));
+    /* Cards are built only for the page on screen. */
+    kids.push(...cards.slice(state.page * PER, state.page * PER + PER).map(([r, zone, delivers]) =>
+      restaurantCard(r, zone, delivers, !q && state.cat ? searchItems(r).filter((it) => itemCat(it, r.lite) === state.cat) : [])));
     if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; render(); listHead.scrollIntoView({ block: "start" }); }));
     if (q && dishes.length) {
       const shown = state.allDishes ? dishes : dishes.slice(0, 8);
       kids.push(sectionTitle(state.tab === "grocery" ? "Products" : "Dishes"), h("ul", { class: "list border" }, shown.map(({ r, it }) => h("li", null,
-        foodIcon(itemCat(it, r.menu) || "plate", "large"),
+        foodIcon(itemCat(it, r.lite) || "plate", "large"),
         h("a", { href: "#/r/" + r.id, class: "max" }, h("div", null, it.name), h("div", { class: "small-text muted" }, r.name)),
         h("span", { class: "price" }, fromPrice(it))))));
       if (dishes.length > shown.length) kids.push(h("button", { type: "button", class: "border gap-top", on: { click: () => { state.allDishes = true; render(); } } }, "Show all " + dishes.length));
     }
     if (!cards.length && !dishes.length) {
-      kids.push(h("p", { class: "muted" }, state.tab === "grocery" && !state.restaurants.some((r) => isGrocery(r.menu))
+      kids.push(h("p", { class: "muted" }, state.tab === "grocery" && !state.restaurants.some((r) => isGrocery(r.lite))
         ? "No grocery stores are listed yet. A store can be added from About, under For businesses."
         : "Nothing matches. Try a shorter search, another category or another zone."));
     }
@@ -399,7 +409,7 @@ function fromPrice(it) {
 }
 
 function restaurantCard(r, zone, delivers, dishHits) {
-  const m = r.menu;
+  const m = r.lite;
   if (!m) {
     return h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, r.name), h("p", { class: "muted" }, r.problem || "This menu is not available."));
   }
@@ -442,6 +452,9 @@ function chooseOption(r, it) {
    orders, let the customer choose a time while it is open. Resolves true to go ahead. */
 function readyToOrder(r) {
   const m = r.menu, os = orderingState(m);
+  if (state.offline && state.offline.has(r.id)) {
+    return ask(m.name + " is temporarily unavailable", "Its staff are busy and are not taking new orders at the moment. Please check back shortly.", "OK").then(() => false);
+  }
   if (!os.closed) return Promise.resolve(true);
   if (state.basket && state.basket.rid === r.id && state.basket.scheduled) return Promise.resolve(true);
   const slots = scheduleSlots(m);
@@ -506,6 +519,11 @@ function hoursText(list) {
 
 function viewRestaurant(id) {
   const r = restaurantById(id);
+  if (r && !r.menu && !r.problem) {
+    show("list", r.name, pageHeader(r.name, "#/"), h("p", { class: "muted" }, "Loading the menu…"));
+    ensureMenu(r).then(() => route());
+    return;
+  }
   if (!r) return show("list", "Not found", pageHeader("Listing not found", "#/"), h("p", null, h("a", { class: "link", href: "#/" }, "All restaurants")));
   const m = r.menu;
   if (!m) return show("list", r.name, pageHeader(r.name, "#/"), notice("warn", r.problem || "This menu is not available."));
@@ -521,6 +539,7 @@ function viewRestaurant(id) {
     h("figure", { class: "flush hero" }, picture(cover, "cover", "", cuisineKey(m)), cover ? h("figcaption", { class: "credit" }, cover.page ? h("a", { href: cover.page, class: "link", rel: "noopener", target: "_blank" }, cover.credit) : cover.credit) : null),
     h("div", { class: "row" },
       h("p", { class: "muted flush max" }, (m.handle ? "@" + m.handle + " · " : "") + (m.kind || "Restaurant") + " · " + locatedIn(m)),
+      m.business_phone ? h("a", { href: "tel:" + m.business_phone, class: "button circle transparent", "aria-label": "Call " + m.name, title: "Call" }, icon("call")) : null,
       m.handle ? h("button", { type: "button", class: "circle transparent", "aria-label": "Share this listing", title: "Share", on: { click: () => shareListing(m) } }, icon("share")) : null),
     h("nav", { class: "wrap small-space" }, chips),
     h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup !== false ? " Pickup is available." : "") +
@@ -553,6 +572,14 @@ function viewRestaurant(id) {
     icon("shopping_bag"), h("span", { id: "basket-bar-text" }, "View basket")));
   show("list", m.name, ...nodes);
   updateBasketBar();
+  /* A business that takes orders in Hana is available only while its business tools are open. */
+  if (m.direct && m.claimed !== false) isOnline(m.direct).then((on) => {
+    state.offline = state.offline || new Set();
+    if (on) { state.offline.delete(r.id); return; }
+    state.offline.add(r.id);
+    const head = document.querySelector("main .page-head");
+    if (head) head.after(notice("warn", h("p", { class: "bold flush" }, "Temporarily unavailable"), h("p", { class: "flush" }, "Its staff are busy and are not taking new orders at the moment. Please check back shortly.")));
+  });
 }
 
 /* The clean web address of a listing, built from its handle. */
@@ -652,7 +679,7 @@ async function buildOrder(r, f) {
     unpriced ? "Please tell me the price of each item and the total, including the delivery fee, when you confirm."
       : fee === null ? null : "Total, including delivery: " + money(sub + fee),
     "Payment: cash on delivery" + (pickup ? " (at pickup)" : "") + ". I will not pay in advance.", "",
-    "Name: " + f.name, ...where,
+    "Name: " + f.name, f.phone ? "Phone: " + f.phone : null, ...where,
     f.note ? "Note: " + f.note : null, "",
     "To confirm, reply: CONFIRMED " + code, "", check].filter((l) => l !== null);
   const message = lines.filter((l, i, a) => !(l === "" && a[i - 1] === "")).join("\n");
@@ -663,6 +690,7 @@ async function buildOrder(r, f) {
 function orderChannels(menu) {
   const out = [];
   const seen = new Set();
+  if (menu.claimed !== false && menu.direct && menu.direct.topic && menu.direct.enc_key) out.push({ app: "hana", id: menu.direct.topic, preferred: true });
   for (const c of menu.contact || []) {
     const app = c.app === "phone" ? "sms" : c.app;
     if (!CHANNELS[app]) continue;
@@ -670,7 +698,7 @@ function orderChannels(menu) {
     const k = app + ":" + id;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ app, id, preferred: !!c.preferred });
+    out.push({ app, id, preferred: !out.some((x) => x.app === "hana") && !!c.preferred });
   }
   return out;
 }
@@ -687,6 +715,7 @@ function viewBasket() {
       h("nav", null, h("a", { href: "#/", class: "button" }, icon("storefront"), h("span", null, "Browse the directory"))));
   }
   const r = restaurantById(state.basket.rid);
+  if (r && !r.menu && !r.problem) { show("basket", "Basket", pageTitle("Basket"), h("p", { class: "muted" }, "Loading…")); ensureMenu(r).then(() => route()); return; }
   if (!r || !r.menu) {
     return show("basket", "Basket", pageTitle("Basket"), notice("warn", h("p", { class: "flush" }, "The business for this basket is not available. " + (r && r.problem ? r.problem : ""))),
       h("button", { type: "button", class: "border", on: { click: () => { state.basket = null; saveBasket(); viewBasket(); } } }, "Empty basket"));
@@ -766,6 +795,7 @@ function viewBasket() {
 
   const saved = store.get("hana.me", { name: "", address: "" });
   const name = h("input", { type: "text", id: "name", value: saved.name, autocomplete: "off", maxlength: 60, placeholder: " " });
+  const phone = h("input", { type: "tel", id: "phone", value: saved.phone || "", autocomplete: "off", maxlength: 14, inputmode: "tel", placeholder: " " });
   const address = h("textarea", { id: "address", rows: 3, maxlength: 300, placeholder: " " }, saved.address);
   const note = h("input", { type: "text", id: "note", maxlength: 200, autocomplete: "off", placeholder: " ", value: (state.basket && state.basket.note) || "" });
   const remember = h("input", { type: "checkbox", id: "remember", checked: !!saved.name });
@@ -794,7 +824,7 @@ function viewBasket() {
   const anyPreferred = channels.some((x) => x.preferred);
   const channelRadios = channels.map((c, i) => h("label", { class: "radio" },
     h("input", { type: "radio", name: "channel", value: String(i), checked: c.preferred || (i === 0 && !anyPreferred) }),
-    h("span", null, CHANNELS[c.app].label + (c.app === "endpoint" ? " (" + contactText(c.app, c.id) + ")" : " · " + contactText(c.app, c.id)))));
+    h("span", null, CHANNELS[c.app].label + (c.app === "hana" ? "" : c.app === "endpoint" ? " (" + contactText(c.app, c.id) + ")" : " · " + contactText(c.app, c.id)))));
 
   const form = h("form", { novalidate: true, on: { submit: async (e) => {
     e.preventDefault();
@@ -803,6 +833,10 @@ function viewBasket() {
     if (b.mode === "delivery" && !b.zone) errors.push("Choose your zone.");
     if (b.mode === "delivery" && b.zone && !z) errors.push("This business does not deliver to your zone.");
     if (!name.value.trim()) errors.push("Enter a first name or nickname.");
+    const chosen = channels[Number((form.querySelector("input[name=channel]:checked") || { value: 0 }).value)];
+    const ph = phone.value.replace(/[\s-]/g, "").replace(/^0/, "+880").replace(/^880/, "+880");
+    if (chosen && chosen.app === "hana" && !/^\+8801\d{9}$/.test(ph)) errors.push("Enter your mobile number in the format 01XXXXXXXXX, so the business and its rider can reach you.");
+    if (chosen && chosen.app === "hana" && state.offline && state.offline.has(r.id)) errors.push("This business is temporarily unavailable. Please try again shortly.");
     if (b.mode === "delivery" && !address.value.trim()) errors.push("Enter an address or landmark.");
     if (!channels.length) errors.push("This listing has no way to send a written order.");
     if (os.closed && !os.canOrder) errors.push("This business is closed and does not take scheduled orders.");
@@ -811,13 +845,17 @@ function viewBasket() {
     if (waiting.some((x) => x.restaurant_id === r.id)) errors.push("You already have an order waiting for this business's reply. Wait for it, or cancel it on the Orders page.");
     else if (waiting.length >= 3) errors.push("You have three orders waiting for replies. Wait for them, or cancel one, before placing another.");
     if (errors.length) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, errors.join(" ")))); return; }
-    store.set("hana.me", remember.checked ? { name: name.value.trim(), address: address.value.trim() } : { name: "", address: "" });
+    store.set("hana.me", remember.checked ? { name: name.value.trim(), address: address.value.trim(), phone: phone.value.trim() } : { name: "", address: "", phone: "" });
     const scheduled = when.value || null;
-    const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), address: address.value.trim(), note: note.value.trim(), scheduled });
+    const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), phone: /^\+8801\d{9}$/.test(ph) ? ph : "", address: address.value.trim(), note: note.value.trim(), scheduled });
     const c = channels[Number((form.querySelector("input[name=channel]:checked") || { value: 0 }).value)];
     const ch = CHANNELS[c.app];
     let sentDirect = false, directError = "";
-    if (ch.direct) {
+    let sealedInfo = null;
+    if (c.app === "hana") {
+      try { sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code }); await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; } catch (err) { directError = err.message; }
+      if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent in Hana. " + directError + " Choose another way to send it."))); return; }
+    } else if (ch.direct) {
       try { await sendDirect(c.id, o.message); sentDirect = true; } catch (err) { directError = err.message; }
       if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent directly. " + directError + " Choose another way to send it."))); return; }
     }
@@ -830,7 +868,8 @@ function viewBasket() {
       menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
       items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price })), subtotal: o.sub, fee: o.fee,
       message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
-      window_start: windowStart, scheduled, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
+      window_start: windowStart, scheduled, business_phone: menu.business_phone,
+      order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
       arrive_at: b.mode === "pickup" ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
       feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
@@ -856,6 +895,7 @@ function viewBasket() {
     modeRadios,
     deliveryBox,
     textField("name", "First name or nickname", name),
+    textField("phone", "Mobile number (needed for orders sent in Hana)", phone),
     textField("note", "Note for the business (optional)", note),
     h("p", { class: "small-text bold" }, "Send the order by"),
     h("nav", { class: "vertical left-align" }, channelRadios),
@@ -930,6 +970,8 @@ function complaintText(o) {
     "Confirmation by the business: " + (STATUS_TEXT[o.status] || [o.status])[0],
     "Confirmation received: " + dateTime(o.confirmed_at), "Confirmation text: " + o.confirmation,
     "Menu version: " + o.menu_version, "Menu file SHA-256: " + o.menu_hash,
+    ...(o.progress || []).map((p) => "Update " + dateTime(p.at) + ": " + (p.text || p.step) + (p.rider ? " (rider " + p.rider.name + ", " + p.rider.phone + ")" : "")),
+    ...(o.chat || []).map((m) => "Message " + dateTime(m.at) + " from the " + (m.from === "c" ? "customer" : "business") + ": " + m.text),
     "Items: " + o.items.map((i) => i.qty + " × " + (i.label || i.key)).join("; "),
     "Items subtotal: " + money(o.subtotal) + (o.items.some((i) => i.price === null || i.price === undefined) ? " (some prices not listed)" : ""), "Delivery fee: " + (o.mode === "pickup" ? "none (pickup)" : o.fee === null ? "not stated" : money(o.fee)),
     "", "Message sent to the business:", o.message || o.kitchen_message, "",
@@ -961,13 +1003,30 @@ function orderCard(o, orders) {
   if (o.arrive_at && (o.status === "awaiting" || o.status.startsWith("confirmed"))) {
     kids.push(h("p", { class: "small-text bold" }, (o.scheduled ? "Scheduled for " : "Estimated arrival: about ") + clockAt(new Date(o.arrive_at)) + (new Date(o.arrive_at).toDateString() !== new Date().toDateString() ? ", " + longDate(o.arrive_at.slice(0, 10)) : "") + "."));
   }
-  const cancelOpen = o.status === "awaiting" || (o.status.startsWith("confirmed") && Date.now() < deadline.getTime());
+  if (o.progress && o.progress.length) {
+    const last = o.progress[o.progress.length - 1];
+    kids.push(h("ul", { class: "list border" }, o.progress.map((p) => h("li", null, icon("check_circle"),
+      h("div", { class: "max" }, h("div", null, p.text || p.step), h("div", { class: "small-text muted" }, dateTime(p.at) + (p.rider ? " · Rider " + p.rider.name + ", " + p.rider.phone : "")))))));
+    if (last.rider && last.step === "out") kids.push(h("nav", null, h("a", { href: "tel:" + last.rider.phone, class: "button border" }, icon("call"), h("span", null, "Call the rider"))));
+  }
+  const chatOpen = o.channel === "hana" && o.order_topic && (o.status === "awaiting" || o.status.startsWith("confirmed")) && !(o.progress || []).some((p) => p.step === "delivered" || p.step === "picked");
+  if (chatOpen || (o.chat && o.chat.length)) {
+    kids.push(h("details", { class: "info-list", open: !!(o.chat && o.chat.length) }, h("summary", { class: "row" }, icon("chat"), h("span", { class: "max" }, "Messages with the business" + (o.chat && o.chat.length ? " (" + o.chat.length + ")" : "")), icon("expand_more")),
+      chatOpen ? chatBox(o.chat, "c", ["Where is my order?", "Please call me.", "I am at the gate."], async (text) => {
+        try { await postSealed(o.order_topic, o.order_key, { from: "c", t: "chat", text }); } catch (e) { snackbar("Could not send. Check your connection."); return; }
+        o.chat = (o.chat || []).concat({ from: "c", text, at: new Date().toISOString() }); save(); viewOrders();
+      }) : h("ul", { class: "list border" }, o.chat.map((m) => h("li", null, h("div", { class: "max" }, (m.from === "c" ? "You: " : "Business: ") + m.text))))));
+  }
+  const phoneOf = o.business_phone || ((restaurantById(o.restaurant_id) || {}).lite || {}).business_phone;
+  if (phoneOf && o.status !== "cancelled" && o.status !== "expired") kids.push(h("nav", null, h("a", { href: "tel:" + phoneOf, class: "button border" }, icon("call"), h("span", null, "Call the business"))));
+  const cancelOpen = o.status === "awaiting" || (o.status.startsWith("confirmed") && Date.now() < deadline.getTime() && !(o.progress || []).some((p) => p.step === "out" || p.step === "delivered" || p.step === "picked"));
   const cancelButton = cancelOpen ? h("button", { type: "button", class: "border", on: { click: async () => {
     const ch = CHANNELS[o.channel];
     const how = ch && ch.direct ? "The cancellation is sent to the business automatically." : "Your messaging app opens with the cancellation filled in; send it in the same chat as the order.";
     if (!(await ask("Cancel order " + o.code + "?", "You can cancel within " + win + " minutes of ordering. " + how, "Cancel order"))) return;
     const text = "Please cancel order " + o.code + ". I no longer want it.\nCANCEL " + o.code;
-    if (ch && ch.direct) { try { await sendDirect(o.channel_id, text); snackbar("Cancellation sent to the business."); } catch (e) { copy(text); snackbar("Could not send it directly. The cancellation was copied; send it to the business."); } }
+    if (o.channel === "hana" && o.order_topic) { try { await postSealed(o.order_topic, o.order_key, { from: "c", t: "cancel", code: o.code }); snackbar("Cancellation sent to the business."); } catch (e) { snackbar("Could not send the cancellation. Check your connection and try again."); return; } }
+    else if (ch && ch.direct) { try { await sendDirect(o.channel_id, text); snackbar("Cancellation sent to the business."); } catch (e) { copy(text); snackbar("Could not send it directly. The cancellation was copied; send it to the business."); } }
     else if (ch && o.channel_id) { if (!ch.prefill) copy(text); window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener"); }
     else copy(text);
     o.status = "cancelled";
@@ -983,9 +1042,9 @@ function orderCard(o, orders) {
       o.status === "awaiting"
         ? h("p", { class: "small-text" }, "The business must confirm by " + clock(String(deadline.getHours()).padStart(2, "0") + ":" + String(deadline.getMinutes()).padStart(2, "0")) + " (" + left + (left === 1 ? " minute" : " minutes") + " left). If it does not, this order is cancelled automatically.")
         : h("p", { class: "small-text" }, "No confirmation arrived within " + win + " minutes, so this order was cancelled. If the business did confirm in time, paste its reply below. This record is removed after " + state.rules.draft_order_expiry_hours + " hours."),
-      textField("reply-" + o.code, "Business's reply", reply),
+      o.channel === "hana" ? h("p", { class: "small-text muted" }, "The business's reply arrives here by itself while Hana is open.") : textField("reply-" + o.code, "Business's reply", reply),
       h("nav", { class: "wrap" },
-        h("button", { type: "button", on: { click: async () => {
+        o.channel === "hana" ? null : h("button", { type: "button", on: { click: async () => {
           const res = await readConfirmation(reply.value, o, o.public_key, win);
           if (res.error) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, res.error))); return; }
           o.status = res.status === "declined" ? "declined" : "confirmed_" + res.status;
@@ -997,7 +1056,7 @@ function orderCard(o, orders) {
           log("Order " + o.code + ": " + STATUS_TEXT[o.status][0] + ".");
           viewOrders();
         } } }, icon("check_circle"), h("span", null, "Save the reply")),
-        o.status === "awaiting" ? h("button", { type: "button", class: "border", on: { click: reminder } }, icon("send"), h("span", null, "Send a reminder")) : null,
+        o.status === "awaiting" && o.channel !== "hana" ? h("button", { type: "button", class: "border", on: { click: reminder } }, icon("send"), h("span", null, "Send a reminder")) : null,
         o.status === "awaiting" ? cancelButton : null),
       out);
   } else if (o.status === "declined" || o.status === "cancelled") {
@@ -1041,11 +1100,32 @@ async function pollFeeds() {
       }
     } catch (e) { /* the feed is unreachable; try again later */ }
   }
-  if (changed) { store.set("hana.orders", orders); if (location.hash === "#/orders") viewOrders(); snackbar("An order was confirmed."); }
+  /* Orders sent in Hana: replies arrive sealed on the order's own topic. */
+  let note = "";
+  for (const o of orders.filter((x) => x.order_topic && x.order_key && (x.status === "awaiting" || x.status.startsWith("confirmed")))) {
+    try {
+      for (const m of await readSealed(o.order_topic, o.order_key, "24h")) {
+        if (m.from !== "b" || (o.seen_msgs || []).includes(m.id)) continue;
+        o.seen_msgs = (o.seen_msgs || []).concat(m.id).slice(-200);
+        if (m.t === "confirm" && o.status === "awaiting") {
+          const res = await readConfirmation(m.line || "", o, o.public_key, win);
+          if (!res.error) { Object.assign(o, { status: res.status === "declined" ? "declined" : "confirmed_" + res.status, confirmation: res.line, eta: res.eta, confirmed_at: new Date().toISOString(), confirmed_minute: res.minute }); note = "Your order was confirmed."; }
+        } else if (m.t === "decline" && o.status === "awaiting") {
+          Object.assign(o, { status: "declined", closed_at: new Date().toISOString() }); note = "The business declined your order.";
+        } else if (m.t === "status") {
+          o.progress = (o.progress || []).concat({ step: m.step, at: m.at, text: m.text || "", rider: m.rider || null }); note = "Order update: " + (m.text || m.step) + ".";
+        } else if (m.t === "chat") {
+          o.chat = (o.chat || []).concat({ from: "b", text: String(m.text || "").slice(0, 500), at: m.at }); note = "New message from the business.";
+        } else continue;
+        changed = true;
+      }
+    } catch (e) { /* offline; try again later */ }
+  }
+  if (changed) { store.set("hana.orders", orders); if (location.hash === "#/orders") viewOrders(); snackbar(note || "An order was confirmed."); }
 }
 function startFeedPolling() {
   clearInterval(feedTimer);
-  feedTimer = setInterval(() => { if (document.visibilityState === "visible") pollFeeds(); }, 30000);
+  feedTimer = setInterval(() => { if (document.visibilityState === "visible") pollFeeds(); }, 15000);
   pollFeeds();
 }
 
@@ -1152,7 +1232,7 @@ function viewAbout() {
       "Payment is on delivery only, and prices include all charges. Prepayment is never allowed.",
     ].map((x) => h("li", null, x))),
     sectionTitle("Privacy"),
-    h("p", null, "Your area, basket, name, address and orders stay on this phone. Hana has no server and sends no information about you. You can download or delete all of it from the Orders page."),
+    h("p", null, "Your area, basket, name, address and orders stay on this phone. Hana has no server. An order sent in Hana is encrypted on this phone so that only the business can read it; the relay service that carries it sees only encrypted text. You can download or delete all of it in Settings."),
     sectionTitle("Terms and disputes"),
     h("p", null, "Hana is a directory and an order-preparation tool. Each order is a contract between the customer and the business alone; Hamid Yasir & Co. and the Hana Community are not parties to it and do not handle payments, food or deliveries. Disputes are for the parties and the competent authorities, starting with the Directorate of National Consumer Rights Protection (16121)."),
     h("nav", null, h("a", { href: "#/terms", class: "button border" }, h("span", null, "Read the Terms of Use"))),
@@ -1308,8 +1388,7 @@ function downloadOptions() {
 
 function chosenListings(o) {
   return state.restaurants.filter((r) => {
-    const m = r.menu;
-    if (!m) return false;
+    const m = r.lite;
     if (o.type !== "all" && (o.type === "grocery") !== isGrocery(m)) return false;
     if (o.zone && !zoneFor(m, o.zone)) return false;
     if (o.cat && !(r.cats && r.cats.has(o.cat))) return false;
@@ -1319,14 +1398,14 @@ function chosenListings(o) {
 
 /* One listing as plain data, with only the parts asked for. */
 function listingRecord(r, parts) {
-  const m = r.menu, has = (p) => parts.includes(p);
+  const m = r.menu || r.lite, has = (p) => parts.includes(p);
   const out = { id: r.id, name: m.name, handle: m.handle || undefined, kind: m.kind || "Restaurant", type: isGrocery(m) ? "grocery" : "food", zone: locatedIn(m), claimed: m.claimed !== false };
   if (has("contact")) Object.assign(out, { business_phone: m.business_phone, contact: m.contact || [], url: listingUrl(m) || undefined });
   if (has("address")) out.address = m.address;
   if (has("cuisine")) out.cuisine = (FOOD_BY_KEY[cuisineKey(m)] || [0, null])[1];
   if (has("hours")) Object.assign(out, { hours: m.hours || null, hours_text: hoursSummary(m.hours), scheduled_orders: m.scheduled_orders === true });
   if (has("delivery")) Object.assign(out, { pickup: m.pickup !== false, delivery: ((m.delivery && m.delivery.zones) || []).map((z) => ({ id: z.id, areas: zoneLabel(z), fee: z.fee, min_order: z.min_order, eta_min: z.eta_min })) });
-  if (has("menu")) out.items = priceLines(m).map((l) => ({ key: l.key, name: l.item.name, option: l.option || undefined, section: l.item.section, category: l.item.category, price: l.price }));
+  if (has("menu") && r.menu) out.items = priceLines(m).map((l) => ({ key: l.key, name: l.item.name, option: l.option || undefined, section: l.item.section, category: l.item.category, price: l.price }));
   return out;
 }
 
@@ -1352,8 +1431,9 @@ async function downloadPhoneBook(o) {
     }
     const has = (p) => o.parts.includes(p);
     const today = longDate(new Date().toISOString().slice(0, 10));
+    if (has("menu")) await ensureMenus(chosenListings(o));
     const entries = chosenListings(o).map((r) => {
-      const m = r.menu;
+      const m = r.menu || r.lite;
       const lines = [{ text: (m.handle ? "@" + m.handle + " · " : "") + (m.kind || "Restaurant") + " · " + locatedIn(m) + (has("cuisine") && FOOD_BY_KEY[cuisineKey(m)] ? " · " + FOOD_BY_KEY[cuisineKey(m)][1] : "") }];
       if (has("contact")) {
         lines.push({ text: "Phone: " + m.business_phone, weight: "bold" });
@@ -1368,7 +1448,7 @@ async function downloadPhoneBook(o) {
       }
       if (m.claimed === false) lines.push({ text: "Not confirmed by the business." + (has("menu") ? " Prices are as printed and may have changed." : ""), weight: "italic" });
       const secs = new Map();
-      if (has("menu")) for (const l of priceLines(m)) {
+      if (has("menu") && r.menu) for (const l of priceLines(m)) {
         const sec = l.item.section || "Menu";
         if (!secs.has(sec)) secs.set(sec, []);
         secs.get(sec).push({ name: l.option ? l.item.name + ", " + l.option : l.item.name, price: priceOrAsk(l.price) });
@@ -1426,6 +1506,7 @@ function viewDownload() {
       const n = read();
       store.set("hana.download", n);
       if (n.format === "json") {
+        if (n.parts.includes("menu")) { snackbar("Loading menus…"); await ensureMenus(chosenListings(n)); }
         const data = directoryData(n);
         if (!data.listings.length) { snackbar("No business matches these choices."); return; }
         downloadText("hana-directory.json", JSON.stringify(data, null, 2), "application/json");
@@ -1453,7 +1534,7 @@ function route() {
   const hash = location.hash || "#/";
   if (hash.startsWith("#/order?")) return openOrderLink(hash.slice(8));
   const hm = hash.match(/^#\/@([a-z0-9]{3,30})$/);
-  if (hm) { const r = state.restaurants.find((x) => x.menu && x.menu.handle === hm[1]); return r ? viewRestaurant(r.id) : show("list", "Not found", pageHeader("No listing is called @" + hm[1], "#/")); }
+  if (hm) { const r = state.restaurants.find((x) => x.lite.handle === hm[1]); return r ? viewRestaurant(r.id) : show("list", "Not found", pageHeader("No listing is called @" + hm[1], "#/")); }
   const own = document.querySelector('meta[name="hana-listing"]');
   if (own && (hash === "#/" || hash === "")) return viewRestaurant(own.content);
   if (hash === "#/download") return viewDownload();
@@ -1474,6 +1555,7 @@ function route() {
 async function openOrderLink(query) {
   const p = new URLSearchParams(query);
   const r = restaurantById(p.get("r") || "");
+  await ensureMenu(r);
   if (!r || !r.menu) { snackbar("That order link names a listing that is not in the directory."); location.replace("#/"); return; }
   const valid = new Set(priceLines(r.menu).map((l) => l.key));
   const lines = {};

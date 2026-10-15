@@ -48,6 +48,10 @@ https://hmdrysr.github.io/hana/#/order?r=<listing id>&items=<item key>*<quantity
 
 Item keys are an item's `id`, or `id.option-id` for an item with sizes or options. Use `mode=pickup` (and no zone) for pickup. An optional `note=` adds a note for the business.
 
+## Orders sent in Hana
+
+Listings with `"direct"` take orders in the Hana app itself, encrypted for the business. An assistant should give the customer an app link (above): the customer adds their mobile number and taps Send, and the business's reply appears in the app.
+
 ## Sending directly
 
 If a listing has a contact with `"app": "endpoint"`, the business accepts orders by HTTPS POST of the message as plain text to that address. `place_order.py ... --send` does this, after the customer has approved the order. For every other channel, the message is sent from the customer's own messaging app.

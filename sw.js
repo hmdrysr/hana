@@ -7,8 +7,8 @@
      which this worker never touches, so updates never remove it. */
 "use strict";
 const CACHE = "hana-shell";
-const SHELL = ["./", "index.html", "core.js", "app.js", "business.html", "business.js", "pos.js", "phonebook.js", "logo.svg", "rules.json", "site.json",
-  "TERMS.md", "regions.json", "icon.svg", "favicon-32.png", "apple-touch-icon.png", "icons/food.svg", "icon-192.png", "manifest.webmanifest", "areas.json", "index.json",
+const SHELL = ["./", "index.html", "core.js", "direct.js", "app.js", "business.html", "business.js", "pos.js", "phonebook.js", "logo.svg", "rules.json", "site.json",
+  "TERMS.md", "regions.json", "icon.svg", "favicon-32.png", "apple-touch-icon.png", "icons/food.svg", "icon-192.png", "manifest.webmanifest", "areas.json", "index.json", "list.json",
   "theme/beer.min.css", "theme/theme.css", "theme/material-symbols-subset.woff2"];
 
 self.addEventListener("install", (e) => {
@@ -44,5 +44,19 @@ self.addEventListener("fetch", (e) => {
     const timer = setTimeout(() => saved().then(finish), 2500);
     fresh.then((r) => { clearTimeout(timer); finish(r); })
       .catch(() => { clearTimeout(timer); saved().then((r) => { finish(r); if (!done) { done = true; resolve(Response.error()); } }); });
+  }));
+});
+
+/* Alerts for businesses while their tools are closed (pushed by ntfy; the order itself stays
+   encrypted and is opened in the business tools). */
+self.addEventListener("push", (e) => {
+  e.waitUntil(self.registration.showNotification("New Hana order", {
+    body: "Open the business tools to confirm it within 15 minutes.", icon: "icon-192.png", badge: "favicon-32.png", tag: "hana-order", renotify: true }));
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window" }).then((list) => {
+    const open = list.find((c) => c.url.includes("business.html"));
+    return open ? open.focus() : self.clients.openWindow("business.html#/confirm");
   }));
 });

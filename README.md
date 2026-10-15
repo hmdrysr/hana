@@ -73,6 +73,8 @@ In the app, Settings, then Download the directory, saves the directory as JSON o
 
 ## For businesses
 
+Businesses can take orders in Hana itself: customers send them from the app, encrypted so that only the business can read them, and the business confirms, updates and messages the customer with one tap. It uses ntfy, a free relay that needs no account. See `SPEC.md`, section 21.
+
 The business tools (business.html) let a business confirm orders, edit its menu and publish signed updates. Optional tools, under More, add a point of sale with standard receipts and statements, rider dispatch, and encrypted backups to the business's own Supabase or CouchDB. Only the menu and the listing are ever published; everything else stays on the business's device or goes only where it sends it. See `SPEC.md`, section 18.
 
 ## Hosting a copy

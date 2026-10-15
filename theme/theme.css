@@ -1167,3 +1167,11 @@ ul.more-list > li > a {
 .stack > hr {
   margin: 0;
 }
+
+/* ---------- Order chat ---------- */
+ul.chat-list > li.chat-mine {
+  background-color: var(--secondary-container);
+}
+ul.chat-list > li {
+  border-radius: 0.75rem;
+}

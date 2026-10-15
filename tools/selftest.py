@@ -121,7 +121,10 @@ def run_check(repo, extra=None):
         sys.path.insert(0, str(HERE))
         import build_feed
         import build_pages
+        import build_list
+        shutil.copy(ROOT / "core.js", repo.root / "core.js")
         (repo.root / "feed.xml").write_text(build_feed.build(repo.root), encoding="utf-8")
+        build_list.write(repo.root)
         build_pages.write(repo.root)
     except Exception:
         pass

@@ -141,7 +141,13 @@ async function createKey() {
   const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
   const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
   const pub = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
-  return { jwk: { kty: "OKP", crv: "Ed25519", d: jwk.d, x: jwk.x }, publicRaw: pub, publicB64: b64u(pub), id: await keyId(pub) };
+  return { jwk: { kty: "OKP", crv: "Ed25519", d: jwk.d, x: jwk.x }, publicRaw: pub, publicB64: b64u(pub), id: await keyId(pub), enc: await createEncKey() };
+}
+/* The encryption key (P-256) that customers' apps use to seal orders sent in Hana. */
+async function createEncKey() {
+  const p = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const priv = await crypto.subtle.exportKey("jwk", p.privateKey);
+  return { priv: { kty: "EC", crv: "P-256", d: priv.d, x: priv.x, y: priv.y }, pub: { kty: "EC", crv: "P-256", x: priv.x, y: priv.y } };
 }
 
 async function loadKey(bytes) {
@@ -149,7 +155,8 @@ async function loadKey(bytes) {
   const jwk = data.jwk || data;
   if (jwk.kty !== "OKP" || jwk.crv !== "Ed25519" || !jwk.d || !jwk.x) throw new Error("This is not a Hana key file.");
   const pub = unb64u(jwk.x);
-  return { jwk: { kty: "OKP", crv: "Ed25519", d: jwk.d, x: jwk.x }, publicRaw: pub, publicB64: jwk.x, id: await keyId(pub) };
+  const enc = data.enc && data.enc.priv && data.enc.pub ? data.enc : await createEncKey();
+  return { jwk: { kty: "OKP", crv: "Ed25519", d: jwk.d, x: jwk.x }, publicRaw: pub, publicB64: jwk.x, id: await keyId(pub), enc, encAdded: !data.enc };
 }
 
 async function signBytes(key, bytes) {
@@ -164,7 +171,7 @@ async function signMenu(menu, key) {
 }
 
 function keyFileText(key) {
-  return JSON.stringify({ about: "Hana business key. Keep this file private and keep a backup. Anyone with it can sign as your business. Hana never asks for it.", key_id: key.id, created: new Date().toISOString(), jwk: key.jwk }, null, 2) + "\n";
+  return JSON.stringify({ about: "Hana business key. Keep this file private and keep a backup. Anyone with it can sign as your business. Hana never asks for it.", key_id: key.id, created: new Date().toISOString(), jwk: key.jwk, enc: key.enc }, null, 2) + "\n";
 }
 
 function keyBox(onReady) {
@@ -172,7 +179,8 @@ function keyBox(onReady) {
   const file = h("input", { type: "file", id: "keyfile", accept: ".json,application/json", hidden: true, on: { change: async () => {
     try {
       B.key = await loadKey(await readFile(file));
-      status.textContent = "Key loaded: " + B.key.id + ".";
+      status.textContent = "Key loaded: " + B.key.id + "." + (B.key.encAdded ? " An encryption key for orders sent in Hana was added, and your updated key file was downloaded. Keep it instead of the old one." : "");
+      if (B.key.encAdded) download("hana-key-" + B.key.id + ".json", keyFileText(B.key));
       await remember();
       if (onReady) onReady();
     } catch (e) { status.textContent = e.message; }
@@ -716,7 +724,7 @@ function decodeOrder(text, versions) {
 }
 
 /* The check, the decoded order and the reply, for one order message. */
-async function orderPanel(text, found, onDone) {
+async function orderPanel(text, found, onDone, direct) {
   const cancel = CANCEL_LINE.exec(text || "");
   if (cancel && !CHECK_LINE.test(text)) return notice("warn", h("p", { class: "flush" }, "This is a cancellation: the customer cancelled order " + cancel[1] + ". Do not prepare it."));
   const d = decodeOrder(text, found.versions);
@@ -730,10 +738,15 @@ async function orderPanel(text, found, onDone) {
   const finish = async (textOut, label) => {
     reply.hidden = false;
     reply.textContent = textOut;
-    if (feed && (/S=[A-Za-z0-9_-]{86}/.test(textOut) || /^DECLINED/m.test(textOut))) {
+    if (direct) {
+      try {
+        await postSealed(direct.reply, direct.keyRaw, { from: "b", t: /^DECLINED/m.test(textOut) ? "decline" : "confirm", line: textOut });
+        snackbar(label + ". The customer's app shows it now.");
+      } catch (err) { snackbar("Could not reach the customer's app: " + err.message + " Try again."); return; }
+    } else if (feed && (/S=[A-Za-z0-9_-]{86}/.test(textOut) || /^DECLINED/m.test(textOut))) {
       try { await sendDirect(feed, textOut); snackbar(label + " and published. The customer's phone will pick it up."); } catch (err) { snackbar("Could not publish: " + err.message); }
     } else snackbar(label + ". Copy the reply and send it in the customer's chat.");
-    if (onDone) onDone();
+    if (onDone) onDone(label, /^\d{1,3}$/.test(eta.value) ? Number(eta.value) : null);
   };
   const confirm = async () => {
     const e = /^\d{1,3}$/.test(eta.value) ? eta.value : "?";
@@ -756,7 +769,7 @@ async function orderPanel(text, found, onDone) {
     h("ul", { class: "list border" }, d.lines.map((l) => h("li", null, h("div", { class: "max" }, l.qty + " × " + l.label), h("span", { class: "price" }, l.total === null ? "Price not listed" : money(l.total)))),
       h("li", null, h("div", { class: "max bold" }, "Items"), h("span", { class: "price bold" }, money(d.sub))),
       h("li", null, h("div", { class: "max" }, d.zone === "pickup" ? "Pickup" : "Delivery fee (" + areaName(d.zone) + ")"), h("span", { class: "price" }, d.fee === "?" ? "Not stated" : money(d.fee)))),
-    textField("eta-" + d.code, "Minutes until delivery or pickup (optional)", eta),
+    textField("eta-" + d.code, direct ? "Preparation time in minutes (you are reminded when it runs out)" : "Minutes until delivery or pickup (optional)", eta),
     owner && !B.key ? h("p", { class: "small-text muted" }, "Load your key under Connections to sign the confirmation.") : null,
     !owner ? h("p", { class: "small-text muted" }, "This listing has no key yet, so the confirmation is not signed. Claim the listing to sign confirmations.") : null,
     h("nav", { class: "wrap" },
@@ -767,10 +780,101 @@ async function orderPanel(text, found, onDone) {
     reply);
 }
 
+/* The steps of an accepted order sent in Hana. Each step reaches the customer's app at once. */
+const STEP_TEXT = { accepted: "Accepted, being prepared", ready: "Ready", out: "Out for delivery", delivered: "Delivered", picked: "Picked up" };
+function progressPanel(o, redraw) {
+  const pickup = /Z=pickup /.test(o.text);
+  const send = async (step, extra) => {
+    try {
+      await postSealed(o.reply, o.keyRaw, Object.assign({ from: "b", t: "status", step, text: STEP_TEXT[step] }, extra || {}));
+      const l = inboxOrders(); const x = l.find((y) => y.id === o.id);
+      if (x) { x.step = step; if (step === "delivered" || step === "picked") x.status = "done"; if (extra && extra.rider) x.rider = extra.rider; saveInbox(l); }
+      snackbar(STEP_TEXT[step] + ". The customer's app shows it now.");
+      redraw();
+    } catch (e) { snackbar("Could not reach the customer's app. Check your connection and try again."); }
+  };
+  const step = o.step || "accepted";
+  const kids = [h("p", { class: "flush" }, "Now: " + STEP_TEXT[step] + (o.rider ? " (rider " + o.rider.name + ", " + o.rider.phone + ")" : "") + ".")];
+  if (o.prep && step === "accepted") kids.push(h("p", { class: "small-text muted flush" }, "Preparation time: " + o.prep + " minutes, until about " + clock(new Date(o.accepted_at + o.prep * 60000).toTimeString().slice(0, 5)) + "."));
+  if (step === "accepted") kids.push(h("nav", null, h("button", { type: "button", on: { click: () => send("ready") } }, icon("check_circle"), h("span", null, pickup ? "Ready for pickup" : "Ready"))));
+  if (!pickup && (step === "accepted" || step === "ready")) {
+    const rn = input("rn-" + o.id, { maxlength: 40 }), rp = input("rp-" + o.id, { inputmode: "tel", maxlength: 14 });
+    kids.push(h("div", { class: "field-row" }, textField("rn-" + o.id, "Rider's name", rn), textField("rp-" + o.id, "Rider's mobile", rp)),
+      h("nav", null, h("button", { type: "button", class: step === "ready" ? "" : "border", on: { click: () => {
+        const phone = rp.value.replace(/[\s-]/g, "").replace(/^0/, "+880");
+        if (!rn.value.trim() || !/^\+8801\d{9}$/.test(phone)) { snackbar("Enter the rider's name and mobile number before sending the order out."); return; }
+        send("out", { rider: { name: rn.value.trim().slice(0, 40), phone } });
+      } } }, icon("moped"), h("span", null, "Out for delivery"))));
+  }
+  if (step === "out" || (pickup && step === "ready")) kids.push(h("nav", null, h("button", { type: "button", on: { click: () => send(pickup ? "picked" : "delivered") } }, icon("check_circle"), h("span", null, pickup ? "Picked up and paid" : "Delivered and paid"))));
+  return h("div", { class: "order-panel" }, kids);
+}
+
+function bizChat(o, redraw) {
+  return h("div", { class: "stack" }, sectionTitle("Messages with the customer"),
+    chatBox(o.chat, "b", ["Running about 10 minutes late.", "The rider is outside.", "We cannot find the address. Please call us."], async (text) => {
+      try { await postSealed(o.reply, o.keyRaw, { from: "b", t: "chat", text }); } catch (e) { snackbar("Could not send. Check your connection."); return; }
+      const l = inboxOrders(); const x = l.find((y) => y.id === o.id);
+      if (x) { x.chat = (x.chat || []).concat({ from: "b", text, at: new Date().toISOString() }); saveInbox(l); }
+      redraw();
+    }));
+}
+
+/* Orders that reached this device, kept for 24 hours: { id, time, code, text, reply, keyRaw, status }. */
+function inboxOrders() { const cut = Date.now() / 1000 - 86400; return store.get("hana.biz.inbox", []).filter((o) => o.time > cut); }
+function saveInbox(list) { store.set("hana.biz.inbox", list.slice(0, 100)); }
+
+/* A short two-tone alert, made by the browser (no sound file). */
+function chime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [880, 1175].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.25, ctx.currentTime + i * 0.25);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.25 + 0.22);
+      o.start(ctx.currentTime + i * 0.25); o.stop(ctx.currentTime + i * 0.25 + 0.23);
+    });
+  } catch (e) { /* no sound on this device */ }
+}
+
+/* Takes in one ntfy message: a new order (sealed, or plain from an older endpoint), or a
+   customer's follow-up on an order's own topic. Returns true when something changed. */
+async function takeMessage(m) {
+  const list = inboxOrders();
+  const text = m.message || "";
+  if (list.some((o) => o.id === m.id)) return false;
+  if (/^HANA1 /.test(text)) {
+    if (!B.key || !B.key.enc) { snackbar("A new order arrived. Load your key under Connections to open it."); return false; }
+    let opened = null;
+    try { opened = await openOrder(B.key.enc.priv, text); } catch (e) { return false; }
+    if (!opened || !opened.order || !CHECK_LINE.test(opened.order.message || "")) return false;
+    list.unshift({ id: m.id, time: m.time, code: opened.order.code, text: opened.order.message, reply: opened.order.reply, keyRaw: opened.keyRaw, status: "new" });
+  } else if (CHECK_LINE.test(text)) {
+    list.unshift({ id: m.id, time: m.time, code: (/Order ([0-9A-HJKMNP-TV-Z]{6})/.exec(text) || [])[1] || "?", text, status: "new" });
+  } else if (/^HANA1R /.test(text)) {
+    const o = list.find((x) => x.reply && x.reply.endsWith("/" + m.topic));
+    if (!o) return false;
+    let msg = null;
+    try { msg = await dUnseal(await aesFromRaw(o.keyRaw), text.slice(7)); } catch (e) { return false; }
+    if (msg.from !== "c") return false;
+    if (msg.t === "cancel") o.status = "cancelled";
+    else if (msg.t === "chat") o.chat = (o.chat || []).concat({ from: "c", text: String(msg.text || "").slice(0, 500), at: msg.at });
+    else return false;
+  } else {
+    const cancel = CANCEL_LINE.exec(text);
+    const o = cancel && list.find((x) => x.code === cancel[1]);
+    if (!o) return false;
+    o.status = "cancelled";
+  }
+  saveInbox(list);
+  return true;
+}
+
 function viewConfirm() {
   const c = conn();
   const out = h("div", { "aria-live": "polite" });
-  const inbox = h("div", { "aria-live": "polite" });
+  const inbox = h("div", { class: "stack", "aria-live": "polite" });
   const msg = h("textarea", { id: "order-text", rows: 6, placeholder: " " });
   const phone = () => { try { return localStorage.getItem("hana.biz.phone") || ""; } catch (e) { return ""; } };
   const listing = async () => {
@@ -778,44 +882,117 @@ function viewConfirm() {
     if (!found.error) { try { localStorage.setItem("hana.biz.phone", val("listing-phone")); } catch (e) { /* ignore */ } }
     return found;
   };
-  async function refresh() {
-    if (!c.orders || !document.body.contains(inbox)) return;
-    const found = await listing();
+  let found = null, stop = () => {};
+  async function draw() {
+    if (!document.body.contains(inbox)) { stop(); return; }
+    if (!found || found.error) found = await listing();
     if (found.error) { inbox.replaceChildren(h("p", { class: "small-text muted" }, "Enter your business phone above to see new orders.")); return; }
-    let msgs = [];
-    try { msgs = await inboxFetch(); } catch (e) { inbox.replaceChildren(notice("warn", h("p", { class: "flush" }, e.message))); return; }
-    const handled = store.get("hana.biz.handled", {});
-    const cancelled = new Set(msgs.map((m) => (CANCEL_LINE.exec(m.message) || [])[1]).filter(Boolean));
-    msgs = msgs.filter((m) => CHECK_LINE.test(m.message));
-    if (!msgs.length) { inbox.replaceChildren(h("p", { class: "muted" }, "No orders in the last 12 hours.")); return; }
-    inbox.replaceChildren(...msgs.map((m) => {
-      const code = (/Order ([0-9A-HJKMNP-TV-Z]{6})/.exec(m.message) || [])[1] || "?";
+    const list = inboxOrders();
+    if (!list.length) { inbox.replaceChildren(h("p", { class: "muted" }, "No orders in the last 24 hours. New orders appear here by themselves, with a sound.")); return; }
+    inbox.replaceChildren(...list.map((o) => {
       const body = h("div");
-      const det = h("details", { class: "info-list", open: !handled[m.id] },
-        h("summary", { class: "row" }, icon(handled[m.id] ? "check_circle" : "inbox"), h("span", { class: "max" }, "Order " + code + ", " + clock(new Date(m.time * 1000).toTimeString().slice(0, 5))), icon("expand_more")),
+      const label = o.status === "cancelled" ? "cancelled by the customer" : o.status === "answered" ? "answered" : o.status === "accepted" ? STEP_TEXT[o.step || "accepted"].toLowerCase() : o.status === "done" ? "completed" : "new";
+      const det = h("details", { class: "info-list", open: o.status === "new" },
+        h("summary", { class: "row" }, icon(o.status === "new" ? "inbox" : o.status === "cancelled" ? "close" : "check_circle"),
+          h("span", { class: "max" }, "Order " + o.code + ", " + clock(new Date(o.time * 1000).toTimeString().slice(0, 5)) + " (" + label + ")"), icon("expand_more")),
         body);
-      if (cancelled.has(code)) body.replaceChildren(notice("warn", h("p", { class: "flush" }, "The customer cancelled this order. Do not prepare it.")));
-      else orderPanel(m.message, found, () => { handled[m.id] = true; store.set("hana.biz.handled", handled); }).then((p) => body.replaceChildren(p));
+      if (o.status === "cancelled") body.replaceChildren(notice("warn", h("p", { class: "flush" }, "The customer cancelled this order. Do not prepare it.")));
+      else if (o.reply && (o.status === "accepted" || o.status === "done")) body.replaceChildren(progressPanel(o, draw), bizChat(o, draw));
+      else orderPanel(o.text, found, (label, eta) => {
+        const l = inboxOrders(); const x = l.find((y) => y.id === o.id);
+        if (x) { Object.assign(x, label === "Confirmed" ? { status: "accepted", accepted_at: Date.now(), prep: eta, step: "accepted" } : { status: "answered" }); saveInbox(l); }
+        if (o.reply && label === "Confirmed") setTimeout(draw, 600);
+      }, o.reply ? { reply: o.reply, keyRaw: o.keyRaw } : null).then((p) => body.replaceChildren(p));
       return det;
     }));
   }
+  async function listen() {
+    stop();
+    if (!c.orders) return;
+    const topics = [c.orders].concat(inboxOrders().filter((o) => o.reply && o.status !== "cancelled").map((o) => o.reply)).slice(0, 30);
+    for (const t of topics) { try { for (const m of await ntfyPoll(t, "12h")) await takeMessage(Object.assign({ topic: t.split("/").pop() }, m)); } catch (e) { /* offline */ } }
+    draw();
+    stop = ntfyListen(topics, async (m) => {
+      if (!(await takeMessage(m))) return;
+      const isNew = /^HANA1 |CHECK hana1/.test(m.message || "");
+      if (isNew) {
+        chime();
+        if ("Notification" in window && Notification.permission === "granted") { try { new Notification("New Hana order", { body: "Open Orders to confirm it within 15 minutes.", icon: "icon-192.png" }); } catch (e) { /* ignore */ } }
+        listen();
+      } else draw();
+    });
+  }
   show("confirm", "Orders", pageHeader("Orders", "#/"),
     textField("listing-phone", "Your business phone", input("listing-phone", { inputmode: "tel", maxlength: 14, value: phone() })),
-    c.orders ? [sectionTitle("New orders"), h("nav", null, h("button", { type: "button", class: "border", on: { click: refresh } }, icon("inbox"), h("span", null, "Check for orders"))), inbox]
-      : h("p", { class: "small-text muted" }, "Orders sent directly to your business can appear here by themselves. Set up an order topic under Connections."),
+    c.orders ? [
+      sectionTitle("New orders"),
+      c.paused ? notice("warn", h("p", { class: "flush" }, "New orders are paused. Customers see you as temporarily unavailable. Resume under Connections.")) : null,
+      "Notification" in window && Notification.permission === "default" ? h("nav", null, h("button", { type: "button", class: "border", on: { click: () => Notification.requestPermission().then(() => viewConfirm()) } }, icon("inbox"), h("span", null, "Turn on order alerts"))) : null,
+      inbox]
+      : notice("info", h("p", { class: "flush" }, "Customers can send orders straight to this page, with a sound when one arrives. Set up orders in Hana under Connections.")),
     sectionTitle("Check a pasted order"),
-    h("p", { class: "small-text muted" }, "Paste the customer's whole message from WhatsApp, text message or email. Nothing leaves this device."),
+    h("p", { class: "small-text muted" }, "For orders that came by WhatsApp, text message or email: paste the customer's whole message. Nothing leaves this device."),
     textField("order-text", "Customer's order message", msg),
     h("nav", null, h("button", { type: "button", on: { click: async () => {
-      const found = await listing();
-      out.replaceChildren(found.error ? notice("warn", h("p", { class: "flush" }, found.error)) : await orderPanel(msg.value, found));
+      const f = await listing();
+      out.replaceChildren(f.error ? notice("warn", h("p", { class: "flush" }, f.error)) : await orderPanel(msg.value, f));
     } } }, icon("check_circle"), h("span", null, "Check the order"))),
     out,
-    h("p", { class: "small-text muted" }, "Send each reply in the same chat as the order. Take payment only on delivery or at pickup."));
+    h("p", { class: "small-text muted" }, "Take payment only on delivery or at pickup."));
+  document.getElementById("listing-phone").addEventListener("change", () => { found = null; draw(); });
   if (c.orders) {
-    refresh();
-    const timer = setInterval(() => { if (!document.body.contains(inbox)) clearInterval(timer); else if (document.visibilityState === "visible") refresh(); }, 30000);
+    listen();
+    /* Remind when a preparation time runs out before the order is marked ready. */
+    const timer = setInterval(() => {
+      if (!document.body.contains(inbox)) { clearInterval(timer); return; }
+      const l = inboxOrders();
+      const due = l.filter((o) => o.status === "accepted" && (o.step || "accepted") === "accepted" && o.prep && !o.reminded && Date.now() > o.accepted_at + o.prep * 60000);
+      if (!due.length) return;
+      for (const o of due) o.reminded = true;
+      saveInbox(l);
+      chime();
+      snackbar("Preparation time is up for order " + due.map((o) => o.code).join(", ") + ". Mark it ready, or tell the customer.");
+    }, 60000);
   }
+}
+
+/* Alerts while these tools are closed: ntfy's own browser-push support, subscribed straight
+   from this page (no ntfy app or account). Renewed each time the tools open. */
+async function enablePush(quiet) {
+  const c = conn();
+  try {
+    if (!c.orders) throw new Error("Set up orders in Hana first.");
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("This browser cannot show alerts while Hana is closed. On an iPhone, add Hana to the home screen first.");
+    const base = c.orders.replace(/[^/]+$/, "");
+    const cfg = await (await fetch(base + "config.js", { cache: "no-store" })).text();
+    const key = (/"?web_push_public_key"?\s*:\s*"([A-Za-z0-9_-]+)"/.exec(cfg) || [])[1];
+    if (!key) throw new Error("This ntfy server does not offer browser alerts.");
+    if ((await Notification.requestPermission()) !== "granted") throw new Error("Alerts are blocked in this browser's settings.");
+    const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register("sw.js"));
+    await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(key) }));
+    const j = sub.toJSON();
+    const r = await fetch(base + "v1/webpush", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: j.endpoint, auth: j.keys.auth, p256dh: j.keys.p256dh, topics: [c.orders.split("/").pop()] }) });
+    if (!r.ok) throw new Error("ntfy answered " + r.status + ".");
+    saveConn(Object.assign(conn(), { push: true }));
+    if (!quiet) snackbar("Alerts are on. New orders now show on this device even while Hana is closed.");
+  } catch (e) { if (!quiet) snackbar(e.message); }
+}
+
+/* Presence: while these tools are open and orders are not paused, tell customers' apps that
+   the business is available (SPEC.md, section 21). */
+function presenceBeat(state) {
+  const c = conn();
+  if (!c.orders) return;
+  const word = state || (c.paused ? "offline" : "online");
+  fetch(presenceTopic(c.orders), { method: "POST", body: word, keepalive: true }).catch(() => {});
+}
+function startPresence() {
+  if (!conn().orders) return;
+  presenceBeat();
+  setInterval(() => presenceBeat(), PRESENCE_EVERY_MS);
+  window.addEventListener("pagehide", () => presenceBeat("offline"));
 }
 
 /* ---------------------------------------------------------------- edit the menu (new version) */
@@ -852,6 +1029,7 @@ function viewUpdate() {
     const errors = read.errors.slice();
     next.items = read.items;
     next.pickup = checked("pickup");
+    if (conn().orders && B.key && B.key.enc) next.direct = { topic: conn().orders, enc_key: B.key.enc.pub };
     for (const z of (next.delivery && next.delivery.zones) || []) {
       z.fee = num("zf-" + z.id); z.min_order = num("zm-" + z.id); z.eta_min = num("ze-" + z.id);
       if (isNaN(z.fee) || isNaN(z.min_order) || isNaN(z.eta_min)) errors.push("Enter every delivery fee, minimum order and delivery time as a whole number.");
@@ -860,7 +1038,7 @@ function viewUpdate() {
     if (!B.key) errors.push("Load your key.");
     else if (!next.owner || next.owner.public_key !== B.key.publicB64) errors.push("This key does not belong to this listing.");
     const changes = errors.length ? [] : diffMoney(prev, next);
-    const otherChange = JSON.stringify(prev.items) !== JSON.stringify(next.items) || prev.pickup !== next.pickup;
+    const otherChange = JSON.stringify(prev.items) !== JSON.stringify(next.items) || prev.pickup !== next.pickup || JSON.stringify(prev.direct || null) !== JSON.stringify(next.direct || null);
     if (!errors.length && !changes.length && !otherChange) errors.push("Nothing has changed.");
     if (!val("summary")) errors.push("Write a short public note about the change.");
     if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); out.scrollIntoView({ block: "nearest" }); return; }
@@ -1076,6 +1254,17 @@ function viewConnect() {
   const keyStatus = h("p", { class: "small-text muted" }, B.keyRemembered ? "Your key is kept on this device: " + (B.key && B.key.id) + "." : "Your key is not kept on this device.");
   show("more", "Connections", pageHeader("Connections", "#/more"),
     h("p", { class: "muted" }, "Optional. Everything here is kept on this device only. With these set up, the tools publish your menu and handle orders with one tap. Without them, you download files and upload them yourself."),
+    sectionTitle("Orders sent in Hana"),
+    h("p", { class: "small-text muted" }, "Customers send orders straight to these tools, encrypted so that only you can read them, and your confirmations reach their app at once. It uses ntfy.sh, a free service that needs no account. Keep these tools open while you are open: customers see you as temporarily unavailable when they are closed."),
+    c.orders ? h("p", { class: "small-text" }, "Your order address: " + c.orders) : null,
+    h("nav", { class: "wrap" },
+      h("button", { type: "button", on: { click: () => {
+        const n = conn(); n.orders = randomTopic(); saveConn(n);
+        snackbar("Order address created. Publish a new menu version under Menu to start receiving orders in Hana.");
+        viewConnect();
+      } } }, h("span", null, c.orders ? "Make a new order address" : "Set up orders in Hana")),
+      c.orders ? h("button", { type: "button", class: "border", on: { click: () => { const n = conn(); n.paused = !n.paused; saveConn(n); presenceBeat(); viewConnect(); } } }, h("span", null, c.paused ? "Resume taking orders" : "Pause new orders")) : null,
+      c.orders ? h("button", { type: "button", class: "border", on: { click: () => enablePush(false) } }, icon("inbox"), h("span", null, c.push ? "Renew alerts while closed" : "Alerts while Hana is closed")) : null),
     sectionTitle("Your repository"),
     h("p", { class: "small-text muted" }, "Create a token on your forge that can write to your menu repository only. GitHub: Settings, Developer settings, Fine-grained tokens, with Contents: read and write. Codeberg: Settings, Applications, with repository write access."),
     selectField("c-provider", "Forge", prov),
@@ -1083,14 +1272,10 @@ function viewConnect() {
     textField("c-repo", "Repository, as owner/name", input("c-repo", { value: c.repo || "", placeholder: " " })),
     textField("c-branch", "Branch", input("c-branch", { value: c.branch || "main" })),
     textField("c-token", "Access token", input("c-token", { type: "password", value: c.token || "" })),
-    sectionTitle("Orders"),
-    h("p", { class: "small-text muted" }, "An ntfy topic you control receives orders sent directly from customers' phones (add the same address as your order endpoint in your listing). The Orders page then shows new orders by itself."),
-    textField("c-orders", "Order topic address (https)", input("c-orders", { type: "url", value: c.orders || "" })),
     h("nav", { class: "wrap gap-top" },
       h("button", { type: "button", on: { click: () => {
-        const n = { provider: prov.value, host: val("c-host").replace(/^https?:\/\//, "").replace(/\/.*$/, ""), repo: val("c-repo").replace(/^\/|\/$/g, ""), branch: val("c-branch") || "main", token: val("c-token"), orders: val("c-orders") };
+        const n = Object.assign(conn(), { provider: prov.value, host: val("c-host").replace(/^https?:\/\//, "").replace(/\/.*$/, ""), repo: val("c-repo").replace(/^\/|\/$/g, ""), branch: val("c-branch") || "main", token: val("c-token") });
         if (n.provider && !/^[\w.-]+\/[\w.-]+$/.test(n.repo)) { snackbar("Write the repository as owner/name."); return; }
-        if (n.orders && !/^https:\/\//.test(n.orders)) { snackbar("The order topic must start with https://."); return; }
         saveConn(n);
         snackbar("Saved on this device.");
       } } }, h("span", null, "Save")),
@@ -1166,6 +1351,8 @@ function route() {
 }
 
 applyIcon();
+startPresence();
+if (conn().push) enablePush(true);
 for (const i of document.querySelectorAll("i[data-icon]")) i.replaceWith(icon(i.getAttribute("data-icon")));
 window.addEventListener("hashchange", route);
 Promise.all([loadDirectory(), ("indexedDB" in window ? KEYSTORE.get() : Promise.resolve(null)).then((k) => { if (k) { B.key = k; B.keyRemembered = true; } })]).then(() => {

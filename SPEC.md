@@ -741,7 +741,7 @@ A claimed business may name a `confirmation_feed`: an https ntfy topic it contro
 
 ## 16. Logo and app icon
 
-The logo is a smiling rice ball, drawn for Hana as a vector file (`logo.svg`, transparent background, released with the project under the MIT Licence). In the app it appears beside the word "Hana" with no background. The standard icons put it on a rice-paper background (#F7F5F2): `icon.svg` and `favicon-32.png` for browser tabs, `apple-touch-icon.png` for iPhone and iPad, and `icon-192.png`, `icon-512.png` and `icon-maskable-512.png` in `manifest.webmanifest`. In Settings, a person can choose another background colour; the icon is then drawn on their device and used for the browser tab, Add to Home Screen and a manifest written on the device (hence `manifest-src data:` in the page's security policy). An app installed before the change keeps its old icon until it is removed and installed again.
+The logo is a smiling rice ball, drawn for Hana as a vector file (`logo.svg`, transparent background, released with the project under the MIT Licence). In the app it appears beside the word "Hana" with no background. The standard icons put it on a teal background (#0F766E): `icon.svg` and `favicon-32.png` for browser tabs, `apple-touch-icon.png` for iPhone and iPad, and `icon-192.png`, `icon-512.png` and `icon-maskable-512.png` in `manifest.webmanifest`. In Settings, a person can choose another background colour; the icon is then drawn on their device and used for the browser tab, Add to Home Screen and a manifest written on the device (hence `manifest-src data:` in the page's security policy). An app installed before the change keeps its old icon until it is removed and installed again.
 
 ## 17. Closed businesses, scheduled orders, arrival times and cancelling
 
@@ -765,3 +765,21 @@ An item's price (or a size's price) may be `null`: the listing does not state it
 ## 19. Mirrors
 
 Every hosted copy and every one-file copy carries the whole directory and serves as a backup. The app remembers the mirrors in `peers.json` and uses them when the main copy cannot be reached. See `MIRRORING.md` and `tools/verify_mirror.py`.
+
+## 20. Speed budget
+
+- The home page loads `list.json`, one small summary per listing (name, handle, zone, kind, categories, hours, delivery fees, contact), built by `tools/build.py`. Full menus load only when someone opens a listing, and each is checked against its hash as before. Dish search loads `search.json` the first time someone searches or picks a category.
+- Cards are built only for the page on screen (12 per page).
+- `tools/check.py` enforces size limits: `list.json` (warning at 250 KB, error at 500 KB, when it must be split by zone), `search.json` (1 MB and 2 MB), each menu (100 KB and 400 items), and the app's code and styles. Generated files that are out of date are errors.
+- The service worker serves saved copies when the network is slow, mirrors take over when the main copy is down, and every copy works offline.
+
+## 21. Orders sent in Hana
+
+- **Setup.** In the business tools, Connections, "Set up orders in Hana" creates a random ntfy.sh topic (no account). The business's key file gains a P-256 encryption key. The next published menu version carries `"direct": { "topic": ..., "enc_key": <public key> }`. Only claimed listings may have it (`tools/check.py`).
+- **Sending.** At checkout, "Send in Hana" is the recommended channel and requires the customer's mobile number. The app derives an AES-GCM key from a one-off P-256 key pair and the business's public key (ECDH, then HKDF-SHA-256), and posts `HANA1 <public key>.<sealed order>` to the business's topic. The sealed order names a new random topic for this order. ntfy sees only ciphertext.
+- **Replies.** The business tools listen live (Server-Sent Events) with a sound and an optional notification. Confirm and Decline are posted, sealed, on the order's topic as `HANA1R ...`, and the customer's app picks them up within 15 seconds while it is open. Cancellations travel the same way.
+- **Presence.** While the business tools are open and orders are not paused, they post "online" to `<topic>-online` every 5 minutes and "offline" when closed. A business with no "online" in the last 12 minutes is shown as temporarily unavailable, and new orders in Hana are refused with a short notice. If ntfy itself cannot be reached, the business is not marked unavailable.
+- **Limits.** ntfy.sh keeps messages for about 12 hours and limits how many messages each sender can post per day. A busy business or the community can run its own ntfy server instead.
+- **Order steps.** After Confirm (with a preparation time), the business moves an order sent in Hana through Ready, Out for delivery and Delivered and paid (or Ready for pickup and Picked up and paid). Each step reaches the customer's app at once. Out for delivery cannot be sent without the rider's name and mobile number, which the customer sees with a Call the rider button. The business tools sound a reminder when a preparation time runs out before the order is marked ready. The customer can no longer cancel once the order is out.
+- **Alerts while closed.** "Alerts while Hana is closed" subscribes the business's browser to ntfy's own web push (its public `web_push_public_key` and `/v1/webpush`), with no ntfy app or account. The service worker shows "New Hana order"; the order itself is opened, still encrypted, in the business tools. iPhones need Hana on the home screen. Not yet tested against ntfy.sh from another website; if it is refused, the live connection while the tools are open still works.
+- **Chat.** While an order sent in Hana is open, the customer and the business can exchange short text messages, with quick replies. Messages are sealed on the order's topic, kept on both devices with the order, and included in the complaint summary. There are no photos and no in-app calls; the Call buttons use the phone's normal dialer.

@@ -60,7 +60,7 @@ Nothing in these terms excludes or limits any liability that cannot be excluded 
 
 ## 10. Privacy
 
-Hana has no accounts and no server that receives customer data. A customer's area, basket, details and orders are stored only on the customer's device. Order messages are sent through the customer's chosen channel, and their handling is governed by that channel's terms and by the business that receives them.
+Hana has no accounts and no server that receives customer data. A customer's area, basket, details and orders are stored only on the customer's device. Order messages are sent through the customer's chosen channel, and their handling is governed by that channel's terms and by the business that receives them. An order sent in Hana, its replies and its messages are encrypted on the customer's device so that only the business can read them, and pass through ntfy, a relay service, which sees only encrypted text and keeps it for about 12 hours. The customer's mobile number is shared only with that business, which may share it with its rider for the delivery.
 
 ## 11. Third-party services
 
