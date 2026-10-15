@@ -9,7 +9,7 @@ Every Hana screen follows these rules so that the app looks and behaves the same
 - Long lists are split into pages with the shared `pager()` control.
 - The business tools page (`business.html`) uses the same frame, with its own four destinations: Start, List or claim, Confirm, Update prices.
 - Main navigation has exactly four destinations, in this order: Restaurants, Basket, Orders, About. Phones show a bottom bar (`nav.bottom.s`); tablets and computers show a side rail (`nav.left.m.l`).
-- The brand mark is the 🥡 emoji and the word "Hana", set by `.brand`, `.brand-mark` and `.brand-name`. The emoji box is 2rem and the wordmark 1.375rem bold, centred on one line. Do not resize either one on a single screen.
+- The brand mark is the 🍟 emoji and the word "Hana", set by `.brand`, `.brand-mark` and `.brand-name`. The emoji box is 2rem and the wordmark 1.375rem bold, centred on one line. Do not resize either one on a single screen.
 - The footer reads: "Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community." The two names are links.
 
 ## Type

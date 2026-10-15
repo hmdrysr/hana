@@ -448,10 +448,10 @@ function sectionTitle(text) { return h("h2", { class: "section-title" }, text); 
 /* The person can choose the app icon's background and picture. The icon is drawn on the
    device, then used for the browser tab, for Add to Home Screen and in a manifest written on the
    device. The standard icon (the files in the repository) is used until something is changed. */
-const ICON_BGS = [["#40E0D0", "Turquoise"], ["#9A3412", "Clay"], ["#0F766E", "Teal"], ["#3730A3", "Indigo"], ["#15803D", "Green"],
+const ICON_BGS = [["#0F766E", "Teal"], ["#40E0D0", "Turquoise"], ["#9A3412", "Clay"], ["#3730A3", "Indigo"], ["#15803D", "Green"],
   ["#7E22CE", "Plum"], ["#FACC15", "Yellow"], ["#FFFFFF", "White"], ["#111827", "Black"]];
-const ICON_MARKS = ["🥡", "🍟", "🍛", "🍕", "🍔", "🍗", "🍜", "🥘", "🛒"];
-const ICON_DEFAULT = { bg: "#40E0D0", mark: "🥡" };
+const ICON_MARKS = ["🍟", "🥡", "🍛", "🍕", "🍔", "🍗", "🍜", "🥘", "🛒"];
+const ICON_DEFAULT = { bg: "#0F766E", mark: "🍟" };
 function iconChoice() { return Object.assign({}, ICON_DEFAULT, store.get("hana.icon", {})); }
 function drawIcon(size, frac, radius, choice) {
   const c = document.createElement("canvas");

@@ -225,6 +225,64 @@ async function locateZone(onFound) {
   snackbar("Zone set to " + zone.name + ". You can change it at any time.");
 }
 
+/* ---------------------------------------------------------------- first-visit walkthrough */
+
+/* A short tour on the first visit, shown as a card at the bottom of the screen that points
+   at each part of the home page. It can be skipped, and replayed from Settings. */
+const TOUR = [
+  [null, "Welcome to Hana", "Order food and groceries in Chittagong straight from the business. No account, no fees and no prepayment."],
+  [".zone-row", "Your zone", "Choose your zone, or tap Use my location. Hana then shows the places that deliver to you."],
+  ["main .field.prefix", "Search", "Search for a dish, a place or a handle such as @sliced."],
+  ["nav.cat-strip", "Categories", "Or browse by category. Every list is alphabetical, and no listing is featured or paid for."],
+  ["article.rcard", "Places", "Open a place to see its menu and hours. Tap + to add items to your basket."],
+  ['[data-nav="basket"]', "Your order", "At checkout, Hana prepares your order message. You send it yourself, by WhatsApp, text message or email. You pay on delivery or at pickup, never in advance."],
+  ['[data-nav="orders"]', "Confirmation", "The business must confirm within 15 minutes, or the order is cancelled. Paste its reply in Orders to keep a record."],
+  ["#settings-link", "Make it yours", "Change colours, text size and the app icon in Settings. You can install Hana on your phone from there too."],
+];
+function visible(sel) { return sel ? Array.from(document.querySelectorAll(sel)).find((e) => e.offsetParent !== null || e.getClientRects().length) : null; }
+function startTour() {
+  if (document.getElementById("tour")) return;
+  let i = 0, focused = null;
+  const title = h("h2", { class: "card-title" }), text = h("p", { class: "flush" }), step = h("p", { class: "small-text muted flush" });
+  const back = h("button", { type: "button", class: "border", on: { click: () => go(i - 1) } }, h("span", null, "Back"));
+  const next = h("button", { type: "button", on: { click: () => (i < TOUR.length - 1 ? go(i + 1) : end()) } }, h("span", null, "Next"));
+  const card = h("section", { id: "tour", class: "tour-card round", role: "dialog", "aria-modal": "false", "aria-labelledby": "tour-title" },
+    step, title, text,
+    h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "transparent", on: { click: end } }, h("span", null, "Skip")), h("div", { class: "max" }), back, next));
+  title.id = "tour-title";
+  const key = (e) => { if (e.key === "Escape") end(); };
+  function go(n) {
+    i = Math.max(0, Math.min(TOUR.length - 1, n));
+    const [sel, t, body] = TOUR[i];
+    if (focused) focused.classList.remove("tour-focus");
+    focused = visible(sel);
+    if (focused) { focused.classList.add("tour-focus"); focused.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    else if (!sel) window.scrollTo({ top: 0, behavior: "smooth" });
+    step.textContent = "Step " + (i + 1) + " of " + TOUR.length;
+    title.textContent = t;
+    text.textContent = body;
+    back.hidden = i === 0;
+    next.querySelector("span").textContent = i === TOUR.length - 1 ? "Done" : "Next";
+    next.focus();
+  }
+  function end() {
+    if (focused) focused.classList.remove("tour-focus");
+    store.set("hana.tour.done", true);
+    document.removeEventListener("keydown", key);
+    window.removeEventListener("hashchange", end);
+    card.remove();
+  }
+  document.addEventListener("keydown", key);
+  window.addEventListener("hashchange", end);
+  document.body.append(card);
+  go(0);
+}
+function maybeStartTour() {
+  /* Not for automated browsers (the project's own tests), shared listing links or business sites. */
+  if (store.get("hana.tour.done", false) || state.site.mode === "business" || document.querySelector('meta[name="hana-listing"]') || navigator.webdriver) return;
+  setTimeout(startTour, 400);
+}
+
 function viewList() {
   const results = h("div", { id: "results", class: "stack", "aria-live": "polite" });
   const strip = h("nav", { class: "cat-strip", "aria-label": "Categories" });
@@ -344,6 +402,7 @@ function viewList() {
     listHead,
     results);
   render();
+  maybeStartTour();
 }
 
 /* Page navigation for long lists: previous, "Page 2 of 5", next. */
@@ -1172,6 +1231,7 @@ function viewSettings() {
     h("div", { class: "row" }, h("label", { class: "switch" }, pictures, h("span")), h("label", { for: "pictures", class: "max" }, "Show pictures of food")),
     h("p", { class: "small-text muted" }, "Pictures come from the business. Listings without a cover show a stock photo for their cuisine from Wikimedia Commons, an openly licensed library; loading it lets Wikimedia see your network address, as any website you visit would. Food icons are Twemoji, by Twitter, Inc. and contributors, CC BY 4.0."),
     h("nav", { class: "gap-top" }, h("button", { type: "button", class: "border", on: { click: () => { try { localStorage.removeItem("hana.settings"); localStorage.removeItem("hana.theme"); } catch (e) { /* ignore */ } applyTheme(); viewSettings(); } } }, h("span", null, "Reset appearance"))),
+    h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { location.hash = "#/"; setTimeout(startTour, 300); } } }, h("span", null, "Show the walkthrough again"))),
     sectionTitle("Profile (optional)"),
     h("p", { class: "small-text muted" }, "Filled in at checkout so you do not have to type it each time. Kept on this phone only."),
     textField("p-name", "First name or nickname", pname),

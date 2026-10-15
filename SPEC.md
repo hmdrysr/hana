@@ -63,7 +63,7 @@ The Terms of Use (`TERMS.md`, shown on the app's Terms page) hold the legal text
 
 ### 1.6 Logo and footer
 
-- The logo is the takeout box emoji 🥡, shown beside the word "Hana". In the app it is drawn by the phone's emoji font. The home screen icon (`icon-192.png`, `icon-512.png`) and `icon.svg` use the same emoji.
+- The logo is the french fries emoji 🍟, shown beside the word "Hana". In the app it is drawn by the phone's emoji font. The home screen icon (`icon-192.png`, `icon-512.png`) and `icon.svg` use the same emoji.
 - Every page has the same footer: "Built by Hamid Yasir & Co. for the people of Chittagong. Managed by the Hana Community.", followed by links to the Terms and to the business tools (or back to the restaurant list). "Hamid Yasir & Co." links to https://hamidyasir.com. "Hana Community" links to the project repository. The repository address is filled in by `tools/autofill.py` and, on GitHub Pages, worked out by the app from its own address.
 
 ## 2. Principles
@@ -741,4 +741,4 @@ A claimed business may name a `confirmation_feed`: an https ntfy topic it contro
 
 ## 16. App icon
 
-The standard icon is the takeout box 🥡 on turquoise (#40E0D0): `icon.svg` and `favicon-32.png` for browser tabs, `apple-touch-icon.png` for iPhone and iPad, and `icon-192.png`, `icon-512.png` and `icon-maskable-512.png` in `manifest.webmanifest`. Inside the app, the mark has no background. In Settings, a person can choose another background colour and picture. The icon is then drawn on their device and used for the browser tab, for Add to Home Screen and in a manifest written on the device (which is why the page's security policy allows `manifest-src data:`). An app installed before the change keeps its old icon until it is removed and installed again.
+The standard icon is the french fries 🍟 on teal (#0F766E): `icon.svg` and `favicon-32.png` for browser tabs, `apple-touch-icon.png` for iPhone and iPad, and `icon-192.png`, `icon-512.png` and `icon-maskable-512.png` in `manifest.webmanifest`. Inside the app, the mark has no background. In Settings, a person can choose another background colour and picture. The icon is then drawn on their device and used for the browser tab, for Add to Home Screen and in a manifest written on the device (which is why the page's security policy allows `manifest-src data:`). An app installed before the change keeps its old icon until it is removed and installed again.

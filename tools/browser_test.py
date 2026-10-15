@@ -238,7 +238,7 @@ with sync_playwright() as p:
     pdf = Path(dl.value.path()).read_bytes()
     ok("the directory downloads as a PDF book with menus", pdf.startswith(b"%PDF-1.4") and pdf.rstrip().endswith(b"%%EOF") and b"Tava Restaurant" in pdf and b"Dahi Bara" in pdf)
     page.goto(ROOT_URL + "/restaurants/tava/")
-    page.wait_for_selector(".page-title")
+    page.wait_for_selector("main .page-title:has-text('Tava Restaurant')", timeout=10000)
     ok("a clean listing address opens that listing", "Tava Restaurant" in page.inner_text("main .page-title") and "@tava" in page.inner_text("main"))
     page.goto(BASE + "#/@sliced")
     page.wait_for_timeout(1500)
@@ -291,6 +291,19 @@ with sync_playwright() as p:
     page.reload()
     page.wait_for_selector(".cat-tile")
     ok("Not now hides the install offer on the home page", "Install Hana" not in page.inner_text("main"))
+    page.goto(BASE + "#/settings")
+    page.wait_for_selector("text=Show the walkthrough again")
+    page.click("text=Show the walkthrough again")
+    page.wait_for_selector("#tour")
+    steps = 1
+    while page.locator("#tour button:has-text('Next')").count():
+        page.click("#tour button:has-text('Next')")
+        steps += 1
+        if steps > 20:
+            break
+    ok("the walkthrough points at each part of the home page", page.locator(".tour-focus").count() == 1 and steps == 8, steps)
+    page.click("#tour button:has-text('Done')")
+    ok("the walkthrough closes and is remembered", page.locator("#tour").count() == 0 and page.evaluate("localStorage.getItem('hana.tour.done')") == "true")
     ok("no script errors", not errors, errors)
     browser.close()
 
