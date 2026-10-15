@@ -1110,6 +1110,7 @@ function route() {
   return viewHome();
 }
 
+applyIcon();
 for (const i of document.querySelectorAll("i[data-icon]")) i.replaceWith(icon(i.getAttribute("data-icon")));
 window.addEventListener("hashchange", route);
 Promise.all([loadDirectory(), ("indexedDB" in window ? KEYSTORE.get() : Promise.resolve(null)).then((k) => { if (k) { B.key = k; B.keyRemembered = true; } })]).then(() => {

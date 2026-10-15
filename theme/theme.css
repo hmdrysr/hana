@@ -995,3 +995,69 @@ ul.list > li {
 .size-row > .field + .field {
   flex: 0 1 6.5rem;
 }
+
+/* ---------- App icon picker ---------- */
+.icon-preview {
+  inline-size: 4.5rem;
+  block-size: 4.5rem;
+  border-radius: 1rem;
+  flex-shrink: 0;
+}
+.swatch {
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  min-inline-size: 2.5rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--outline-variant);
+  box-shadow: none;
+  position: relative;
+  overflow: hidden;
+}
+.swatch[aria-pressed="true"] {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+.swatch-any {
+  display: inline-block;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+.swatch-any > input {
+  opacity: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  cursor: pointer;
+}
+.icon-mark {
+  font-size: 1.25rem;
+}
+.icon-mark[aria-pressed="true"] {
+  background-color: var(--secondary-container);
+}
+.swatch-40e0d0 {
+  background-color: #40e0d0;
+}
+.swatch-9a3412 {
+  background-color: #9a3412;
+}
+.swatch-0f766e {
+  background-color: #0f766e;
+}
+.swatch-3730a3 {
+  background-color: #3730a3;
+}
+.swatch-15803d {
+  background-color: #15803d;
+}
+.swatch-7e22ce {
+  background-color: #7e22ce;
+}
+.swatch-facc15 {
+  background-color: #facc15;
+}
+.swatch-ffffff {
+  background-color: #ffffff;
+}
+.swatch-111827 {
+  background-color: #111827;
+}

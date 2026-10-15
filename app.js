@@ -333,6 +333,7 @@ function viewList() {
 
   show("list", "",
     pageTitle("Food and groceries in Chittagong"),
+    installCard(true),
     h("div", { class: "zone-row" },
       zoneSelect("area", state.area, setZone, "Choose your zone"),
       h("button", { type: "button", class: "border", on: { click: () => locateZone(setZone) } }, icon("location_on"), h("span", null, "Use my location"))),
@@ -1112,6 +1113,37 @@ async function viewTerms() {
 
 /* ---------------------------------------------------------------- settings */
 
+const SWATCH_CLASS = { "#40E0D0": "swatch-40e0d0", "#9A3412": "swatch-9a3412", "#0F766E": "swatch-0f766e", "#3730A3": "swatch-3730a3", "#15803D": "swatch-15803d",
+  "#7E22CE": "swatch-7e22ce", "#FACC15": "swatch-facc15", "#FFFFFF": "swatch-ffffff", "#111827": "swatch-111827" };
+/* Background colour and picture for the app icon, with a live preview. */
+function iconPicker() {
+  const preview = h("img", { class: "icon-preview", alt: "Preview of the app icon", width: 72, height: 72 });
+  const set = (patch) => {
+    const ch = Object.assign(iconChoice(), patch);
+    store.set("hana.icon", ch);
+    applyIcon();
+    draw();
+  };
+  const swatches = h("nav", { class: "wrap small-space", "aria-label": "Icon background" });
+  const marks = h("nav", { class: "wrap small-space", "aria-label": "Icon picture" });
+  const custom = h("input", { type: "color", id: "icon-colour", "aria-label": "Any colour", on: { input: (e) => set({ bg: e.target.value }) } });
+  function draw() {
+    const ch = iconChoice();
+    preview.src = drawIcon(144, 0.6, 32, ch);
+    custom.value = ch.bg;
+    swatches.replaceChildren(...ICON_BGS.map(([c, name]) => h("button", { type: "button", class: "swatch " + SWATCH_CLASS[c], title: name, "aria-label": name,
+      "aria-pressed": ch.bg.toUpperCase() === c ? "true" : "false", on: { click: () => set({ bg: c }) } })),
+      h("label", { class: "swatch swatch-any", title: "Any colour" }, custom));
+    marks.replaceChildren(...ICON_MARKS.map((m) => h("button", { type: "button", class: "chip small border icon-mark", "aria-pressed": ch.mark === m ? "true" : "false", "aria-label": "Use " + m, on: { click: () => set({ mark: m }) } }, m)));
+  }
+  draw();
+  return h("div", { class: "stack" },
+    h("div", { class: "row" }, preview, h("p", { class: "small-text muted max" }, "Choose a background colour and a picture. The new icon is used in the browser tab and when you install Hana. If Hana is already installed, remove it and install it again to see the new icon.")),
+    h("p", { class: "small-text bold flush" }, "Background"), swatches,
+    h("p", { class: "small-text bold flush" }, "Picture"), marks,
+    h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { store.set("hana.icon", null); location.reload(); } } }, h("span", null, "Use the standard icon"))));
+}
+
 function viewSettings() {
   const st = settings();
   const radios = (name, options, value, onPick) => h("nav", { class: "vertical left-align" },
@@ -1122,7 +1154,14 @@ function viewSettings() {
   const paddr = h("textarea", { id: "p-address", rows: 3, maxlength: 300 }, me.address || "");
   const pictures = h("input", { type: "checkbox", id: "pictures", checked: st.pictures, on: { change: (e) => saveSettings(Object.assign(settings(), { pictures: e.target.checked })) } });
   show("settings", "Settings", pageHeader("Settings", "#/"),
+    sectionTitle("Install the app"),
+    isInstalled() ? h("p", null, "Hana is installed on this device.") : [
+      h("p", { class: "small-text muted" }, "Install Hana to open it from your home screen or app list. It works offline and updates itself."),
+      h("nav", null, h("button", { type: "button", on: { click: installApp } }, icon("download"), h("span", null, "Install Hana"))),
+      h("p", { class: "small-text muted" }, "If nothing happens: " + installSteps())],
     h("p", { class: "muted" }, "Settings are kept on this device only."),
+    sectionTitle("App icon"),
+    iconPicker(),
     sectionTitle("Colour scheme"),
     radios("scheme", SCHEMES, st.scheme, (k) => saveSettings(Object.assign(settings(), { scheme: k }))),
     sectionTitle("Light or dark"),
@@ -1415,4 +1454,5 @@ updateBasketBadge();
 route();
 loadAll().then(() => { expireOrders(); fixFooterLink(); updateBasketBadge(); route(); startFeedPolling(); });
 
+applyIcon();
 if (!SNAP) setupUpdates(["index.html", "core.js", "app.js", "theme/theme.css"]);

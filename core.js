@@ -443,6 +443,97 @@ function chip(text, tone) {
 }
 
 function sectionTitle(text) { return h("h2", { class: "section-title" }, text); }
+/* ---------------------------------------------------------------- app icon */
+
+/* The person can choose the app icon's background and picture. The icon is drawn on the
+   device, then used for the browser tab, for Add to Home Screen and in a manifest written on the
+   device. The standard icon (the files in the repository) is used until something is changed. */
+const ICON_BGS = [["#40E0D0", "Turquoise"], ["#9A3412", "Clay"], ["#0F766E", "Teal"], ["#3730A3", "Indigo"], ["#15803D", "Green"],
+  ["#7E22CE", "Plum"], ["#FACC15", "Yellow"], ["#FFFFFF", "White"], ["#111827", "Black"]];
+const ICON_MARKS = ["🥡", "🍟", "🍛", "🍕", "🍔", "🍗", "🍜", "🥘", "🛒"];
+const ICON_DEFAULT = { bg: "#40E0D0", mark: "🥡" };
+function iconChoice() { return Object.assign({}, ICON_DEFAULT, store.get("hana.icon", {})); }
+function drawIcon(size, frac, radius, choice) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  g.fillStyle = /^#[0-9a-f]{6}$/i.test(choice.bg) ? choice.bg : ICON_DEFAULT.bg;
+  if (radius && g.roundRect) { g.beginPath(); g.roundRect(0, 0, size, size, radius); g.fill(); } else g.fillRect(0, 0, size, size);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = Math.round(size * frac) + 'px "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+  g.fillText(ICON_MARKS.includes(choice.mark) ? choice.mark : ICON_DEFAULT.mark, size / 2, size * 0.54);
+  return c.toDataURL("image/png");
+}
+function setLink(rel, href, extra) {
+  let l = document.querySelector('link[rel="' + rel + '"]' + (extra || ""));
+  if (!l) { l = document.createElement("link"); l.rel = rel; document.head.append(l); }
+  l.href = href;
+}
+function applyIcon() {
+  const ch = iconChoice();
+  if (ch.bg.toUpperCase() === ICON_DEFAULT.bg && ch.mark === ICON_DEFAULT.mark) return;
+  try {
+    setLink("icon", drawIcon(64, 0.62, 14, ch), '[type="image/svg+xml"]');
+    setLink("icon", drawIcon(32, 0.62, 7, ch), '[sizes="32x32"]');
+    setLink("apple-touch-icon", drawIcon(180, 0.6, 0, ch));
+    const base = new URL(".", document.baseURI).href;
+    const manifest = {
+      id: base, name: "Hana", short_name: "Hana", start_url: base, scope: base, display: "standalone",
+      description: "Food and groceries in Chittagong. A free, open directory that prepares your orders. Pay on delivery.",
+      background_color: ch.bg, theme_color: "#9a3412",
+      icons: [{ src: drawIcon(192, 0.6, 0, ch), sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: drawIcon(512, 0.6, 0, ch), sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: drawIcon(512, 0.48, 0, ch), sizes: "512x512", type: "image/png", purpose: "maskable" }],
+    };
+    setLink("manifest", "data:application/manifest+json;charset=utf-8," + encodeURIComponent(JSON.stringify(manifest)));
+  } catch (e) { /* the standard icon stays */ }
+}
+
+/* ---------------------------------------------------------------- installing the app */
+
+/* Browsers decide for themselves whether to offer installation, and most never show a pop-up:
+   Chrome and Edge keep the offer until the page asks, and Safari and Firefox have none. So Hana
+   keeps the offer when there is one and otherwise explains the browser's own steps. */
+let installOffer = null;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installOffer = e; document.dispatchEvent(new Event("hana-install")); });
+window.addEventListener("appinstalled", () => { installOffer = null; document.dispatchEvent(new Event("hana-install")); snackbar("Hana is installed. Open it from your home screen or app list."); });
+function isInstalled() { return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone === true; }
+function installSteps() {
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (ios) return "Tap the Share button, then Add to Home Screen. On an iPad, the Share button is at the top of the screen.";
+  if (/Android/.test(ua)) {
+    if (/Firefox/.test(ua)) return "Open the menu (the three dots), then Install.";
+    if (/SamsungBrowser/.test(ua)) return "Open the menu (the three lines), then Add page to, then Home screen.";
+    return "Open the browser menu (the three dots), then Add to Home screen or Install app.";
+  }
+  if (/Firefox/.test(ua)) return "Firefox on computers cannot install web apps. Use Chrome, Edge or Safari, or download the offline copy in Settings.";
+  if (/Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) return "In the menu bar, choose File, then Add to Dock.";
+  return "Click the install button at the right end of the address bar, or open the browser menu and choose Install Hana (in Chrome: Cast, save and share, then Install page as app).";
+}
+async function installApp() {
+  if (installOffer) {
+    const offer = installOffer;
+    offer.prompt();
+    const choice = await offer.userChoice.catch(() => null);
+    installOffer = null;
+    if (choice && choice.outcome !== "accepted") snackbar("Not installed. You can install Hana later from Settings.");
+    return;
+  }
+  await ask("Install Hana", installSteps(), "OK");
+}
+/* A short card offering installation. dismissible: shows "Not now", remembered on this device. */
+function installCard(dismissible) {
+  if (isInstalled() || (dismissible && store.get("hana.install.dismissed", false))) return null;
+  const card = notice("info", h("p", { class: "bold flush" }, "Install Hana"),
+    h("p", { class: "flush" }, "Open it from your home screen like any other app. It works offline and needs no app store."),
+    h("nav", { class: "wrap small-space gap-top" },
+      h("button", { type: "button", on: { click: installApp } }, icon("download"), h("span", null, "Install")),
+      dismissible ? h("button", { type: "button", class: "border", on: { click: () => { store.set("hana.install.dismissed", true); card.remove(); } } }, h("span", null, "Not now")) : null));
+  return card;
+}
+
 function pageTitle(text) { return h("h1", { class: "page-title" }, text); }
 
 /* In-app history, so Back returns to the page the person came from, and a page opened
