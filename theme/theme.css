@@ -1221,3 +1221,14 @@ dialog > nav {
   max-inline-size: min(22rem, calc(100vw - 2rem));
   transform: none;
 }
+
+/* QR poster */
+.qr {
+  display: flex;
+  justify-content: center;
+  margin-block: 1rem;
+}
+.qr svg {
+  inline-size: min(70vw, 18rem);
+  block-size: auto;
+}

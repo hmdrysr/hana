@@ -100,10 +100,33 @@ function ntfyListen(topics, onMessage) {
 /* Presence: open business tools post "online" every 5 minutes and "offline" when closed. A
    business counts as available if it posted "online" within the last 12 minutes. */
 const PRESENCE_EVERY_MS = 5 * 60000;
-async function isOnline(direct) {
+/* The "online" message may carry today's details as JSON: {"sold": [item ids], "busy": extra
+   minutes, "pickup_only": true}. They reset at midnight in the business tools. */
+async function presence(direct) {
   try {
     const msgs = await ntfyPoll(presenceTopic(direct.topic), "12m");
     const last = msgs[msgs.length - 1];
-    return !!last && last.message === "online";
-  } catch (e) { return true; /* the service itself is unreachable: do not blame the business */ }
+    const m = /^online(?: (\{.*\}))?$/.exec((last && last.message) || "");
+    if (!m) return { online: false, sold: [], busy: 0, pickup_only: false };
+    let d = {}; try { d = JSON.parse(m[1] || "{}"); } catch (e) { d = {}; }
+    return { online: true, sold: Array.isArray(d.sold) ? d.sold.map(String) : [], busy: Math.min(120, Math.max(0, Number(d.busy) || 0)), pickup_only: d.pickup_only === true };
+  } catch (e) { return { online: true, sold: [], busy: 0, pickup_only: false }; /* the service is unreachable: do not blame the business */ }
+}
+async function isOnline(direct) { return (await presence(direct)).online; }
+
+/* Browser alerts through ntfy's own web push, for the given topic addresses on one server. */
+async function ntfyPush(topics) {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("This browser cannot show alerts while Hana is closed. On an iPhone, add Hana to the home screen first.");
+  const base = topics[0].replace(/[^/]+$/, "");
+  const cfg = await (await fetch(base + "config.js", { cache: "no-store" })).text();
+  const key = (/"?web_push_public_key"?\s*:\s*"([A-Za-z0-9_-]+)"/.exec(cfg) || [])[1];
+  if (!key) throw new Error("This ntfy server does not offer browser alerts.");
+  if ((await Notification.requestPermission()) !== "granted") throw new Error("Alerts are blocked in this browser's settings.");
+  const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register("sw.js"));
+  await navigator.serviceWorker.ready;
+  const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(key) }));
+  const j = sub.toJSON();
+  const r = await fetch(base + "v1/webpush", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint: j.endpoint, auth: j.keys.auth, p256dh: j.keys.p256dh, topics: topics.map((t) => t.split("/").pop()) }) });
+  if (!r.ok) throw new Error("ntfy answered " + r.status + ".");
 }

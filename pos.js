@@ -250,7 +250,8 @@ async function viewStatements() {
     out,
     h("nav", { class: "wrap" },
       h("button", { type: "button", class: "border", on: { click: () => { const st = document.getElementById("statement"); if (st) { document.documentElement.classList.add("print-a4"); st.classList.add("print-me"); window.print(); st.classList.remove("print-me"); } } } }, h("span", null, "Print or save as PDF")),
-      h("button", { type: "button", class: "border", on: { click: csv } }, icon("download"), h("span", null, "Download CSV (spreadsheets)"))));
+      h("button", { type: "button", class: "border", on: { click: csv } }, icon("download"), h("span", null, "Download CSV (spreadsheets)")),
+      h("button", { type: "button", class: "border", on: { click: async () => { const st = document.getElementById("statement"); if (!st) return; const text = st.innerText; if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e.name === "AbortError") return; } } copy(text); } } }, icon("share"), h("span", null, "Share the summary"))));
   from.addEventListener("change", run); to.addEventListener("change", run);
   run();
 }

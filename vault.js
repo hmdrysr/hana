@@ -64,13 +64,18 @@ async function openWith(vault, kek, entry) {
   const dek = await importDek(await aesDec(kek, entry));
   return { keyText: new TextDecoder().decode(await aesDec(dek, vault.data)), dek };
 }
+/* The owner's vault, then each staff member's (vault.staff[i] has the same shape plus "name").
+   Returns { keyText, dek, staff } where staff is the index of the staff vault, or null. */
+function vaultParts(vault) { return [{ v: vault, staff: null }].concat((vault.staff || []).map((v, i) => ({ v, staff: i }))); }
 async function unlockWithPhrase(vault, text) {
   const phrase = await normalPhrase(text);
   if (!phrase) throw new Error("Enter the five words of your recovery phrase.");
-  const e = (vault.unlock || []).find((x) => x.type === "phrase");
-  if (!e) throw new Error("This vault has no recovery phrase.");
-  try { return await openWith(vault, await phraseKek(phrase, unb64u(e.salt), e.rounds), e); }
-  catch (err) { throw new Error("That recovery phrase does not open this vault. Check the words and try again."); }
+  for (const part of vaultParts(vault)) {
+    const e = (part.v.unlock || []).find((x) => x.type === "phrase");
+    if (!e) continue;
+    try { return Object.assign(await openWith(part.v, await phraseKek(phrase, unb64u(e.salt), e.rounds), e), { staff: part.staff }); } catch (err) { /* not this one */ }
+  }
+  throw new Error("That recovery phrase does not open this vault. Check the words and try again.");
 }
 
 function passkeySupported() { return !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext); }
@@ -108,12 +113,13 @@ async function passkeySecret(entries) {
 }
 async function unlockWithPasskey(vault) {
   if (!passkeySupported()) throw new Error("This browser cannot use passkeys. Use your recovery phrase.");
-  const mine = (vault.unlock || []).filter((x) => x.type === "passkey" && x.rp === location.hostname);
+  const mine = [];
+  for (const part of vaultParts(vault)) for (const x of part.v.unlock || []) if (x.type === "passkey" && x.rp === location.hostname) mine.push({ x, part });
   if (!mine.length) throw new Error("No passkey has been added for this address yet. Sign in with your recovery phrase, then add one.");
-  const got = await passkeySecret(mine);
-  const e = mine.find((x) => x.credential === got.id);
-  if (!e) throw new Error("That passkey is not one of this business's.");
-  return openWith(vault, await prfKek(new Uint8Array(got.secret)), e);
+  const got = await passkeySecret(mine.map((m) => m.x));
+  const hit = mine.find((m) => m.x.credential === got.id);
+  if (!hit) throw new Error("That passkey is not one of this business's.");
+  return Object.assign(await openWith(hit.part.v, await prfKek(new Uint8Array(got.secret)), hit.x), { staff: hit.part.staff });
 }
 
 /* Where a listing's vault is published: next to its menu. */

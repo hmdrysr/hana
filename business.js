@@ -197,8 +197,10 @@ function keyBox(onReady) {
   };
   const signedIn = async (opened, vault) => {
     const key = await loadKey(new TextEncoder().encode(opened.keyText));
-    if (vault.key_id && vault.key_id !== key.id) throw new Error("This vault holds a different key from the one it names.");
-    B.key = key; B.vault = { doc: vault, dek: opened.dek };
+    const part = opened.staff === null || opened.staff === undefined ? vault : vault.staff[opened.staff];
+    if (part.key_id && part.key_id !== key.id) throw new Error("This vault holds a different key from the one it names.");
+    key.staff = part === vault ? null : part.name;
+    B.key = key; B.vault = { doc: vault, dek: opened.dek, staff: part === vault ? null : opened.staff };
     await remember();
     draw(say("info", "Signed in."));
     if (onReady) onReady();
@@ -220,13 +222,39 @@ function keyBox(onReady) {
         h("button", { type: "button", class: "border", on: { click: () => download("vault.json", text) } }, icon("download"), h("span", null, "Download vault.json"))));
   };
   const addPk = (e) => busy(e, async () => {
-    B.vault.doc = await addPasskey(B.vault.doc, B.vault.dek, label());
+    if (B.vault.staff === null || B.vault.staff === undefined) B.vault.doc = await addPasskey(B.vault.doc, B.vault.dek, label());
+    else B.vault.doc.staff[B.vault.staff] = await addPasskey(B.vault.doc.staff[B.vault.staff], B.vault.dek, label() + " (" + B.key.staff + ")");
     draw(vaultFiles(say("info", "Passkey added for this device. Publish the updated vault.json so it works next time.")));
   });
+  /* Staff: each gets a key of their own, signed into the listing by the owner's next menu
+     version (owner.staff), and a vault entry with its own phrase and passkeys. */
+  function staffPanel() {
+    const name = input("staff-name", { maxlength: 30 });
+    const list = B.vault.doc.staff || [];
+    return h("details", null, h("summary", null, "Staff (" + list.length + ")"),
+      h("div", { class: "stack" },
+        list.length ? h("ul", { class: "list border" }, list.map((st, i) => h("li", null, h("div", { class: "max" }, st.name),
+          h("button", { type: "button", class: "border", on: { click: () => {
+            B.vault.doc.staff = list.filter((x, j) => j !== i); saveStaff();
+            draw(vaultFiles(say("info", st.name + " removed. Publish vault.json and a new menu version so their key stops working."))); } } }, h("span", null, "Remove"))))) : null,
+        textField("staff-name", "Staff member's name", name),
+        h("nav", { class: "wrap" }, h("button", { type: "button", class: "border", on: { click: (e) => busy(e, async () => {
+          if (!name.value.trim()) throw new Error("Enter the staff member's name.");
+          const k = await createKey(); k.enc = B.key.enc;
+          const phrase = await newPhrase();
+          const made = await makeVault(keyFileText(k), k.id, phrase);
+          B.vault.doc.staff = list.concat(Object.assign({ name: name.value.trim().slice(0, 30), public_key: k.publicB64 }, made.vault));
+          saveStaff();
+          draw(vaultFiles(notice("warn", h("p", { class: "flush" }, "Recovery phrase for " + name.value.trim() + ":"), h("p", { class: "bold flush", id: "staff-phrase" }, phrase),
+            h("p", { class: "flush" }, "Give it to them privately. They sign in with your business phone and these words, then add a passkey. Publish vault.json now, and a new menu version so customers accept their confirmations."))));
+        }) } }, icon("add"), h("span", null, "Add a staff member")))));
+  }
+  const saveStaff = () => store.set("hana.biz.staff", (B.vault.doc.staff || []).map((x) => ({ name: x.name, public_key: x.public_key })));
   function draw(top) {
     const kids = [top || null];
     if (B.key) {
-      kids.push(h("p", { class: "small-text muted" }, "Signed in with key " + B.key.id + "."));
+      kids.push(h("p", { class: "small-text muted" }, "Signed in with key " + B.key.id + (B.key.staff ? ", as staff member " + B.key.staff + ". Staff can confirm and update orders but cannot change the menu." : ".")));
+      if (B.vault && !B.key.staff) kids.push(staffPanel());
       if (B.vault) {
         kids.push(h("nav", { class: "wrap" },
           passkeySupported() ? h("button", { type: "button", class: "border", on: { click: addPk } }, icon("fingerprint"), h("span", null, "Add a passkey on this device")) : null));
@@ -236,6 +264,7 @@ function keyBox(onReady) {
             const phrase = await newPhrase();
             B.vault = await makeVault(keyFileText(B.key), B.key.id, phrase);
             B.vault = { doc: B.vault.vault, dek: B.vault.dek };
+            store.set("hana.biz.signin", true);
             draw(vaultFiles(h("div", { class: "stack" },
               notice("warn", h("p", { class: "flush" }, "Your recovery phrase:"), h("p", { class: "bold flush", id: "recovery-phrase" }, phrase),
                 h("p", { class: "flush" }, "Write these five words on paper and keep them somewhere safe. Anyone with them can sign as your business, and Hana cannot recover them.")),
@@ -333,11 +362,83 @@ async function findListingByPhoneRaw(phone, unclaimedOnly) {
   return { error: "No " + (unclaimedOnly ? "unclaimed " : "") + "listing uses that phone number." };
 }
 
+/* ---------------------------------------------------------------- setup, poster, reports */
+
+/* The first-time steps in order, each ticked from what this device already knows. */
+function setupSteps() {
+  const menu = store.get("hana.biz.menu", null);
+  return [
+    { done: !!menu, title: "List or claim your business", text: "Enter your details, or find the listing a volunteer made.", href: "#/join" },
+    { done: !!B.key, title: "Create your key", text: "It signs your menu and your replies. It stays on your phone.", href: "#/connect" },
+    { done: !!B.vault || !!store.get("hana.biz.signin", false), title: "Set up sign-in", text: "Write down your five-word recovery phrase and add a passkey.", href: "#/connect" },
+    { done: !!conn().orders, title: "Take orders in Hana", text: "Orders arrive here, encrypted, with a sound.", href: "#/connect" },
+    { done: !!(menu && menu.claimed === true && menu.owner && B.key && menu.owner.public_key === B.key.publicB64), title: "Publish your menu", text: "Check items, prices and delivery fees, then publish.", href: "#/update" },
+    { done: !!store.get("hana.biz.poster", false), title: "Print your poster", text: "A QR code for your counter and bags.", href: "#/poster" },
+  ];
+}
+function viewSetup() {
+  const steps = setupSteps(), n = steps.filter((x) => x.done).length;
+  show("home", "Get started", pageHeader("Get started", "#/"),
+    h("p", null, n + " of " + steps.length + " steps done. Your progress is kept on this phone, so you can stop and continue later."),
+    h("progress", { value: n, max: steps.length }),
+    h("ul", { class: "list border more-list" }, steps.map((x, i) => h("li", null, h("a", { href: x.href, class: "row max" }, icon(x.done ? "check_circle" : "schedule"),
+      h("div", { class: "max" }, h("div", { class: "bold" }, (i + 1) + ". " + x.title + (x.done ? " (done)" : "")), h("div", { class: "small-text muted" }, x.text)))))));
+}
+
+let qrLoaded = null;
+function loadQr() { return qrLoaded || (qrLoaded = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "vendor/qrcode-generator-2.0.4.min.js"; sc.onload = res; sc.onerror = rej; document.head.append(sc); })); }
+async function viewPoster() {
+  const menu = store.get("hana.biz.menu", null);
+  if (!menu) { show("more", "Poster", pageHeader("Poster", "#/more"), notice("info", h("p", { class: "flush" }, "Find your listing first, under Orders or Menu, with your business phone."))); return; }
+  const url = new URL(menu.handle ? (/grocer|supermarket/i.test(menu.kind || "") ? "groceries/" : "restaurants/") + menu.handle + "/" : "index.html#/r/" + menu.id, location.href).href;
+  await loadQr();
+  const q = qrcode(0, "M"); q.addData(url); q.make();
+  const art = h("article", { class: "receipt receipt-wide center-align", id: "poster" },
+    h("h1", { class: "page-title" }, menu.name),
+    h("p", { class: "bold" }, "Order from us on Hana"),
+    h("div", { class: "qr" }),
+    h("p", null, "Scan with your phone camera. No app or account needed. Pay on delivery or at pickup."),
+    h("p", { class: "small-text" }, url));
+  art.querySelector(".qr").innerHTML = q.createSvgTag({ cellSize: 8, margin: 2, scalable: true });
+  store.set("hana.biz.poster", true);
+  show("more", "Poster", pageHeader("Poster", "#/more"), art,
+    h("nav", { class: "wrap" }, h("button", { type: "button", on: { click: () => { document.documentElement.classList.add("print-a4"); art.classList.add("print-me"); window.print(); } } }, icon("download"), h("span", null, "Print or save as PDF"))));
+}
+
+/* Community reports: customers send short, encrypted reports about a listing to the volunteers'
+   ntfy topic (site.json "reports": {topic, enc_key}). Volunteers read them here with their key. */
+async function viewReports() {
+  const out = h("div", { class: "stack", "aria-live": "polite" });
+  const file = h("input", { type: "file", id: "report-key", accept: ".json", hidden: true, on: { change: async () => {
+    try {
+      const k = JSON.parse(new TextDecoder().decode(await readFile(file)));
+      const cfg = B.site.reports;
+      if (!cfg) throw new Error("This copy of Hana has no reports address in site.json.");
+      const rows = [];
+      for (const m of await ntfyPoll(cfg.topic, "72h")) { try { const o = await openOrder(k.priv || k, m.message); if (o) rows.push({ at: m.time, r: o.order }); } catch (e) { /* not a report */ } }
+      out.replaceChildren(rows.length ? h("ul", { class: "list border" }, rows.reverse().map((x) => h("li", null, h("div", { class: "max" },
+        h("div", { class: "bold" }, x.r.listing_name || x.r.listing || "Listing"), h("div", null, String(x.r.text || "").slice(0, 600)), h("div", { class: "small-text muted" }, new Date(x.at * 1000).toLocaleString("en-CA")))))) : h("p", null, "No reports in the last three days."));
+    } catch (e) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, e.message))); }
+  } } });
+  show("more", "Community reports", pageHeader("Community reports", "#/more"),
+    h("p", { class: "muted" }, "For volunteers. Reports about listings arrive encrypted; open them with the volunteers' report key."),
+    file,
+    h("nav", { class: "wrap" },
+      h("button", { type: "button", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Open reports with our key")),
+      h("button", { type: "button", class: "border", on: { click: async () => {
+        const k = await createEncKey();
+        download("hana-reports-key.json", JSON.stringify(k, null, 2) + "\n");
+        out.replaceChildren(notice("info", h("p", { class: "flush" }, "Key downloaded. Keep it private among volunteers. Add this to site.json:"), h("pre", null, JSON.stringify({ reports: { topic: randomTopic("hana-reports-"), enc_key: k.pub } }, null, 2))));
+      } } }, icon("key"), h("span", null, "Create a report key"))),
+    out);
+}
+
 /* ---------------------------------------------------------------- start page */
 
 function viewHome() {
   show("home", "",
     pageTitle("Business tools"),
+    setupSteps().some((x) => !x.done) ? h("nav", null, h("a", { href: "#/setup", class: "button" }, icon("check_circle"), h("span", null, "Get started: " + setupSteps().filter((x) => x.done).length + " of " + setupSteps().length + " steps done"))) : null,
     h("p", null, "Free tools for restaurants, kitchens and grocery stores in Chittagong. Listing on Hana costs nothing, and Hana takes no commission."),
     h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "Orders"),
       h("p", null, "Check each order against your published menu, then confirm or decline it with one tap."),
@@ -827,7 +928,7 @@ async function orderPanel(text, found, onDone, direct) {
     const e = /^\d{1,3}$/.test(eta.value) ? eta.value : "?";
     let k = "-", s = "-";
     if (B.key) {
-      if (owner && B.key.publicB64 !== owner) { snackbar("This key does not belong to this listing."); return; }
+      if (owner && B.key.publicB64 !== owner && !((d.menu.owner.staff || []).some((x) => x.public_key === B.key.publicB64))) { snackbar("This key does not belong to this listing. A new staff member works once the owner publishes a new menu version."); return; }
       k = B.key.id;
     }
     const minute = unixMinutes();
@@ -1007,6 +1108,8 @@ function viewConfirm() {
       sectionTitle("New orders"),
       c.paused ? notice("warn", h("p", { class: "flush" }, "New orders are paused. Customers see you as temporarily unavailable. Resume under Connections.")) : null,
       "Notification" in window && Notification.permission === "default" ? h("nav", null, h("button", { type: "button", class: "border", on: { click: () => Notification.requestPermission().then(() => viewConfirm()) } }, icon("inbox"), h("span", null, "Turn on order alerts"))) : null,
+      todayPanel(),
+      h("nav", null, h("a", { href: "#/statements", class: "button border" }, icon("receipt_long"), h("span", null, "Today's summary"))),
       inbox]
       : notice("info", h("p", { class: "flush" }, "Customers can send orders straight to this page, with a sound when one arrives. Set up orders in Hana under Connections.")),
     sectionTitle("Check a pasted order"),
@@ -1041,22 +1144,33 @@ async function enablePush(quiet) {
   const c = conn();
   try {
     if (!c.orders) throw new Error("Set up orders in Hana first.");
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("This browser cannot show alerts while Hana is closed. On an iPhone, add Hana to the home screen first.");
-    const base = c.orders.replace(/[^/]+$/, "");
-    const cfg = await (await fetch(base + "config.js", { cache: "no-store" })).text();
-    const key = (/"?web_push_public_key"?\s*:\s*"([A-Za-z0-9_-]+)"/.exec(cfg) || [])[1];
-    if (!key) throw new Error("This ntfy server does not offer browser alerts.");
-    if ((await Notification.requestPermission()) !== "granted") throw new Error("Alerts are blocked in this browser's settings.");
-    const reg = (await navigator.serviceWorker.getRegistration()) || (await navigator.serviceWorker.register("sw.js"));
-    await navigator.serviceWorker.ready;
-    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: unb64u(key) }));
-    const j = sub.toJSON();
-    const r = await fetch(base + "v1/webpush", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint: j.endpoint, auth: j.keys.auth, p256dh: j.keys.p256dh, topics: [c.orders.split("/").pop()] }) });
-    if (!r.ok) throw new Error("ntfy answered " + r.status + ".");
+    await ntfyPush([c.orders]);
     saveConn(Object.assign(conn(), { push: true }));
     if (!quiet) snackbar("Alerts are on. New orders now show on this device even while Hana is closed.");
   } catch (e) { if (!quiet) snackbar(e.message); }
+}
+
+/* Today's details (sold-out items, extra delivery time, pickup only) travel with the presence
+   signal, so they need no new menu version. They reset at midnight. */
+function localDay() { const d = new Date(); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+function today() { const t = store.get("hana.biz.today", {}); return t.day === localDay() ? t : { day: localDay(), sold: [], busy: 0, pickup_only: false }; }
+function saveToday(t) { store.set("hana.biz.today", Object.assign(t, { day: localDay() })); presenceBeat(); }
+function todayPanel() {
+  const t = today();
+  const menu = store.get("hana.biz.menu", null);
+  const box = h("details", { class: "gap-top" }, h("summary", { class: "link" }, "Today: sold out, busy, pickup only"));
+  const busy = h("select", { id: "today-busy", on: { change: () => { const x = today(); x.busy = Number(busy.value); saveToday(x); } } },
+    [0, 15, 30, 45, 60].map((n) => h("option", { value: String(n), selected: t.busy === n }, n ? "Busy: add " + n + " minutes" : "Normal delivery times")));
+  const po = h("input", { type: "checkbox", id: "today-pickup", checked: t.pickup_only, on: { change: () => { const x = today(); x.pickup_only = po.checked; saveToday(x); } } });
+  box.append(h("div", { class: "stack" },
+    h("p", { class: "small-text muted" }, "Customers see these at once. They reset at midnight."),
+    selectField("today-busy", "Delivery times", busy),
+    h("div", { class: "row" }, h("label", { class: "switch" }, po, h("span")), h("label", { for: "today-pickup", class: "max" }, "Pickup only (no deliveries right now)")),
+    menu ? h("ul", { class: "list border" }, (menu.items || []).map((it) => {
+      const cb = h("input", { type: "checkbox", id: "sold-" + it.id, checked: t.sold.includes(it.id), on: { change: () => { const x = today(); x.sold = cb.checked ? x.sold.concat(it.id) : x.sold.filter((y) => y !== it.id); saveToday(x); } } });
+      return h("li", null, h("label", { for: "sold-" + it.id, class: "max" }, it.name), h("label", { class: "switch" }, cb, h("span")));
+    })) : h("p", { class: "small-text muted" }, "Enter your business phone above to list your items here.")));
+  return box;
 }
 
 /* Presence: while these tools are open and orders are not paused, tell customers' apps that
@@ -1064,7 +1178,9 @@ async function enablePush(quiet) {
 function presenceBeat(state) {
   const c = conn();
   if (!c.orders) return;
-  const word = state || (c.paused ? "offline" : "online");
+  const t = today();
+  const extra = t.sold.length || t.busy || t.pickup_only ? " " + JSON.stringify({ sold: t.sold, busy: t.busy, pickup_only: t.pickup_only }) : "";
+  const word = state || (c.paused ? "offline" : "online" + extra);
   fetch(presenceTopic(c.orders), { method: "POST", body: word, keepalive: true }).catch(() => {});
 }
 function startPresence() {
@@ -1109,6 +1225,7 @@ function viewUpdate() {
     next.items = read.items;
     next.pickup = checked("pickup");
     if (conn().orders && B.key && B.key.enc) next.direct = { topic: conn().orders, enc_key: B.key.enc.pub };
+    if (B.key && !B.key.staff && next.owner) { const st = store.get("hana.biz.staff", null); if (st) { if (st.length) next.owner.staff = st; else delete next.owner.staff; } }
     for (const z of (next.delivery && next.delivery.zones) || []) {
       z.fee = num("zf-" + z.id); z.min_order = num("zm-" + z.id); z.eta_min = num("ze-" + z.id);
       if (isNaN(z.fee) || isNaN(z.min_order) || isNaN(z.eta_min)) errors.push("Enter every delivery fee, minimum order and delivery time as a whole number.");
@@ -1117,7 +1234,7 @@ function viewUpdate() {
     if (!B.key) errors.push("Sign in first.");
     else if (!next.owner || next.owner.public_key !== B.key.publicB64) errors.push("This key does not belong to this listing.");
     const changes = errors.length ? [] : diffMoney(prev, next);
-    const otherChange = JSON.stringify(prev.items) !== JSON.stringify(next.items) || prev.pickup !== next.pickup || JSON.stringify(prev.direct || null) !== JSON.stringify(next.direct || null);
+    const otherChange = JSON.stringify(prev.items) !== JSON.stringify(next.items) || prev.pickup !== next.pickup || JSON.stringify(prev.direct || null) !== JSON.stringify(next.direct || null) || JSON.stringify((prev.owner || {}).staff || null) !== JSON.stringify((next.owner || {}).staff || null);
     if (!errors.length && !changes.length && !otherChange) errors.push("Nothing has changed.");
     if (!val("summary")) errors.push("Write a short public note about the change.");
     if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); out.scrollIntoView({ block: "nearest" }); return; }
@@ -1390,6 +1507,9 @@ function viewMore() {
     h("ul", { class: "list border more-list" },
       card("#/pos", "receipt_long", "Sales and receipts", "Ring up counter, pickup and delivery sales, and print standard receipts."),
       card("#/statements", "edit_note", "Statements", "Daily and monthly totals by payment method and item, as PDF or CSV."),
+      card("#/poster", "share", "QR poster", "A printable poster that opens your menu when scanned."),
+      card("#/setup", "check_circle", "Get started", "The first-time steps, in order."),
+      card("#/reports", "info", "Community reports", "For volunteers: reports from customers about listings."),
       card("#/riders", "moped", "Riders", "Send delivery jobs to your riders by WhatsApp, or to your own dispatch system.")),
     sectionTitle("Data and connections"),
     h("ul", { class: "list border more-list" },
@@ -1424,6 +1544,9 @@ function route() {
   if (hash === "#/pos") return viewPos();
   if (hash.startsWith("#/pos/")) return viewReceipt(hash.slice(6));
   if (hash === "#/statements") return viewStatements();
+  if (hash === "#/setup") return viewSetup();
+  if (hash === "#/poster") return viewPoster();
+  if (hash === "#/reports") return viewReports();
   if (hash === "#/riders") return viewRiders();
   if (hash === "#/backup") return viewBackup();
   return viewHome();

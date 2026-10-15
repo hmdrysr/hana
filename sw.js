@@ -7,7 +7,7 @@
      which this worker never touches, so updates never remove it. */
 "use strict";
 const CACHE = "hana-shell";
-const SHELL = ["./", "index.html", "core.js", "direct.js", "app.js", "business.html", "business.js", "pos.js", "vault.js", "vault-words.txt", "phonebook.js", "logo.svg", "rules.json", "site.json",
+const SHELL = ["./", "index.html", "core.js", "direct.js", "app.js", "business.html", "business.js", "pos.js", "vault.js", "vault-words.txt", "i18n/bn.json", "phonebook.js", "logo.svg", "rules.json", "site.json",
   "TERMS.md", "regions.json", "icon.svg", "favicon-32.png", "apple-touch-icon.png", "icons/food.svg", "icon-192.png", "manifest.webmanifest", "areas.json", "index.json", "list.json",
   "theme/beer.min.css", "theme/theme.css", "theme/material-symbols-subset.woff2"];
 
@@ -49,14 +49,21 @@ self.addEventListener("fetch", (e) => {
 
 /* Alerts for businesses while their tools are closed (pushed by ntfy; the order itself stays
    encrypted and is opened in the business tools). */
+/* Customers' order topics start with "hana-o-"; the update itself stays encrypted and is read
+   in the app. */
 self.addEventListener("push", (e) => {
-  e.waitUntil(self.registration.showNotification("New Hana order", {
-    body: "Open the business tools to confirm it within 15 minutes.", icon: "icon-192.png", badge: "favicon-32.png", tag: "hana-order", renotify: true }));
+  let topic = "";
+  try { const d = e.data.json(); topic = (d.message && d.message.topic) || d.topic || ""; } catch (x) { /* no details */ }
+  const customer = topic.startsWith("hana-o-");
+  e.waitUntil(self.registration.showNotification(customer ? "Update on your Hana order" : "New Hana order", {
+    body: customer ? "Open Hana to see it." : "Open the business tools to confirm it within 15 minutes.",
+    icon: "icon-192.png", badge: "favicon-32.png", tag: customer ? "hana-update" : "hana-order", renotify: true, data: { customer } }));
 });
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
+  const customer = e.notification.data && e.notification.data.customer;
   e.waitUntil(self.clients.matchAll({ type: "window" }).then((list) => {
-    const open = list.find((c) => c.url.includes("business.html"));
-    return open ? open.focus() : self.clients.openWindow("business.html#/confirm");
+    const open = list.find((c) => customer ? c.url.includes("index.html") || !c.url.includes("business.html") : c.url.includes("business.html"));
+    return open ? open.focus() : self.clients.openWindow(customer ? "index.html#/orders" : "business.html#/confirm");
   }));
 });

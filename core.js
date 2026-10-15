@@ -426,8 +426,9 @@ async function readConfirmation(text, order, publicB64, windowMinutes) {
     }
     if (full[5] === "-" || full[6] === "-") return { error: "The confirmation is incomplete." };
     if (!publicB64) return { error: "The confirmation is signed, but this listing has no key to check it against." };
-    const pub = unb64u(publicB64);
-    if ((await keyId(pub)) !== full[5]) return { error: "The confirmation was signed with a different key from the listing's." };
+    let pub = null;
+    for (const k of [publicB64].concat(order.staff_keys || [])) { const raw = unb64u(k); if ((await keyId(raw)) === full[5]) { pub = raw; break; } }
+    if (!pub) return { error: "The confirmation was signed with a different key from the listing's." };
     const ok = await ed25519Verify(pub, confirmMessage(order.check_line, order.code, full[3], full[4]), unb64u(full[6]));
     if (ok === null) return { status: "unchecked", eta: full[3], line: full[0], minute };
     if (!ok) return { error: "The signature does not match. The confirmation was altered or did not come from the business." };
@@ -886,3 +887,27 @@ function nextOpening(hours, when) {
 }
 
 setupThemeToggle();
+
+/* Bangla: a small word list (i18n/bn.json), loaded only when chosen, replaces the interface's
+   fixed labels as they appear. Business names, dishes and order messages stay as written. */
+function language() { try { return localStorage.getItem("hana.lang") === "bn" ? "bn" : "en"; } catch (e) { return "en"; } }
+function setLanguage(l) { try { localStorage.setItem("hana.lang", l); } catch (e) { /* ignore */ } location.reload(); }
+(async function startLanguage() {
+  if (language() !== "bn" || !document.body) return;
+  let T;
+  try { T = await (await fetch("i18n/bn.json")).json(); } catch (e) { return; }
+  document.documentElement.lang = "bn";
+  const one = (n) => { const k = n.nodeValue.trim(); if (k && T[k]) n.nodeValue = n.nodeValue.replace(k, T[k]); };
+  const all = (root) => {
+    if (root.nodeType === 3) { one(root); return; }
+    if (root.nodeType !== 1) return;
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (w.nextNode()) one(w.currentNode);
+    for (const el of [root].concat(Array.from(root.querySelectorAll("[aria-label],[placeholder],[title]")))) {
+      for (const a of ["aria-label", "placeholder", "title"]) { const v = el.getAttribute && el.getAttribute(a); if (v && T[v.trim()]) el.setAttribute(a, T[v.trim()]); }
+    }
+  };
+  all(document.body);
+  new MutationObserver((ms) => { for (const m of ms) { if (m.type === "characterData") one(m.target); else m.addedNodes.forEach(all); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true });
+})();

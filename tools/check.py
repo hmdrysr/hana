@@ -551,6 +551,11 @@ def check_menu(menu_path, root, area_ids):
                 err(rel, "owner.public_key must be a 32-byte Ed25519 public key in unpadded base64url")
             elif data.get("id") != hana_sign.listing_id(pub):
                 err(rel, "a claimed listing's id must be the SHA-256 of the owner's public key")
+            staff = owner.get("staff", [])
+            if not isinstance(staff, list) or len(staff) > 20 or not all(
+                    isinstance(x, dict) and isinstance(x.get("name"), str) and 0 < len(x["name"]) <= 30
+                    and isinstance(x.get("public_key"), str) and re.fullmatch(r"[A-Za-z0-9_-]{43}", x["public_key"]) for x in staff):
+                err(rel, "owner.staff must be a list of up to 20 {name, public_key} entries (SPEC.md section 22)")
             else:
                 problem = hana_sign.verify_menu(data)
                 if problem:
@@ -991,7 +996,7 @@ def check_text_files(root):
 
 # ---------------------------------------------------------------- interface uniformity (theme/UNIFORMITY.md)
 
-UI_CLASSES = set("""active badge bold border bottom brand brand-mark brand-name button card-title center-align checkbox
+UI_CLASSES = set("""qr active badge bold border bottom brand brand-mark brand-name button card-title center-align checkbox
 chip circle dark field fill flush gap-top group-title l label left left-align link list m max medium muted no-border
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
