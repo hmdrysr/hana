@@ -173,7 +173,18 @@ with sync_playwright() as p:
     page.click("button[aria-label^='Add French Fries']")
     page.wait_for_selector("dialog[open]")
     ok("second restaurant asks before emptying the basket", "one restaurant" in page.inner_text("#dialog-text"))
+    d = page.evaluate("(() => { const r = document.querySelector('dialog[open]').getBoundingClientRect(); return { l: r.left, r: innerWidth - r.right, w: r.width, h: r.height }; })()")
+    ok("dialogs are compact and keep a margin on both sides", d["l"] >= 16 and d["r"] >= 16 and d["w"] <= 360 and d["h"] <= 400, d)
     page.click("#dialog-cancel")
+    page.goto(BASE + "#/r/" + TAVA)
+    page.wait_for_selector(".page-title")
+    page.click("button[aria-label^='Add Dahi Bara']")
+    page.wait_for_timeout(400)
+    geo = page.evaluate("""() => { const r = (s) => { const e = document.querySelector(s); return e && !e.hidden ? e.getBoundingClientRect() : null; };
+        const sb = r("#snackbar"), bar = r("a.basket-bar"), nav = r("nav.bottom");
+        const hit = (a, b) => a && b && a.top < b.bottom && b.top < a.bottom;
+        return { overlap: hit(sb, bar) || hit(sb, nav), left: sb && sb.left, right: sb && innerWidth - sb.right }; }""")
+    ok("the added-to-basket notice never covers the basket bar or navigation", not geo["overlap"] and geo["left"] >= 16 and geo["right"] >= 16, geo)
     page.goto(BASE + "#/basket")
     page.wait_for_selector("#zone")
     labels = page.eval_on_selector_all("input[name=channel] + span", "e => e.map(x => x.textContent)")

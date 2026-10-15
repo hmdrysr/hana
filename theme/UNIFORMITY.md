@@ -78,3 +78,9 @@ Canadian English, plain and professional:
 active, badge, bold, border, bottom, brand, brand-mark, brand-name, button, card-title, center-align, checkbox, chip, circle, dark, field, fill, flush, gap-top, group-title, l, label, left, left-align, link, list, m, max, medium, muted, no-border, no-elevate, no-space, overline-label, page-title, prefix, price, primary-container, radio, responsive, right-align, round, row, s, section-title, small, small-space, small-text, snackbar, space, suffix, surface-container-high, surface-container-highest, switch, tertiary-container, textarea, top-align, transparent, vertical, vertical-padding, wrap, light, field-label, cover, thumb, credit, text-large, text-larger, scheme-teal, scheme-indigo, scheme-green, scheme-plum, scheme-contrast
 
 Adding a class to this list is a theme change: it needs a recorded decision and a commit that updates this file and `tools/check.py` together.
+
+## Pop-ups
+
+- Dialogs and notices are compact cards no wider than 22rem, centred, with at least 1rem of margin on each side. Dialog titles use 1.25rem type.
+- The notice (snackbar) appears below the top bar, so it never covers the basket bar, a checkout button or the navigation.
+- `tools/browser_test.py` checks both rules at 360px width.
