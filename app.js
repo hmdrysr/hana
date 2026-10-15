@@ -274,6 +274,7 @@ function viewList() {
       foodIcon(c.key, "large"), h("span", { class: "max" }, c.label),
       h("span", { class: "small-text muted" }, c.count + (c.count === 1 ? " place" : " places"))))));
 
+  if (state.openOnly === undefined) Object.assign(state, store.get("hana.filters", { openOnly: false, favOnly: false }));
   function render() {
     const cats = availableCategories();
     if (state.cat && !cats.some((c) => c.key === state.cat)) state.cat = "";
@@ -308,6 +309,8 @@ function viewList() {
       const delivers = !state.area || !m || !!zone;
       if (!delivers && !state.showAll) { hidden++; continue; }
       if (state.cat && !(r.cats && r.cats.has(state.cat))) continue;
+      if (state.favOnly && !favourites().includes(r.id)) continue;
+      if (state.openOnly && m && openNow(m.hours) === false) continue;
       const nameHit = fuzzyMatches(state.query.replace(/^@/, ""), r.name + " " + (m ? (m.kind || "") + " " + (m.handle || "") : ""));
       const hits = q ? searchItems(r).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
       if (q && !nameHit && !hits.length) continue;
@@ -326,6 +329,9 @@ function viewList() {
       head.push(h("div", { class: "row" }, h("label", { class: "switch" }, showAll, h("span")),
         h("label", { for: "showall", class: "max small-text" }, "Also show places that do not deliver to " + areaName(state.area) + (hidden ? " (" + hidden + " hidden)" : ""))));
     }
+    const toggle = (key, text) => h("button", { type: "button", class: "chip small" + (state[key] ? "" : " border"), "aria-pressed": String(!!state[key]),
+      on: { click: () => { state[key] = !state[key]; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly }); state.page = 0; render(); } } }, h("span", null, text));
+    head.push(h("nav", { class: "wrap small-space" }, toggle("openOnly", "Open now"), favourites().length || state.favOnly ? toggle("favOnly", "Favourites") : null));
     listHead.replaceChildren(...(q && !cards.length ? [] : head));
 
     const PER = 12;
@@ -543,6 +549,7 @@ function viewRestaurant(id) {
     h("div", { class: "row" },
       h("p", { class: "muted flush max" }, (m.handle ? "@" + m.handle + " · " : "") + (m.kind || "Restaurant") + " · " + locatedIn(m)),
       m.business_phone ? h("a", { href: "tel:" + m.business_phone, class: "button circle transparent", "aria-label": "Call " + m.name, title: "Call" }, icon("call")) : null,
+      favButton(r),
       m.handle ? h("button", { type: "button", class: "circle transparent", "aria-label": "Share this listing", title: "Share", on: { click: () => shareListing(m) } }, icon("share")) : null),
     h("nav", { class: "wrap small-space" }, chips),
     h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup !== false ? " Pickup is available." : "") +
@@ -611,6 +618,19 @@ function viewRestaurant(id) {
 
 /* The clean web address of a listing, built from its handle. */
 function listingUrl(m) { return m.handle ? new URL((isGrocery(m) ? "groceries/" : "restaurants/") + m.handle + "/", document.baseURI).href : null; }
+/* Favourites and the "Open now" filter: kept on this phone only. */
+function favourites() { return store.get("hana.favourites", []); }
+function favButton(r) {
+  const b = h("button", { type: "button", class: "circle transparent" });
+  const draw = () => { const on = favourites().includes(r.id); b.setAttribute("aria-label", on ? "Remove from favourites" : "Add to favourites"); b.setAttribute("aria-pressed", String(on)); b.replaceChildren(icon(on ? "favorite_fill" : "favorite")); };
+  b.addEventListener("click", () => {
+    const on = favourites().includes(r.id);
+    store.set("hana.favourites", on ? favourites().filter((x) => x !== r.id) : favourites().concat(r.id));
+    draw(); snackbar(on ? "Removed from favourites." : "Added to favourites.");
+  });
+  draw();
+  return b;
+}
 async function shareListing(m) {
   const url = listingUrl(m);
   if (navigator.share) { try { await navigator.share({ title: m.name + " on Hana", url }); return; } catch (e) { if (e.name === "AbortError") return; } }
@@ -1438,7 +1458,7 @@ function viewSettings() {
       h("input", { type: "file", id: "restore-file", accept: ".json,application/json", hidden: true, "aria-label": "Restore from a download", on: { change: (e) => importData(e.target) } }),
       h("button", { type: "button", class: "border", on: { click: async () => {
         if (await ask("Delete everything on this phone?", "This removes your orders, profile, record, area, basket and settings. It cannot be undone. Download your data first if you want a copy.", "Delete")) {
-          for (const k of ["hana.orders", "hana.me", "hana.addresses", "hana.basket", "hana.area", "hana.log", "hana.settings", "hana.theme"]) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+          for (const k of ["hana.orders", "hana.me", "hana.addresses", "hana.favourites", "hana.filters", "hana.basket", "hana.area", "hana.log", "hana.settings", "hana.theme"]) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
           state.basket = null; state.area = ""; applyTheme(); updateBasketBadge(); viewSettings(); snackbar("Deleted.");
         }
       } } }, icon("delete"), h("span", null, "Delete everything"))),
