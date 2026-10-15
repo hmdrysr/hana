@@ -3,9 +3,6 @@
    sections 4.1 (claims and keys), 5.4 (price changes) and 6.5 (confirmations). */
 "use strict";
 
-const boot = document.getElementById("boot");
-if (boot) boot.remove();
-
 const main = document.getElementById("main");
 const B = {
   site: { repo_url: "", company_url: "https://hamidyasir.com" },
@@ -379,28 +376,7 @@ function setupSteps() {
     { done: !!store.get("hana.biz.poster", false), title: "Print your poster", text: "A QR code for your counter and bags.", href: "#/poster" },
   ];
 }
-function viewAiOnboard() {
-  const prompt = `You are helping a Chittagong restaurant or grocery store set up on Hana (https://hmdrysr.github.io/hana/).
-
-Output only a valid menu.json object matching this shape (no extra text):
-{
-  "name": "Business Name",
-  "handle": "short-handle",
-  "kind": "Restaurant",
-  "phone": "+8801XXXXXXXXX",
-  "hours": "daily 11:00-22:00",
-  "delivery": { "zones": ["khulshi"], "fee": 40 },
-  "items": [
-    { "name": "Item name", "price": 120, "category": "Main" }
-  ]
-}
-
-Rules: prices include all taxes, delivery fee ≤ 150 BDT, payment only on delivery or pickup, Chittagong zones only, Canadian English.`;
-  show("more", "Onboard with AI", pageHeader("Onboard with your AI", "#/more"),
-    h("p", null, "Optional. Paste this prompt into any AI. It returns a ready menu.json you can drop into your forge repo or load here."),
-    h("pre", { class: "small-text" }, prompt),
-    h("nav", null, h("button", { type: "button", on: { click: () => { navigator.clipboard.writeText(prompt); } } }, "Copy prompt")));
-}
+function viewSetup() {
   const steps = setupSteps(), n = steps.filter((x) => x.done).length;
   show("home", "Get started", pageHeader("Get started", "#/"),
     h("p", null, n + " of " + steps.length + " steps done. Your progress is kept on this phone, so you can stop and continue later."),
@@ -1518,43 +1494,7 @@ function viewConnect() {
 
 /* ---------------------------------------------------------------- more tools */
 
-function viewPriceForm() {
-  show("more", "Price update form", pageHeader("Volunteer price update", "#/more"),
-    h("p", null, "Generates a ready pull-request description and JSON patch for a price change. Paste into a forge PR."),
-    h("label", null, "Business handle", input("pf-handle")),
-    h("label", null, "Item name", input("pf-item")),
-    h("label", null, "New price (BDT)", input("pf-price", { type: "number" })),
-    h("nav", null, h("button", { type: "button", on: { click: () => {
-      const text = "Price update for @" + val("pf-handle") + "\n\nItem: " + val("pf-item") + "\nNew price: BDT " + val("pf-price") + "\n\n```json\n" + JSON.stringify({ item: val("pf-item"), price: Number(val("pf-price")) }, null, 2) + "\n```";
-      navigator.clipboard.writeText(text); snackbar("Copied PR text.");
-    } } }, "Copy PR text")));
-}
-
-function viewAnalytics() {
-  const sales = store.get("hana.pos.sales", []);
-  const today = new Date().toISOString().slice(0, 10);
-  const todays = sales.filter(s => (s.at || "").startsWith(today));
-  const total = todays.reduce((a, s) => a + (s.total || 0), 0);
-  show("more", "Local analytics", pageHeader("Local analytics", "#/more"),
-    h("p", null, "From sales stored on this device only."),
-    h("div", { class: "round border no-elevate" }, h("h3", null, "Today"), h("p", null, todays.length + " sales · BDT " + total)),
-    h("nav", null, h("button", { type: "button", on: { click: () => download("hana-sales.csv", "date,total\n" + sales.map(s => (s.at||"") + "," + (s.total||0)).join("\n"), "text/csv") } }, "Download CSV")));
-}
-
-function viewWhatsAppOnboard() {
-  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-  show("more", "WhatsApp verification", pageHeader("Verify your number", "#/more"),
-    h("p", null, "Post this code on your WhatsApp Business status. A volunteer will confirm it matches your listing phone."),
-    h("p", { class: "bold" }, "Code: " + code),
-    h("p", { class: "small-text" }, "Bangla: আপনার WhatsApp Business স্ট্যাটাসে এই কোড পোস্ট করুন।"),
-    h("nav", null, h("button", { type: "button", on: { click: () => navigator.clipboard.writeText(code) } }, "Copy code")));
-}
-
-function viewReportsHelper() {
-  show("more", "Reports key helper", pageHeader("Reports key", "#/more"),
-    h("p", null, "Create a report key in Community reports, then add this block to site.json:"),
-    h("pre", { class: "small-text" }, '{\n  "reports": {\n    "topic": "hana-reports",\n    "enc_key": "PASTE_PUBLIC_KEY_HERE"\n  }\n}'));
-}
+function viewMore() {
   const card = (href, ic, title, text) => h("li", null, h("a", { href, class: "row max" }, icon(ic), h("div", { class: "max" }, h("div", { class: "bold" }, title), h("div", { class: "small-text muted" }, text))));
   show("more", "More tools", pageTitle("More tools"),
     notice("info", h("p", { class: "flush" }, "Everything here is optional. Only your menu and listing are ever published; sales, customers, riders, keys and backups stay on this device or go only to services you connect.")),
@@ -1569,11 +1509,6 @@ function viewReportsHelper() {
       card("#/statements", "edit_note", "Statements", "Daily and monthly totals by payment method and item, as PDF or CSV."),
       card("#/poster", "share", "QR poster", "A printable poster that opens your menu when scanned."),
       card("#/setup", "check_circle", "Get started", "The first-time steps, in order."),
-      card("#/ai", "smart_toy", "Onboard with your AI", "Optional. Copy a prompt that makes any AI return a ready menu.json."),
-      card("#/whatsapp", "chat", "WhatsApp verification", "One-time code to post on your WhatsApp Business status."),
-      card("#/priceform", "edit", "Price update form", "Volunteer tool: generate a PR-ready price change."),
-      card("#/analytics", "analytics", "Local analytics", "Today’s sales summary from this device, plus CSV."),
-      card("#/reportshelp", "key", "Reports key helper", "Prints the exact site.json block for community reports."),
       card("#/reports", "info", "Community reports", "For volunteers: reports from customers about listings."),
       card("#/riders", "moped", "Riders", "Send delivery jobs to your riders by WhatsApp, or to your own dispatch system.")),
     sectionTitle("Data and connections"),
@@ -1612,11 +1547,6 @@ function route() {
   if (hash === "#/setup") return viewSetup();
   if (hash === "#/poster") return viewPoster();
   if (hash === "#/reports") return viewReports();
-  if (hash === "#/ai") return viewAiOnboard();
-  if (hash === "#/whatsapp") return viewWhatsAppOnboard();
-  if (hash === "#/priceform") return viewPriceForm();
-  if (hash === "#/analytics") return viewAnalytics();
-  if (hash === "#/reportshelp") return viewReportsHelper();
   if (hash === "#/riders") return viewRiders();
   if (hash === "#/backup") return viewBackup();
   return viewHome();

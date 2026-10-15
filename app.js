@@ -298,7 +298,7 @@ function viewList() {
       const matchCats = cats.filter((c) => fuzzyMatches(state.query, c.label));
       if (matchCats.length) kids.push(sectionTitle("Categories"), catRows(matchCats));
     }
-    let cards = [], dishes = [];
+    const cards = [], dishes = [];
     let hidden = 0;
     if ((q || state.cat) && !state.search) { ensureSearch().then(render); }
     for (const r of state.restaurants) {
@@ -325,18 +325,6 @@ function viewList() {
     if (state.area && (hidden || state.showAll)) {
       head.push(h("div", { class: "row" }, h("label", { class: "switch" }, showAll, h("span")),
         h("label", { for: "showall", class: "max small-text" }, "Also show places that do not deliver to " + areaName(state.area) + (hidden ? " (" + hidden + " hidden)" : ""))));
-    }
-    const favs = store.get("hana.favorites", []);
-    const openOnly = store.get("hana.openOnly", false);
-    head.push(h("div", { class: "row" },
-      h("button", { type: "button", class: "chip small", on: { click: () => { store.set("hana.openOnly", !openOnly); render(); } } }, openOnly ? "Showing open now" : "Open now"),
-      h("button", { type: "button", class: "chip small", on: { click: () => { store.set("hana.favOnly", !store.get("hana.favOnly", false)); render(); } } }, store.get("hana.favOnly", false) ? "Favourites" : "All")));
-    if (openOnly || store.get("hana.favOnly", false)) {
-      cards = cards.filter(([r]) => {
-        if (store.get("hana.favOnly", false) && !favs.includes(r.id)) return false;
-        if (openOnly && openNow(r.lite && r.lite.hours) === false) return false;
-        return true;
-      });
     }
     listHead.replaceChildren(...(q && !cards.length ? [] : head));
 
@@ -441,10 +429,6 @@ function restaurantCard(r, zone, delivers, dishHits) {
       h("a", { href: "#/r/" + r.id, class: "max" }, it.name), h("span", { class: "price" }, fromPrice(it))))));
     if (dishHits.length > 5) body.push(h("p", { class: "small-text muted flush" }, (dishHits.length - 5) + " more on the restaurant page"));
   }
-  const favs = store.get("hana.favorites", []);
-  const isFav = favs.includes(r.id);
-  body.push(h("button", { type: "button", class: "circle transparent", "aria-label": isFav ? "Remove favourite" : "Add favourite",
-    on: { click: (e) => { e.preventDefault(); const next = isFav ? favs.filter(x => x !== r.id) : favs.concat(r.id); store.set("hana.favorites", next); render(); } } }, icon(isFav ? "favorite" : "favorite_border")));
   return h("article", { class: "round border no-elevate rcard" },
     h("a", { href: "#/r/" + r.id, tabindex: "-1", "aria-hidden": "true" }, picture(coverFor(m), "cover", "", cuisineKey(m))),
     h("div", { class: "rcard-body" }, body));

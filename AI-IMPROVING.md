@@ -64,8 +64,3 @@ Open a pull request as described in `CONTRIBUTING.md`. State in the description 
 ## What not to share with an assistant
 
 Customer orders, phone numbers from orders, private keys (`hana_sign.py` key files) and anything from a business's private messages. The repository itself is public and safe to share.
-
-
-## Bangla translations
-Use Weblate (FOSS) to maintain i18n/bn.json. Sync via Git pull requests or the zip workflow. The file stays static and loads only when Bangla is selected.
-

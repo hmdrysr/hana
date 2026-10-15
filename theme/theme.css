@@ -1232,20 +1232,3 @@ dialog > nav {
   inline-size: min(70vw, 18rem);
   block-size: auto;
 }
-#boot {
-  position: fixed;
-  inset: 0;
-  background: #0F766E;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9;
-}
-#boot img {
-  animation: hana-bounce 0.9s ease-in-out infinite;
-}
-@keyframes hana-bounce {
-  0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
-  40% { transform: translateY(-16px) scale(1.08) rotate(-6deg); }
-  60% { transform: translateY(-16px) scale(1.08) rotate(6deg); }
-}
