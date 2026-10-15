@@ -230,7 +230,7 @@ Fast-changing data such as "sold out" is not stored in the menu file. The restau
     "data_handling": {"signed": true, "date": "YYYY-MM-DD"}
   },
   "items": [
-    {"id": "dahi-bara", "name": "Dahi Bara (2 pieces)", "section": "Indian", "category": "Starters",
+    {"id": "dahi-bara", "name": "Dahi Bara (2 pieces)", "section": "South Asian", "category": "Starters",
      "description": "optional plain text", "price": 220},
     {"id": "margherita", "name": "Margherita Pizza", "options": [
       {"id": "9-inch", "label": "9 inch", "price": 500},
@@ -407,7 +407,7 @@ Photos are optional. The app stores links, not images.
 
 - A restaurant may link photos hosted anywhere over https, including free image hosts such as ImgBB. UNVERIFIED: check each host's terms, how long it keeps images, and whether its direct links work without ads, blocking or login. Link to the image file itself, not to a web page that shows it.
 - Each photo has: `alt` (a plain description, required), `sources` (one or more https addresses of the same file, so a second host can back up the first), `sha256` (hash of the exact image bytes), `width`, `height` and `bytes`.
-- Limits (proposed): JPEG, WebP or PNG; at most 1600 pixels on the long side; at most 300 KB; at most 12 photos per restaurant. `tools/check.py` enforces the declared values.
+- Limits (proposed): JPEG, WebP or PNG; no more than 1,600 pixels on the long side, no larger than 300 KB and no more than 12 photos per restaurant. `tools/check.py` enforces the declared values.
 - Photos show food, the premises or the menu. Not customers or couriers. Do not use pictures copied from another business or site unless the owner has the right to use them (UNVERIFIED: get a legal view).
 
 **The hash is the safeguard.** The app shows a photo only after it has fetched it, and found that the size and SHA-256 match the menu. A host cannot swap in a different picture, and a mirror can serve the same file. `tools/verify_images.py` fetches every source and reports which still work. If a host does not let the app read the file (CORS), the hash cannot be checked. The app then shows a placeholder, and the customer can tap to load the photo unverified, after a warning.
@@ -711,7 +711,7 @@ A claimed business may name a `confirmation_feed`: an https ntfy topic it contro
 
 | Abuse | Safeguard |
 |---|---|
-| Fake or prank orders | An order counts only when the business confirms it; the business sees the customer's real chat account or number; at most three orders may wait for replies at once, and one per business |
+| Fake or prank orders | An order counts only when the business confirms it; the business sees the customer's real chat account or number; no more than three orders may wait for replies at once, and one per business |
 | Customer edits prices in the message | The check line is re-priced from the signed menu on the business tools page |
 | Forged confirmations | Claimed listings sign confirmations; time window checked; unsigned replies refused for claimed listings; feeds accept signed lines only |
 | Unsent or never-confirmed orders used for complaints | Only confirmed orders produce a complaint summary; unconfirmed orders are cancelled automatically |
@@ -721,3 +721,11 @@ A claimed business may name a `confirmation_feed`: an https ntfy topic it contro
 | Malicious text or links in menus | Plain text only; links only to allowed image hosts; Content Security Policy |
 | Tampered offline copies | Standalone files refresh from the directory when online; claimed menus are signed |
 | Deleted evidence | Record-keeping rule and pledge; adverse-inference guidance in `TERMS.md` |
+
+## 14. Grocery stores, downloads, AI assistants and the Fediverse
+
+- **Grocery stores** list the same way as restaurants, with the kind "Grocery store" or "Supermarket". Every rule is the same: prices include all charges, payment is only on delivery or at pickup, and each order goes to one business. The app shows them under the Groceries tab, sorts their products into grocery categories (`GROCERY` in `core.js`), and calls their items products. Sizes such as "1 kg: 120; 5 kg: 590" use the same option format as menu sizes.
+- **Zone from location.** "Use my location" asks the browser for the position, rounds it to about 100 metres and asks OpenStreetMap's Nominatim service (free, no key, no account) which area it is in. The names it returns are matched against the zone and ward names in `areas.json`. Nothing happens unless the customer taps the button. When areas have boundaries, matching can move onto the phone and Nominatim will no longer be needed.
+- **Directory downloads.** Settings offers the whole directory as JSON (`directoryData()` in `app.js`, format `hana-directory-1`) and as a PDF laid out like a telephone book (`phonebook.js`, which writes the PDF in the browser with the standard Helvetica fonts and no library).
+- **AI assistants** follow `AGENTS.md`. They read the public files, prepare the same order message as the app (`tools/place_order.py`), and either open the customer's messaging app with it or give the customer an app link, `#/order?r=<id>&items=<key>*<qty>,...&mode=delivery|pickup&zone=<zone id>`, which fills the basket. The customer approves and sends every order.
+- **Fediverse.** `feed.xml` is an Atom feed of new listings and price changes, rebuilt by `tools/build_feed.py` and checked by `tools/check.py`. Fediverse users follow it through a feed bridge such as RSS Parrot, with the account they already have. Nobody needs a new account, and businesses need nothing beyond their forge account.

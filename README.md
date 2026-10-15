@@ -1,6 +1,6 @@
 # Hana
 
-Hana is the Chittagonian word for food. Hana is a free, open directory of restaurants in Chittagong, Bangladesh, and a tool for preparing orders. It lists restaurants, shows which ones deliver to your area, and prepares an order message that you send yourself, by WhatsApp, text message, phone call or whichever app the business uses. You pay the business directly, in cash or by Bangla QR.
+Hana is the Chittagonian word for food. Hana is a free, open directory of restaurants and grocery stores in Chittagong, Bangladesh, and a tool for preparing orders. It lists businesses, shows which ones deliver to your area, and prepares an order message that you send yourself, by WhatsApp, text message, email or whichever app the business uses. You pay the business on delivery or at pickup, in cash, by Bangla QR, by card on a terminal or by mobile wallet transfer.
 
 Created by [Hamid Yasir & Co.](https://hamidyasir.com) for the people of Chittagong. Managed by the [Hana Community](https://github.com/hmdrysr/hana). See `AUTHORS.md`.
 
@@ -53,6 +53,23 @@ This explains why the project exists. It is not an audit: Hana has not measured 
 14. **Records are kept.** Businesses keep all order communications for at least six months, and twelve months when there is a dispute. See `TERMS.md`.
 
 These promises are protected by `GOVERNANCE.md`. A change that adds fees, paid placement, tracking or lock-in is not accepted.
+
+## Follow Hana on the Fediverse
+
+New listings and price changes are published as an Atom feed, `feed.xml` (https://hmdrysr.github.io/hana/feed.xml). Nobody needs a new account to follow it:
+
+- **From Mastodon or another Fediverse app:** look up the feed address at RSS Parrot (https://rss-parrot.net), a free bridge that gives every feed its own followable account, then follow that account from the account you already have.
+- **From a feed reader:** add the feed address.
+
+The feed is rebuilt with `python3 tools/build_feed.py`; `tools/check.py` reports when it is out of date. Businesses need nothing beyond the GitHub account they already use for their listing.
+
+## Ordering through an AI assistant
+
+An AI assistant can find businesses, read menus and prepare an order from the public files, following the rules in `AGENTS.md` (summary in `llms.txt`). It can open the customer's messaging app with the order filled in, or give them a link that opens Hana's checkout with the basket ready. The customer approves and sends every order. `AI-IMPROVING.md` explains how to use an AI assistant to improve Hana itself.
+
+## Downloading the directory
+
+In the app, Settings, then Download the directory, saves every listing and menu as JSON, or as a PDF laid out like a telephone book, ready to print.
 
 ## How to help
 

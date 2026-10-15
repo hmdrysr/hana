@@ -7,7 +7,7 @@
      which this worker never touches, so updates never remove it. */
 "use strict";
 const CACHE = "hana-shell";
-const SHELL = ["./", "index.html", "core.js", "app.js", "business.html", "business.js", "rules.json", "site.json",
+const SHELL = ["./", "index.html", "core.js", "app.js", "business.html", "business.js", "phonebook.js", "rules.json", "site.json",
   "TERMS.md", "regions.json", "icon.svg", "icons/food.svg", "icon-192.png", "manifest.webmanifest", "areas.json", "index.json",
   "theme/beer.min.css", "theme/theme.css", "theme/material-symbols-subset.woff2"];
 

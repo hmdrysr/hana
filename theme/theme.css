@@ -831,3 +831,43 @@ nav.page-head {
 nav.cat-strip[hidden] {
   display: none;
 }
+
+/* ---------- Front page ---------- */
+.zone-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+.zone-row > :first-child {
+  flex: 1 1 14rem;
+  margin: 0;
+}
+.zone-row > button {
+  flex: 0 0 auto;
+  margin-block-end: 0.25rem;
+}
+nav.kind-tabs {
+  display: flex;
+  gap: 0;
+  border-block-end: 1px solid var(--outline-variant);
+  margin-block-start: 0.5rem;
+}
+nav.kind-tabs > button {
+  flex: 1 1 0;
+  min-inline-size: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--on-surface-variant);
+  box-shadow: none;
+  border-block-end: 3px solid transparent;
+  white-space: normal;
+}
+nav.kind-tabs > button[aria-pressed="true"] {
+  color: var(--on-surface);
+  border-block-end-color: var(--primary);
+  font-weight: 600;
+}
+.section-title[hidden] {
+  display: none;
+}

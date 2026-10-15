@@ -4,7 +4,7 @@ Every Hana screen follows these rules so that the app looks and behaves the same
 
 ## Layout
 
-- One frame for every screen: the top bar with the brand mark and the colour-mode toggle, one content column (at most 45rem wide), the footer credit, and the main navigation.
+- One frame for every screen: the top bar with the brand mark and the colour-mode toggle, one content column (no wider than 45rem), the footer credit, and the main navigation.
 - The top bar holds the Settings button and the colour-mode toggle (`#theme-toggle`, cycling through follow the phone, light, dark). People choose a colour scheme and text size in Settings; pages never set colours or sizes themselves.
 - Long lists are split into pages with the shared `pager()` control.
 - The business tools page (`business.html`) uses the same frame, with its own four destinations: Start, List or claim, Confirm, Update prices.
@@ -48,7 +48,7 @@ Use only these, in the forms shown in `app.js`:
 - Card: `article.round.border.no-elevate` for a listing or an order.
 - List: `ul.list` or `ul.list.border`.
 - Chip: `span.chip.small.no-border` for status; `button.chip.medium.border` for an "add" action with a price.
-- Button: `button` (filled, the main action on a screen; at most one per section), `button.border` (secondary), `button.circle.transparent` (icon-only, with an `aria-label`), `a.button` for a link styled as a button.
+- Button: `button` (filled, the main action on a screen; no more than one per section), `button.border` (secondary), `button.circle.transparent` (icon-only, with an `aria-label`), `a.button` for a link styled as a button.
 - Text field, text area, select: a `label.field-label` above a `div.field.border.round` (`.suffix` with an arrow icon for a select, `.textarea` for a text area), built with `textField()` and `selectField()` in `core.js`. Labels are never placed inside fields, so they can wrap. Search: `div.field.prefix.round.fill`.
 - Radio button, checkbox, switch: `label.radio`, `label.checkbox`, `label.switch`.
 - Snackbar (`#snackbar`) for short confirmations; dialog (`#dialog`) for a decision that cannot be undone or that empties the basket.

@@ -9,7 +9,7 @@ const B = {
   rules: { max_delivery_fee: 150, payment_methods_on_delivery: { cash: "Cash" } },
   areas: [], areaById: new Map(), index: [], menus: new Map(), key: null, loaded: false,
 };
-const KINDS = ["Restaurant", "Delivery-only kitchen", "Café", "Bakery", "Sweet shop"];
+const KINDS = ["Restaurant", "Delivery-only kitchen", "Café", "Bakery", "Sweet shop", "Grocery store", "Supermarket"];
 const PLEDGES = {
   rider_identity: "Every courier who delivers for this business uses a mobile number registered in their own name with their own NID. I have checked this myself and will check every new courier before their first delivery.",
   data_handling: "I will give couriers only what they need to deliver: the customer's first name or nickname, the address or landmark, the order code and the amount to collect. I will not keep customer details longer than needed or share them with anyone else.",
@@ -231,7 +231,7 @@ async function versionsOf(row) {
    tools never show a list of unclaimed businesses. */
 async function findListingByPhone(phone, unclaimedOnly) {
   const want = String(phone || "").replace(/[\s-]/g, "").replace(/^0/, "+880").replace(/^880/, "+880");
-  if (!/^\+8801\d{9}$/.test(want)) return { error: "Enter the business phone like +8801XXXXXXXXX." };
+  if (!/^\+8801\d{9}$/.test(want)) return { error: "Enter the business phone in the format +8801XXXXXXXXX." };
   for (const row of B.index) {
     if (unclaimedOnly && row.claimed) continue;
     const vs = await versionsOf(row);
@@ -245,7 +245,7 @@ async function findListingByPhone(phone, unclaimedOnly) {
 function viewHome() {
   show("home", "",
     pageTitle("Business tools"),
-    h("p", null, "Free tools for restaurants and delivery-only kitchens in Chittagong. Listing on Hana costs nothing, and Hana takes no commission."),
+    h("p", null, "Free tools for restaurants, kitchens and grocery stores in Chittagong. Listing on Hana costs nothing, and Hana takes no commission."),
     h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "List your business"),
       h("p", null, "Fill in one form. The page prepares your signed menu file and a request for the community to verify you."),
       h("nav", null, h("a", { href: "#/join", class: "button" }, icon("add_business"), h("span", null, "New listing")))),
@@ -263,12 +263,12 @@ function viewHome() {
       h("nav", null, h("a", { href: "#/site", class: "button border" }, icon("storefront"), h("span", null, "Make my website")))),
     sectionTitle("Rules for every business"),
     h("ul", { class: "list border" }, [
-      "Cash on delivery only: payment is taken on delivery or at pickup, never in advance.",
+      "Take payment only on delivery or at pickup, never in advance.",
       "Every price includes VAT and every other charge. The delivery fee is the only addition.",
-      "One fixed delivery fee per area, at most " + money(B.rules.max_delivery_fee) + ".",
+      "Set one fixed delivery fee for each area, no higher than " + money(B.rules.max_delivery_fee) + ".",
       "Confirm or decline each order within " + (B.rules.confirmation_window_minutes || 15) + " minutes, in the customer's chat. Unconfirmed orders are cancelled automatically.",
       "Keep all order communications for at least " + (B.rules.record_retention_months || 6) + " months, or " + (B.rules.record_retention_months_when_disputed || 12) + " months if there is a dispute. Do not delete or unsend them.",
-      "Claims are checked by two community members and reviewed every " + (B.rules.community_review_days || 180) + " days.",
+      "Two community members check each claim, and claims are reviewed every " + (B.rules.community_review_days || 180) + " days.",
     ].map((x) => h("li", null, icon("check_circle"), h("div", { class: "max" }, x)))));
 }
 
@@ -386,18 +386,18 @@ function viewJoin() {
     textField("name", "Business name", input("name", { maxlength: 80 })),
     select("kind", "Type of business", KINDS.map((k) => [k, k]), KINDS[0]),
     select("cuisine", "Main cuisine", [["", "Other or mixed"]].concat(FOOD.filter((f) => !["sides", "drink", "combo"].includes(f[0])).map((f) => [f[1], f[1]])), ""),
-    hint("Picks a stock cover photo until you add your own."),
+    hint("Used to choose a stock cover photo until you add your own."),
     textField("phone", "Business phone", input("phone", { inputmode: "tel", maxlength: 14, on: { change: checkMerge } })),
     mergeBox,
-    hint("Write it like +8801XXXXXXXXX."),
+    hint("Use the format +8801XXXXXXXXX."),
     textField("whatsapp", "WhatsApp number (if any)", input("whatsapp", { inputmode: "tel", maxlength: 14 })),
     check("sms", "Customers may also send orders by text message to the business phone", true),
     h("details", null, h("summary", { class: "link" }, "Other ways to receive orders (optional)"),
       hint("Only if your business already uses them. WhatsApp and text messages are enough for most businesses."),
       textField("ch-email", "Email address", input("ch-email", { type: "email" })),
-      textField("ch-matrix", "Matrix ID, like @kitchen:matrix.org", input("ch-matrix")),
-      textField("ch-xmpp", "XMPP address, like kitchen@example.org", input("ch-xmpp")),
-      textField("ch-signal", "Signal number, like +8801XXXXXXXXX", input("ch-signal", { inputmode: "tel" })),
+      textField("ch-matrix", "Matrix ID, for example @kitchen:matrix.org", input("ch-matrix")),
+      textField("ch-xmpp", "XMPP address, for example kitchen@example.org", input("ch-xmpp")),
+      textField("ch-signal", "Signal number, for example +8801XXXXXXXXX", input("ch-signal", { inputmode: "tel" })),
       textField("ch-endpoint", "Order endpoint (https)", input("ch-endpoint", { type: "url" })),
       textField("ch-feed", "Confirmation feed (https)", input("ch-feed", { type: "url" })),
       hint("A feed lets customers' phones pick up your signed confirmations by themselves. Use an ntfy topic you control, for example https://ntfy.example.org/kitchen-confirmed; the Confirm page then publishes each confirmation to it."),
@@ -407,7 +407,7 @@ function viewJoin() {
     textField("address", "Street address", input("address", { maxlength: 200 })),
     select("zone", "Zone (thana) the business is in", zoneOptions, ""),
     textField("plus", "Plus Code (optional)", input("plus", { maxlength: 13 })),
-    hint("The full code from a map app, like 7MJH9R66+7MF."),
+    hint("The full code from a map app, for example 7MJH9R66+7MF."),
 
     sectionTitle("2. Opening hours"),
     textField("open", "Opens", input("open", { type: "time" })),
@@ -419,7 +419,7 @@ function viewJoin() {
     select("scope", "Where do you deliver?", [["ccc", "The whole city (all CCC zones)"], ["zones", "Only some zones"]], "ccc"),
     feeTable,
     textField("min", "Minimum order (BDT)", input("min", { type: "number", min: 0 })),
-    hint("Write 0 for no minimum."),
+    hint("Enter 0 if there is no minimum."),
     textField("eta", "Usual delivery time (minutes)", input("eta", { type: "number", min: 5, max: 240 })),
     h("p", { class: "small-text muted" }, "Delivery fees may not exceed " + money(B.rules.max_delivery_fee) + ". You can change fees later with Update prices."),
     check("pickup", "Customers can pick up orders", true),
@@ -428,7 +428,7 @@ function viewJoin() {
     h("nav", { class: "vertical left-align" }, Object.entries(B.rules.payment_methods_on_delivery || {}).map(([k, label]) => check("pay-" + k, label, k === "cash"))),
 
     sectionTitle("4. Menu"),
-    h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description (optional) | Picture address (optional). Items without a picture show a plain drawing. Add a category after the section with a slash, like Indian / Starters. For sizes, write the prices like 8 inch: 529; 12 inch: 749. Prices are whole taka and include VAT and every other charge."),
+    h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description (optional) | Picture address (optional). Items without a picture show a food icon. To add a category, put it after the section with a slash, for example South Asian / Starters. For sizes, write the prices as in 8 inch: 529; 12 inch: 749. Prices are whole taka and include VAT and every other charge."),
     textField("items", "Menu items", h("textarea", { id: "items", rows: 10 })),
 
     sectionTitle("5. Where your menu file will live"),
@@ -454,14 +454,14 @@ function viewJoin() {
     const phone = val("phone").replace(/[\s-]/g, "");
     const wa = val("whatsapp").replace(/[\s+-]/g, "");
     if (!val("name")) errors.push("Enter the business name.");
-    if (!/^\+8801\d{9}$/.test(phone)) errors.push("Enter the business phone like +8801XXXXXXXXX.");
-    if (wa && !/^8801\d{9}$/.test(wa)) errors.push("Enter the WhatsApp number like +8801XXXXXXXXX.");
+    if (!/^\+8801\d{9}$/.test(phone)) errors.push("Enter the business phone in the format +8801XXXXXXXXX.");
+    if (wa && !/^8801\d{9}$/.test(wa)) errors.push("Enter the WhatsApp number in the format +8801XXXXXXXXX.");
     if (!wa && !checked("sms")) errors.push("Give at least one way to receive written orders: WhatsApp or text message.");
     if (!val("address")) errors.push("Enter the street address.");
     if (!val("zone")) errors.push("Choose the zone the business is in.");
     const plus = val("plus").toUpperCase();
     const loc = plus ? olcDecode(plus) : null;
-    if (plus && !loc) errors.push("The Plus Code must be a full code, like 7MJH9R66+7MF.");
+    if (plus && !loc) errors.push("The Plus Code must be a full code, for example 7MJH9R66+7MF.");
     if (!val("open") || !val("close") || val("open") === val("close")) errors.push("Enter different opening and closing times.");
     const cap = B.rules.max_delivery_fee;
     const fee = (id) => { const v = val(id); return /^\d+$/.test(v) ? Number(v) : NaN; };
@@ -493,9 +493,9 @@ function viewJoin() {
     for (const k of Object.keys(PLEDGES)) if (!checked("pledge-" + k)) errors.push("Sign all four pledges to claim a listing.");
     if (!B.key) errors.push("Create or load your key.");
     if (val("ch-email") && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val("ch-email"))) errors.push("Check the email address.");
-    if (val("ch-matrix") && !/^@[^:\s]+:[^\s]+$/.test(val("ch-matrix"))) errors.push("A Matrix ID looks like @name:server.org.");
-    if (val("ch-xmpp") && !/^[^@\s]+@[^@\s]+$/.test(val("ch-xmpp"))) errors.push("An XMPP address looks like name@server.org.");
-    if (val("ch-signal") && !/^\+?8801\d{9}$/.test(val("ch-signal").replace(/[\s-]/g, ""))) errors.push("Write the Signal number like +8801XXXXXXXXX.");
+    if (val("ch-matrix") && !/^@[^:\s]+:[^\s]+$/.test(val("ch-matrix"))) errors.push("A Matrix ID has the form @name:server.org.");
+    if (val("ch-xmpp") && !/^[^@\s]+@[^@\s]+$/.test(val("ch-xmpp"))) errors.push("An XMPP address has the form name@server.org.");
+    if (val("ch-signal") && !/^\+?8801\d{9}$/.test(val("ch-signal").replace(/[\s-]/g, ""))) errors.push("Enter the Signal number in the format +8801XXXXXXXXX.");
     if (val("ch-endpoint") && !/^https:\/\/\S+$/.test(val("ch-endpoint"))) errors.push("The order endpoint must start with https://.");
     if (val("ch-feed") && !/^https:\/\/\S+$/.test(val("ch-feed"))) errors.push("The confirmation feed must start with https://.");
     if (val("cover") && !safeImageUrl(val("cover"))) errors.push("The cover picture must be a JPEG, PNG or WebP file on one of the listed hosts.");

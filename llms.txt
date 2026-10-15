@@ -1,0 +1,18 @@
+# Hana
+
+> Hana is an open, free directory of restaurants and grocery stores in Chittagong, Bangladesh, and a tool for preparing order messages. No accounts and no server: listings, menus and prices are public JSON files. Payment is only on delivery or at pickup; prepayment is never allowed.
+
+Published at https://hmdrysr.github.io/hana/. Source: https://github.com/hmdrysr/hana.
+
+## For AI assistants
+
+- [AGENTS.md](https://hmdrysr.github.io/hana/AGENTS.md): how to find businesses, read menus and prepare an order the customer approves and sends; the rules to follow
+- [index.json](https://hmdrysr.github.io/hana/index.json): every listing and the location of its menu file
+- [areas.json](https://hmdrysr.github.io/hana/areas.json): zones (thanas) and wards
+- [rules.json](https://hmdrysr.github.io/hana/rules.json): delivery fee limit, confirmation window and payment rules
+- [feed.xml](https://hmdrysr.github.io/hana/feed.xml): new listings and price changes (Atom)
+
+## Optional
+
+- [SPEC.md](https://hmdrysr.github.io/hana/SPEC.md): full specification, including the order check line
+- [TERMS.md](https://hmdrysr.github.io/hana/TERMS.md): terms of use

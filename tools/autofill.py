@@ -19,7 +19,7 @@ import re
 import sys
 from pathlib import Path
 
-FILES = ["README.md", "site.json", "index.html", "regions.json", "business.html", "SECURITY.md", "CONTRIBUTING.md", "SETUP.md",
+FILES = ["README.md", "site.json", "index.html", "regions.json", "feed.xml", "llms.txt", "AGENTS.md", "business.html", "SECURITY.md", "CONTRIBUTING.md", "SETUP.md",
          ".github/ISSUE_TEMPLATE/config.yml"]
 NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 

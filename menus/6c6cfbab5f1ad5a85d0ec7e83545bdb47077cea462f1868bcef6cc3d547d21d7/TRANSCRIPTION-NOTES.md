@@ -4,11 +4,11 @@ Listing ID: `6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7` (
 
 ## Source
 
-Two photographs of the printed menus, supplied on October 15, 2026: the Indian menu and the Oriental menu. The print date is unknown. Both photographs are low resolution and taken at an angle.
+Two photographs of the printed menus, supplied on October 15, 2026: the South Asian menu and the Oriental menu. The print date is unknown. Both photographs are low resolution and taken at an angle.
 
 ## Published
 
-33 items from the **Indian menu** whose prices could be read clearly after enlarging the photograph and checking it against the original. Prices are as printed, in whole Bangladeshi taka (BDT).
+33 items from the **South Asian menu** whose prices could be read clearly after enlarging the photograph and checking it against the original. Prices are as printed, in whole Bangladeshi taka (BDT).
 
 - Dahi Bara (2 pieces)
 - Paan Chicken
@@ -51,7 +51,7 @@ For the items below, a digit is unclear or the item could not be matched to its 
 | Item | Section | Reading (BDT) |
 |---|---|---|
 | Vegetable Pakora | Starters | 460 (could be 400) |
-| Indian Side Salad | Salads | 280 (could be 230) |
+| South Asian Side Salad | Salads | 280 (could be 230) |
 | Raita | Salads | 380 (could be 320) |
 | Spicy Naga Chicken Tandoori | Chef's specials | 280 (could be 290) |
 | Beef Boti With Mustard Seeds | Chef's specials | 640 (could be 840) |

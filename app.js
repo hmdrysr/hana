@@ -18,6 +18,7 @@ const state = {
   searching: false,
   allDishes: false,
   moreCats: false,
+  tab: "all",
   page: 0,
   basket: store.get("hana.basket", null),
 };
@@ -129,7 +130,7 @@ function show(navName, title, ...nodes) {
   setActiveNav(navName);
   main.replaceChildren(...nodes);
   window.scrollTo(0, 0);
-  document.title = title ? title + " | Hana" : "Hana: Food in Chittagong";
+  document.title = title ? title + " | Hana" : "Hana: food and groceries in Chittagong";
 }
 
 function statusChip(menu) {
@@ -138,12 +139,17 @@ function statusChip(menu) {
   return o ? chip("Open now", "ok") : chip("Closed now");
 }
 
+/* One or two plain sentences, for example "Delivery fee BDT 60, minimum order BDT 300, about
+   40 minutes." or "The delivery fee, minimum order and delivery time are not stated." */
 function feeSummary(z) {
-  if (!z) return "Choose your area to see delivery details";
-  const fee = z.fee === null || z.fee === undefined ? "Delivery fee not stated" : "Delivery " + money(z.fee);
-  const min = z.min_order === null || z.min_order === undefined ? "minimum order not stated" : "minimum order " + money(z.min_order);
-  const eta = z.eta_min === null || z.eta_min === undefined ? "delivery time not stated" : "about " + z.eta_min + " min";
-  return fee + " · " + min + " · " + eta;
+  if (!z) return "Choose your zone to see the delivery fee.";
+  const given = (v) => v !== null && v !== undefined;
+  const known = [], unknown = [];
+  if (given(z.fee)) known.push("Delivery fee " + money(z.fee)); else unknown.push("delivery fee");
+  if (given(z.min_order)) known.push((known.length ? "minimum order " : "Minimum order ") + (z.min_order ? money(z.min_order) : "none")); else unknown.push("minimum order");
+  if (given(z.eta_min)) known.push((known.length ? "about " : "About ") + z.eta_min + " minutes"); else unknown.push("delivery time");
+  const list = unknown.length > 1 ? unknown.slice(0, -1).join(", ") + " and " + unknown[unknown.length - 1] : unknown[0];
+  return [known.length ? known.join(", ") + "." : "", unknown.length ? "The " + list + (unknown.length > 1 ? " are" : " is") + " not stated." : ""].filter(Boolean).join(" ");
 }
 
 function zones() { return state.areas.filter((a) => a.kind === "zone").sort((a, b) => a.name.localeCompare(b.name, "en")); }
@@ -172,27 +178,62 @@ function locatedIn(m) {
 
 /* ---------------------------------------------------------------- views */
 
-/* Categories that at least one listed restaurant offers, with how many restaurants offer each. */
+/* Which listings a tab shows. */
+const KIND_TABS = [["all", "All"], ["food", "Restaurants"], ["grocery", "Groceries"]];
+function inTab(m) { return state.tab === "all" || !m || (state.tab === "grocery") === isGrocery(m); }
+
+/* Categories that at least one listing in the current tab offers, with how many listings offer each. */
 function availableCategories() {
   const count = {};
   for (const r of state.restaurants) {
     if (!r.menu) continue;
-    const keys = new Set((r.menu.items || []).map(itemCat).filter(Boolean));
+    const keys = new Set((r.menu.items || []).map((it) => itemCat(it, r.menu)).filter(Boolean));
     const c = cuisineKey(r.menu);
-    if (c) keys.add(c);
+    if (c && c !== "grocery") keys.add(c);
     r.cats = keys;
+    if (!inTab(r.menu)) continue;
     for (const k of keys) count[k] = (count[k] || 0) + 1;
   }
-  return FOOD.filter((f) => count[f[0]]).map((f) => ({ key: f[0], label: f[1], count: count[f[0]] }));
+  const list = state.tab === "grocery" ? GROCERY : state.tab === "food" ? FOOD : FOOD.concat(GROCERY.filter((g) => !FOOD.some((f) => f[0] === g[0])));
+  return list.filter((f) => count[f[0]]).map((f) => ({ key: f[0], label: f[1], count: count[f[0]] }));
+}
+
+/* Finds the customer's zone from their position: the browser gives the position, and
+   OpenStreetMap's free Nominatim service (no key, no account) names the area. The position is
+   rounded to about 100 metres before it is sent. Runs only when the customer asks. */
+async function locateZone(onFound) {
+  if (!navigator.geolocation) { snackbar("This browser cannot share your location. Choose your zone from the list."); return; }
+  snackbar("Finding your zone…");
+  const pos = await new Promise((res) => navigator.geolocation.getCurrentPosition(res, () => res(null), { timeout: 15000, maximumAge: 600000 }));
+  if (!pos) { snackbar("Your location was not shared. Choose your zone from the list."); return; }
+  const lat = pos.coords.latitude.toFixed(3), lon = pos.coords.longitude.toFixed(3);
+  let addr = null;
+  try {
+    const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&addressdetails=1&accept-language=en&lat=" + lat + "&lon=" + lon);
+    addr = (await r.json()).address || null;
+  } catch (e) { /* offline or unavailable */ }
+  if (!addr) { snackbar("Your zone could not be looked up just now. Choose it from the list."); return; }
+  const words = Object.values(addr).map((v) => norm(String(v)).replace(/\b(thana|police station|ward no|ward)\b/g, "").trim()).filter(Boolean);
+  const named = (name) => { const n = norm(name).replace(/\(.*\)/, "").trim(); return words.some((w) => w === n || w.includes(n) || (w.length > 4 && n.includes(w))); };
+  let zone = zones().find((z) => named(z.name));
+  if (!zone) {
+    const ward = state.areas.find((a) => a.kind === "ward" && named(a.name.replace(/^Ward \d+,\s*/, "")));
+    if (ward) zone = state.areaById.get((ward.part_of || [])[0]);
+  }
+  if (!zone || zone.kind !== "zone") { snackbar("Your location could not be matched to a zone. Choose it from the list."); return; }
+  onFound(zone.id);
+  snackbar("Zone set to " + zone.name + ". You can change it at any time.");
 }
 
 function viewList() {
-  const cats = availableCategories();
   const results = h("div", { id: "results", "aria-live": "polite" });
   const strip = h("nav", { class: "cat-strip", "aria-label": "Categories" });
+  const catHead = sectionTitle("Categories");
+  const listHead = h("div");
+  const tabs = h("nav", { class: "kind-tabs", "aria-label": "Type of business" });
   const search = h("input", {
-    type: "search", id: "q", placeholder: "Search food or restaurants", autocomplete: "off", value: state.query,
-    "aria-label": "Search restaurants, dishes or categories",
+    type: "search", id: "q", placeholder: "Search food, groceries or places", autocomplete: "off", value: state.query,
+    "aria-label": "Search food, groceries or places",
     on: {
       input: (e) => { state.query = e.target.value; state.page = 0; state.allDishes = false; render(); },
       focus: () => { state.searching = true; render(); },
@@ -201,6 +242,7 @@ function viewList() {
     },
   });
   const showAll = h("input", { type: "checkbox", id: "showall", checked: state.showAll, on: { change: (e) => { state.showAll = e.target.checked; render(); } } });
+  const setZone = (v) => { state.area = v; state.page = 0; store.set("hana.area", v); const sel = document.getElementById("area"); if (sel) sel.value = v; render(); };
 
   const pickCategory = (key) => {
     state.cat = state.cat === key ? "" : key;
@@ -213,22 +255,28 @@ function viewList() {
   const catRows = (list) => h("ul", { class: "list cat-list" }, list.map((c) => h("li", null,
     h("a", { href: "#/", class: "row max", on: { pointerdown: (e) => e.preventDefault(), click: (e) => { e.preventDefault(); pickCategory(c.key); } } },
       foodIcon(c.key, "large"), h("span", { class: "max" }, c.label),
-      h("span", { class: "small-text muted" }, c.count + (c.count === 1 ? " restaurant" : " restaurants"))))));
+      h("span", { class: "small-text muted" }, c.count + (c.count === 1 ? " place" : " places"))))));
 
   function render() {
-    strip.hidden = !!(norm(state.query) || state.searching);
-    const FEW = 8;
-    const visible = state.moreCats || cats.length <= FEW + 1 ? cats : cats.slice(0, FEW).concat(cats.filter((c, i) => i >= FEW && c.key === state.cat));
+    const cats = availableCategories();
+    if (state.cat && !cats.some((c) => c.key === state.cat)) state.cat = "";
+    tabs.replaceChildren(...KIND_TABS.map(([k, label]) => h("button", { type: "button", "aria-pressed": state.tab === k ? "true" : "false",
+      on: { click: () => { state.tab = k; state.cat = ""; state.page = 0; state.moreCats = false; render(); } } }, label)));
+    const q = norm(state.query);
+    strip.hidden = catHead.hidden = !!(q || state.searching) || !cats.length;
+    const FEW = 7;
+    const visible = state.moreCats || cats.length <= FEW ? cats : cats.slice(0, FEW).concat(cats.filter((c, i) => i >= FEW && c.key === state.cat));
     strip.replaceChildren(...visible.map((c) => h("button", {
       type: "button", class: "cat-tile", "aria-pressed": state.cat === c.key ? "true" : "false",
       on: { click: () => pickCategory(c.key) } }, foodIcon(c.key, "large"), h("span", null, c.label))),
       visible.length < cats.length ? h("button", { type: "button", class: "cat-tile", on: { click: () => { state.moreCats = true; render(); } } }, foodIcon("plate", "large"), h("span", null, "More")) : null);
-    const q = norm(state.query);
-    const kids = [];
+
     if (!q && state.searching) {
-      results.replaceChildren(sectionTitle("Top categories"), catRows(cats));
+      listHead.replaceChildren();
+      results.replaceChildren(sectionTitle("Top categories"), cats.length ? catRows(cats) : h("p", { class: "muted" }, "No categories yet."));
       return;
     }
+    const kids = [];
     if (q) {
       const matchCats = cats.filter((c) => fuzzyMatches(state.query, c.label));
       if (matchCats.length) kids.push(sectionTitle("Categories"), catRows(matchCats));
@@ -237,6 +285,7 @@ function viewList() {
     let hidden = 0;
     for (const r of state.restaurants) {
       const m = r.menu;
+      if (!inTab(m)) continue;
       const zone = m ? zoneFor(m, state.area) : null;
       const delivers = !state.area || !m || !!zone;
       if (!delivers && !state.showAll) { hidden++; continue; }
@@ -244,42 +293,54 @@ function viewList() {
       const nameHit = fuzzyMatches(state.query, r.name + " " + (m ? m.kind || "" : ""));
       const hits = m && q ? (m.items || []).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
       if (q && !nameHit && !hits.length) continue;
-      if (q) cards.push(restaurantCard(r, zone, delivers, []));
-      else cards.push(restaurantCard(r, zone, delivers, state.cat && m ? (m.items || []).filter((it) => itemCat(it) === state.cat) : []));
+      cards.push(restaurantCard(r, zone, delivers, !q && state.cat && m ? (m.items || []).filter((it) => itemCat(it, m) === state.cat) : []));
       for (const it of hits) dishes.push({ r, it });
     }
+
+    const label = state.tab === "grocery" ? "Grocery stores" : state.tab === "food" ? "Restaurants" : "All places";
+    const head = [sectionTitle(q ? "Places" : label + " (" + cards.length + ")")];
+    if (!q) head.push(h("p", { class: "small-text muted flush" }, "Listed alphabetically. No listing is featured or paid for."));
     if (state.cat) {
-      kids.push(h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "chip small", "aria-label": "Clear the category filter",
+      head.push(h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "chip small", "aria-label": "Clear the category filter",
         on: { click: () => pickCategory(state.cat) } }, foodIcon(state.cat), h("span", null, FOOD_BY_KEY[state.cat][1]), icon("close"))));
     }
-    if (q && cards.length) kids.push(sectionTitle("Restaurants"));
+    if (state.area && (hidden || state.showAll)) {
+      head.push(h("div", { class: "row" }, h("label", { class: "switch" }, showAll, h("span")),
+        h("label", { for: "showall", class: "max small-text" }, "Also show places that do not deliver to " + areaName(state.area) + (hidden ? " (" + hidden + " hidden)" : ""))));
+    }
+    listHead.replaceChildren(...(q && !cards.length ? [] : head));
+
     const PER = 12;
     const pages = Math.max(1, Math.ceil(cards.length / PER));
     if (state.page >= pages) state.page = pages - 1;
     kids.push(...cards.slice(state.page * PER, state.page * PER + PER));
-    if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; render(); results.scrollIntoView({ block: "start" }); }));
+    if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; render(); listHead.scrollIntoView({ block: "start" }); }));
     if (q && dishes.length) {
       const shown = state.allDishes ? dishes : dishes.slice(0, 8);
-      kids.push(sectionTitle("Dishes"), h("ul", { class: "list border" }, shown.map(({ r, it }) => h("li", null,
-        foodIcon(itemCat(it) || "plate", "large"),
+      kids.push(sectionTitle(state.tab === "grocery" ? "Products" : "Dishes"), h("ul", { class: "list border" }, shown.map(({ r, it }) => h("li", null,
+        foodIcon(itemCat(it, r.menu) || "plate", "large"),
         h("a", { href: "#/r/" + r.id, class: "max" }, h("div", null, it.name), h("div", { class: "small-text muted" }, r.name)),
         h("span", { class: "price" }, fromPrice(it))))));
-      if (dishes.length > shown.length) kids.push(h("button", { type: "button", class: "border gap-top", on: { click: () => { state.allDishes = true; render(); } } }, "Show all " + dishes.length + " dishes"));
+      if (dishes.length > shown.length) kids.push(h("button", { type: "button", class: "border gap-top", on: { click: () => { state.allDishes = true; render(); } } }, "Show all " + dishes.length));
     }
-    if (!cards.length && !dishes.length) kids.push(h("p", { class: "muted" }, state.restaurants.length ? "Nothing matches. Try a shorter search, another category or another zone." : "No restaurants are listed yet."));
-    if (state.area && hidden) {
-      kids.push(h("p", { class: "small-text muted" }, hidden + (hidden === 1 ? " restaurant does" : " restaurants do") + " not deliver to " + areaName(state.area) + " and " + (hidden === 1 ? "is" : "are") + " hidden."));
+    if (!cards.length && !dishes.length) {
+      kids.push(h("p", { class: "muted" }, state.tab === "grocery" && !state.restaurants.some((r) => isGrocery(r.menu))
+        ? "No grocery stores are listed yet. A store can be added from About, under For businesses."
+        : "Nothing matches. Try a shorter search, another category or another zone."));
     }
     results.replaceChildren(...kids);
   }
 
   show("list", "",
-    pageTitle("Restaurants in Chittagong"),
-    h("p", { class: "muted" }, "Listed alphabetically. No listing is featured or paid for."),
-    zoneSelect("area", state.area, (v) => { state.area = v; state.page = 0; store.set("hana.area", v); render(); }, "Choose your zone"),
+    pageTitle("Food and groceries in Chittagong"),
+    h("div", { class: "zone-row" },
+      zoneSelect("area", state.area, setZone, "Choose your zone"),
+      h("button", { type: "button", class: "border", on: { click: () => locateZone(setZone) } }, icon("location_on"), h("span", null, "Use my location"))),
     h("div", { class: "field prefix round fill" }, icon("search"), search),
+    tabs,
+    catHead,
     strip,
-    h("div", { class: "row" }, h("label", { class: "switch" }, showAll, h("span")), h("label", { for: "showall", class: "max" }, "Include restaurants that do not deliver to my zone")),
+    listHead,
     results);
   render();
 }
@@ -377,7 +438,7 @@ function dishRow(r, it, canOrder) {
       it.description ? h("div", { class: "small-text muted" }, it.description) : null,
       h("div", { class: "price" }, fromPrice(it))),
     h("div", { class: "dish-side" },
-      settings().pictures ? itemPicture(it) : null,
+      settings().pictures ? itemPicture(it, r.menu) : null,
       h("button", { type: "button", class: "circle dish-add", disabled: !canOrder,
         "aria-label": "Add " + it.name + (it.options ? ", choose an option" : ", " + money(it.price)) }, icon("add"))));
 }
@@ -405,7 +466,7 @@ function hoursText(list) {
 
 function viewRestaurant(id) {
   const r = restaurantById(id);
-  if (!r) return show("list", "Not found", pageHeader("Restaurant not found", "#/"), h("p", null, h("a", { class: "link", href: "#/" }, "All restaurants")));
+  if (!r) return show("list", "Not found", pageHeader("Listing not found", "#/"), h("p", null, h("a", { class: "link", href: "#/" }, "All restaurants")));
   const m = r.menu;
   if (!m) return show("list", r.name, pageHeader(r.name, "#/"), notice("warn", r.problem || "This menu is not available."));
   const os = orderingState(m);
@@ -420,8 +481,8 @@ function viewRestaurant(id) {
     h("figure", { class: "flush hero" }, picture(cover, "cover", "", cuisineKey(m)), cover ? h("figcaption", { class: "credit" }, cover.page ? h("a", { href: cover.page, class: "link", rel: "noopener", target: "_blank" }, cover.credit) : cover.credit) : null),
     h("p", { class: "muted flush" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
     h("nav", { class: "wrap small-space" }, chips),
-    h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup === true ? " · Pickup available" : "") +
-      ". Pay on delivery or at pickup; never in advance." + (os.closed && os.canOrder ? " You can schedule an order for when it opens." : "")),
+    h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup === true ? " Pickup is available." : "") +
+      " Pay on delivery or at pickup, never in advance." + (os.closed && os.canOrder ? " You can schedule an order for when it opens." : "")),
   ];
   nodes.push(restaurantInfo(m));
 
@@ -468,7 +529,7 @@ function restaurantInfo(m) {
   kids.push(h("h3", { class: "overline-label" }, "Delivery"),
     h("ul", { class: "list border" }, zones.map((z) => h("li", null, icon("location_on"),
       h("div", { class: "max" }, h("div", null, zoneLabel(z)), h("div", { class: "small-text muted" }, feeSummary(z)))))),
-    h("p", { class: "small-text muted" }, "The business sets one fixed delivery charge for each area, up to the Hana limit of " + money(state.rules.max_delivery_fee) + ". Hana adds no fees. Pickup: " + (m.pickup === true ? "available" : m.pickup === false ? "not offered" : "not stated; ask the business") + "."));
+    h("p", { class: "small-text muted" }, "The business sets one fixed delivery charge for each area, up to the Hana limit of " + money(state.rules.max_delivery_fee) + ". Hana adds no fees. " + (m.pickup === true ? "Pickup is available." : m.pickup === false ? "Pickup is not offered." : "The business has not said whether it offers pickup.")));
   kids.push(h("h3", { class: "overline-label" }, "Payment"),
     h("p", { class: "small-text" }, "All prices include VAT and every other charge. The delivery fee is the only addition. Pay on delivery or at pickup only: " + paymentText(m) + ". If a business asks you to pay before delivery, do not pay, and report the listing."));
   kids.push(h("h3", { class: "overline-label" }, "Contact"),
@@ -480,7 +541,7 @@ function restaurantInfo(m) {
   kids.push(h("h3", { class: "overline-label" }, "Opening hours"),
     m.hours ? h("ul", { class: "list border" }, DAYS.map((d) => h("li", null, h("div", { class: "max" }, DAY_NAMES[d]), h("span", null, hoursText(m.hours[d])))))
       : h("p", { class: "muted" }, "Not stated."));
-  kids.push(h("p", { class: "small-text muted" }, "Prices from version " + m.version + ", published " + longDate(m.announcement && m.announcement.published) + ". Open now is based on your phone's clock."));
+  kids.push(h("p", { class: "small-text muted" }, "Prices from version " + m.version + ", published " + longDate(m.announcement && m.announcement.published) + ". Opening times are checked against your phone's clock."));
   if (m.price_history && m.price_history.length) {
     kids.push(h("details", null, h("summary", { class: "link" }, "Price changes (" + m.price_history.length + ")"),
       m.price_history.slice().reverse().map((p) => h("div", null, h("p", { class: "bold" }, longDate(p.published) + ": " + p.summary),
@@ -572,11 +633,11 @@ function paymentText(m) {
 function viewBasket() {
   if (!state.basket || !basketCount()) {
     return show("basket", "Basket", pageTitle("Basket"), h("p", { class: "muted" }, "Your basket is empty."),
-      h("nav", null, h("a", { href: "#/", class: "button" }, icon("storefront"), h("span", null, "Browse restaurants"))));
+      h("nav", null, h("a", { href: "#/", class: "button" }, icon("storefront"), h("span", null, "Browse the directory"))));
   }
   const r = restaurantById(state.basket.rid);
   if (!r || !r.menu) {
-    return show("basket", "Basket", pageTitle("Basket"), notice("warn", h("p", { class: "flush" }, "The restaurant for this basket is not available. " + (r && r.problem ? r.problem : ""))),
+    return show("basket", "Basket", pageTitle("Basket"), notice("warn", h("p", { class: "flush" }, "The business for this basket is not available. " + (r && r.problem ? r.problem : ""))),
       h("button", { type: "button", class: "border", on: { click: () => { state.basket = null; saveBasket(); viewBasket(); } } }, "Empty basket"));
   }
   const menu = r.menu;
@@ -607,7 +668,7 @@ function viewBasket() {
   const when = h("select", { id: "when" },
     os.closed ? null : h("option", { value: "" }, "As soon as possible"),
     slots.map((s) => h("option", { value: s.value }, s.label)));
-  const whenBox = (os.closed && os.canOrder) || (!os.closed && menu.scheduled_orders === true && slots.length) ? selectField("when", os.closed ? "Schedule for (the business is closed now)" : "When", when) : null;
+  const whenBox = (os.closed && os.canOrder) || (!os.closed && menu.scheduled_orders === true && slots.length) ? selectField("when", os.closed ? "Schedule for later (the business is closed now)" : "When", when) : null;
 
   const deliveryZone = () => (b.mode === "delivery" && b.zone ? zoneFor(menu, b.zone) : null);
 
@@ -627,13 +688,13 @@ function viewBasket() {
     let feeText;
     if (b.mode === "pickup") feeText = "None (pickup)";
     else if (!b.zone) feeText = "Choose your zone";
-    else if (!z) feeText = "Not available to your zone";
+    else if (!z) feeText = "No delivery to your zone";
     else feeText = z.fee === null ? "Not stated" : money(z.fee);
     const fee = b.mode === "pickup" ? 0 : (z && z.fee !== null ? z.fee : null);
     const rows = [h("nav", null, h("span", { class: "max" }, "Items"), h("span", { class: "price" }, money(sub))),
       h("nav", null, h("span", { class: "max" }, b.mode === "pickup" ? "Pickup" : "Delivery"), h("span", { class: "price" }, feeText))];
     if (fee !== null && (b.mode === "pickup" || z)) rows.push(h("hr"), h("nav", null, h("span", { class: "max bold" }, "Total to pay at " + (b.mode === "pickup" ? "pickup" : "delivery")), h("span", { class: "price bold" }, money(sub + fee))));
-    if (z && z.min_order && sub < z.min_order) rows.push(h("p", { class: "small-text flush" }, "Below the minimum order of " + money(z.min_order) + "."));
+    if (z && z.min_order && sub < z.min_order) rows.push(h("p", { class: "small-text flush" }, "This order is below the minimum order of " + money(z.min_order) + "."));
     rows.push(h("p", { class: "small-text muted flush" }, "All prices include VAT and every other charge. Prices from version " + menu.version + ", published " + longDate(menu.announcement && menu.announcement.published) + "."));
     totals.replaceChildren(...rows);
   }
@@ -648,7 +709,7 @@ function viewBasket() {
   const saved = store.get("hana.me", { name: "", address: "" });
   const name = h("input", { type: "text", id: "name", value: saved.name, autocomplete: "off", maxlength: 60, placeholder: " " });
   const address = h("textarea", { id: "address", rows: 3, maxlength: 300, placeholder: " " }, saved.address);
-  const note = h("input", { type: "text", id: "note", maxlength: 200, autocomplete: "off", placeholder: " " });
+  const note = h("input", { type: "text", id: "note", maxlength: 200, autocomplete: "off", placeholder: " ", value: (state.basket && state.basket.note) || "" });
   const remember = h("input", { type: "checkbox", id: "remember", checked: !!saved.name });
 
   function renderDelivery() {
@@ -738,7 +799,7 @@ function viewBasket() {
     textField("note", "Note for the business (optional)", note),
     h("p", { class: "small-text bold" }, "Send the order by"),
     h("nav", { class: "vertical left-align" }, channelRadios),
-    notice("info", h("p", { class: "bold flush" }, "Cash on delivery only"),
+    notice("info", h("p", { class: "bold flush" }, "Pay on delivery"),
       h("p", { class: "flush" }, "Pay when you receive the order: " + paymentText(menu) + ". Never pay in advance. If anyone asks for payment before delivery, do not pay, and report the listing.")),
     h("div", { class: "space" }),
     h("label", { class: "checkbox" }, remember, h("span", null, "Remember my name and address on this phone only")),
@@ -982,14 +1043,13 @@ function viewAbout() {
   const link = (href, text) => href ? h("a", { class: "link", href, rel: "noopener" }, text) : text;
   show("about", "About",
     pageTitle("About Hana"),
-    h("p", null, "Hana is the Chittagonian word for food. It is a free directory of restaurants in Chittagong and a tool for preparing orders."),
+    h("p", null, "Hana is the Chittagonian word for food. It is a free directory of restaurants and grocery stores in Chittagong and a tool for preparing orders."),
     h("p", null, "Built by ", link(state.site.company_url || "https://hamidyasir.com", "Hamid Yasir & Co."), " for the people of Chittagong. Managed by the ", link(repo, "Hana Community"), "."),
-    h("p", { class: "small-text muted" }, "Food icons: ", link("https://github.com/jdecked/twemoji", "Twemoji"), ", by Twitter, Inc. and contributors, licensed under CC BY 4.0."),
     sectionTitle("How it works"),
-    h("p", null, "Hana lists restaurants and prepares your order message. You send the message yourself, from your own phone, through the app the business uses. The order counts once the business confirms it in the same chat. Hana does not take payments, prepare food or make deliveries."),
+    h("p", null, "Hana lists restaurants and grocery stores and prepares your order message. You send the message yourself, from your own phone, through the app the business uses. The order counts once the business confirms it in the same chat. Hana does not take payments, prepare food or make deliveries."),
     sectionTitle("Rules for every listing"),
     h("ul", { class: "list border" }, [
-      "Cash on delivery only. You pay the business when you receive the order, or at pickup: in cash, by Bangla QR, by card on a POS terminal or by mobile wallet transfer, as the business accepts. No business may ask for payment in advance.",
+      "Payment is on delivery only. You pay the business when you receive the order, or at pickup: in cash, by Bangla QR, by card on a POS terminal or by mobile wallet transfer, as the business accepts. No business may ask for payment in advance.",
       "Every price includes VAT and every other charge. The delivery fee is the only addition.",
       "Each business sets one fixed delivery fee for each area it serves, up to " + money(state.rules.max_delivery_fee) + ".",
       "A business may offer pickup, with no delivery fee.",
@@ -1006,17 +1066,17 @@ function viewAbout() {
     h("p", null, "Large delivery platforms sit between restaurants and their customers. With that much market power, they set the fees and the terms, and neither side has much say. Hana is an alternative: it takes no commission and leaves the choices with customers and businesses. This is the reason the project exists; it is not an assessment of any particular company."),
     sectionTitle("Commitments"),
     h("ol", null, [
-      "No commission and no listing fee.",
-      "No featured listings. Every list is alphabetical and the same for everyone.",
-      "No exclusivity. A business can list elsewhere and leave at any time.",
+      "Hana charges no commission and no listing fee.",
+      "There are no featured listings. Every list is alphabetical and the same for everyone.",
+      "There is no exclusivity. A business can list elsewhere and leave at any time.",
       "Businesses set their own prices, fees, delivery areas and hours.",
       "Customers choose the business, how to order and what to share.",
-      "No accounts, no tracking and no collection of customer data.",
-      "Open-source code and open formats.",
-      "The creator is credited.",
+      "There are no accounts, no tracking and no collection of customer data.",
+      "Hana uses open-source code and open formats.",
+      "The creator is credited on every page.",
       "Every price change is public, announced in the menu file and kept in its history.",
-      "One fixed delivery charge per area, set by the business. Hana adds no fees.",
-      "Cash on delivery only, with all charges included in the prices. No prepayment.",
+      "Each business sets one fixed delivery charge for each area. Hana adds no fees.",
+      "Payment is on delivery only, and prices include all charges. Prepayment is never allowed.",
     ].map((x) => h("li", null, x))),
     sectionTitle("Privacy"),
     h("p", null, "Your area, basket, name, address and orders stay on this phone. Hana has no server and sends no information about you. You can download or delete all of it from the Orders page."),
@@ -1024,7 +1084,9 @@ function viewAbout() {
     h("p", null, "Hana is a directory and an order-preparation tool. Each order is a contract between the customer and the business alone; Hamid Yasir & Co. and the Hana Community are not parties to it and do not handle payments, food or deliveries. Disputes are for the parties and the competent authorities, starting with the Directorate of National Consumer Rights Protection (16121)."),
     h("nav", null, h("a", { href: "#/terms", class: "button border" }, h("span", null, "Read the Terms of Use"))),
     sectionTitle("Get involved"),
-    h("p", null, repo ? ["The code, the directory and every decision are public on the ", link(repo, "project page"), ". Report a problem or suggest a change there."] : "The project page is not linked on this host."));
+    h("p", null, repo ? ["The code, the directory and every decision are public on the ", link(repo, "project page"), ". Report a problem or suggest a change there."] : "The project page is not linked on this host."),
+    sectionTitle("Credits"),
+    h("p", { class: "small-text muted" }, "Food icons: ", link("https://github.com/jdecked/twemoji", "Twemoji"), ", by Twitter, Inc. and contributors, licensed under CC BY 4.0. Interface icons: Material Symbols, by Google, Apache License 2.0. Styles: Beer CSS, MIT License."));
 }
 
 /* ---------------------------------------------------------------- terms */
@@ -1060,6 +1122,7 @@ function viewSettings() {
     sectionTitle("Pictures"),
     h("div", { class: "row" }, h("label", { class: "switch" }, pictures, h("span")), h("label", { for: "pictures", class: "max" }, "Show pictures of food")),
     h("p", { class: "small-text muted" }, "Pictures come from the business. Listings without a cover show a stock photo for their cuisine from Wikimedia Commons, an openly licensed library; loading it lets Wikimedia see your network address, as any website you visit would. Food icons are Twemoji, by Twitter, Inc. and contributors, CC BY 4.0."),
+    h("nav", { class: "gap-top" }, h("button", { type: "button", class: "border", on: { click: () => { try { localStorage.removeItem("hana.settings"); localStorage.removeItem("hana.theme"); } catch (e) { /* ignore */ } applyTheme(); viewSettings(); } } }, h("span", null, "Reset appearance"))),
     sectionTitle("Profile (optional)"),
     h("p", { class: "small-text muted" }, "Filled in at checkout so you do not have to type it each time. Kept on this phone only."),
     textField("p-name", "First name or nickname", pname),
@@ -1080,10 +1143,11 @@ function viewSettings() {
           state.basket = null; state.area = ""; applyTheme(); updateBasketBadge(); viewSettings(); snackbar("Deleted.");
         }
       } } }, icon("delete"), h("span", null, "Delete everything"))),
-    sectionTitle("Other regions"),
-    h("p", { class: "small-text muted" }, "Hana may run in other cities, each as its own community-run directory. Your phone can check which one covers where you are. Your position is compared on this phone only and is never sent anywhere."),
-    h("nav", null, h("button", { type: "button", class: "border", on: { click: findRegion } }, icon("location_on"), h("span", null, "Find the Hana for my area"))),
-    h("div", { id: "region-out", "aria-live": "polite" }),
+    sectionTitle("Download the directory"),
+    h("p", { class: "small-text muted" }, "Every listing with its menu, contact details, hours and delivery fees, as data or as a printable book."),
+    h("nav", { class: "wrap small-space" },
+      h("button", { type: "button", class: "border", on: { click: () => { downloadText("hana-directory.json", JSON.stringify(directoryData(), null, 2), "application/json"); snackbar("Directory downloaded as JSON."); } } }, icon("download"), h("span", null, "JSON")),
+      h("button", { type: "button", class: "border", on: { click: downloadPhoneBook } }, icon("download"), h("span", null, "PDF book"))),
     sectionTitle("Offline copy"),
     h("p", { class: "small-text muted" }, "Download Hana as a single file. Open it from your phone's files at any time; it works without a connection and brings itself up to date whenever you are online."),
     h("nav", null, h("button", { type: "button", class: "border", on: { click: async (e) => {
@@ -1093,7 +1157,10 @@ function viewSettings() {
       catch (err) { snackbar("The offline copy could not be made: " + err.message); }
       btn.disabled = false;
     } } }, icon("download"), h("span", null, "Download offline copy"))),
-    h("nav", { class: "gap-top" }, h("button", { type: "button", class: "border", on: { click: () => { try { localStorage.removeItem("hana.settings"); localStorage.removeItem("hana.theme"); } catch (e) { /* ignore */ } applyTheme(); viewSettings(); } } }, h("span", null, "Reset appearance"))));
+    sectionTitle("Other regions"),
+    h("p", { class: "small-text muted" }, "Hana may run in other cities, each as its own community-run directory. Your phone can check which one covers where you are. Your position is compared on this phone only and is never sent anywhere."),
+    h("nav", null, h("button", { type: "button", class: "border", on: { click: findRegion } }, icon("location_on"), h("span", null, "Find the Hana for my area"))),
+    h("div", { id: "region-out", "aria-live": "polite" }));
 }
 
 /* Matches the phone's position against regions.json on the phone itself (browser Geolocation only). */
@@ -1112,6 +1179,81 @@ function findRegion() {
   }, () => out.replaceChildren(notice("info", h("p", { class: "flush" }, "Your position was not shared, so nothing was checked."))), { timeout: 15000, maximumAge: 600000 });
 }
 
+/* ---------------------------------------------------------------- directory downloads */
+
+function hoursSummary(hours) {
+  if (!hours) return "Hours not stated";
+  const groups = [];
+  for (const d of DAYS) {
+    const t = hoursText(hours[d]);
+    const last = groups[groups.length - 1];
+    if (last && last.t === t) last.to = d; else groups.push({ from: d, to: d, t });
+  }
+  return groups.map((g) => DAY_NAMES[g.from].slice(0, 3) + (g.to !== g.from ? " to " + DAY_NAMES[g.to].slice(0, 3) : "") + ": " + g.t).join("; ");
+}
+
+/* The whole directory as one JSON document, for people, programs and AI assistants. */
+function directoryData() {
+  return {
+    format: "hana-directory-1",
+    region: "Chittagong",
+    generated: new Date().toISOString(),
+    source: new URL(".", location.href).href,
+    how_to_order: "See AGENTS.md in the project repository. Orders are messages sent by the customer; payment is on delivery or at pickup only.",
+    rules: { prices_include_all_charges: true, prepayment_allowed: false, max_delivery_fee: state.rules.max_delivery_fee, confirmation_window_minutes: state.rules.confirmation_window_minutes },
+    zones: zones().map((z) => ({ id: z.id, name: z.name })),
+    listings: state.restaurants.filter((r) => r.menu).map((r) => {
+      const m = r.menu;
+      return {
+        id: r.id, menu_hash: r.hash, name: m.name, kind: m.kind || "Restaurant", type: isGrocery(m) ? "grocery" : "food",
+        claimed: m.claimed !== false, zone: locatedIn(m), address: m.address, business_phone: m.business_phone,
+        contact: m.contact || [], hours: m.hours || null, scheduled_orders: m.scheduled_orders === true, pickup: m.pickup,
+        delivery: ((m.delivery && m.delivery.zones) || []).map((z) => ({ id: z.id, areas: zoneLabel(z), fee: z.fee, min_order: z.min_order, eta_min: z.eta_min })),
+        items: priceLines(m).map((l) => ({ key: l.key, name: l.item.name, option: l.option || undefined, section: l.item.section, category: l.item.category, price: l.price })),
+      };
+    }),
+  };
+}
+
+async function downloadPhoneBook() {
+  try {
+    if (typeof makePhoneBookPdf !== "function") {
+      await new Promise((res, rej) => { const sc = h("script", { src: "phonebook.js" }); sc.onload = res; sc.onerror = () => rej(new Error("the PDF maker could not be loaded")); document.head.append(sc); });
+    }
+    const today = longDate(new Date().toISOString().slice(0, 10));
+    const entries = state.restaurants.filter((r) => r.menu).map((r) => {
+      const m = r.menu;
+      const lines = [{ text: (m.kind || "Restaurant") + " · " + locatedIn(m) }, { text: "Phone: " + m.business_phone, weight: "bold" }];
+      for (const c of m.contact || []) lines.push({ text: (CHANNELS[c.app] ? CHANNELS[c.app].label : c.app) + ": " + contactText(c.app, c.id) + (c.preferred ? " (preferred)" : "") });
+      if (m.address) lines.push({ text: m.address });
+      lines.push({ text: hoursSummary(m.hours) });
+      for (const z of (m.delivery && m.delivery.zones) || []) lines.push({ text: "Delivery to " + zoneLabel(z) + ". " + feeSummary(z) });
+      lines.push({ text: (m.pickup === true ? "Pickup is available. " : m.pickup === false ? "Pickup is not offered. " : "") + "Pay on delivery or at pickup: " + paymentText(m) + "." });
+      if (m.claimed === false) lines.push({ text: "Not confirmed by the business. Prices are as printed and may have changed.", weight: "italic" });
+      const secs = new Map();
+      for (const l of priceLines(m)) {
+        const sec = l.item.section || "Menu";
+        if (!secs.has(sec)) secs.set(sec, []);
+        secs.get(sec).push({ name: l.option ? l.item.name + ", " + l.option : l.item.name, price: money(l.price) });
+      }
+      return { name: m.name, letter: norm(m.name).charAt(0).toUpperCase() || "#", lines, sections: Array.from(secs, ([name, items]) => ({ name, items })) };
+    });
+    const pdf = makePhoneBookPdf({
+      title: "Hana Directory", subtitle: "Food and groceries in Chittagong", generated: "Printed " + today,
+      intro: [
+        "Listings are in alphabetical order. No listing is featured or paid for. Prices include VAT and every other charge; the delivery fee is the only addition, and it is never more than " + money(state.rules.max_delivery_fee) + ".",
+        "To order, send your order in writing to the business. Pay on delivery or at pickup only, and never in advance. The business must confirm within " + state.rules.confirmation_window_minutes + " minutes; otherwise, the order is cancelled. The live directory, with current prices, is at " + new URL(".", location.href).href + ".",
+      ],
+      entries,
+    });
+    const url = URL.createObjectURL(new Blob([pdf], { type: "application/pdf" }));
+    const a = h("a", { href: url, download: "hana-directory.pdf" });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    snackbar("Directory downloaded as a PDF book.");
+  } catch (e) { snackbar("The PDF could not be made: " + e.message); }
+}
+
 function downloadText(name, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type: type || "text/plain" }));
   const a = h("a", { href: url, download: name });
@@ -1127,6 +1269,7 @@ function route() {
     return show("list", "", pageTitle("Hana"), state.loadError ? notice("warn", h("p", { class: "flush" }, state.loadError)) : h("p", { class: "muted" }, "Loading the directory…"));
   }
   const hash = location.hash || "#/";
+  if (hash.startsWith("#/order?")) return openOrderLink(hash.slice(8));
   const m = hash.match(/^#\/r\/([0-9a-f]{64})$/);
   if (m) return viewRestaurant(m[1]);
   if (hash === "#/basket") return viewBasket();
@@ -1136,6 +1279,29 @@ function route() {
   if (hash === "#/settings") return viewSettings();
   if (state.site.mode === "business" && state.site.listing_id) return viewRestaurant(state.site.listing_id);
   return viewList();
+}
+
+/* A prepared order link, for example from an AI assistant:
+   #/order?r=<listing id>&items=<item key>*<quantity>,...&mode=delivery|pickup&zone=<zone id>&note=<text>
+   It fills the basket and opens checkout. The customer still checks it, adds their details and sends it. */
+async function openOrderLink(query) {
+  const p = new URLSearchParams(query);
+  const r = restaurantById(p.get("r") || "");
+  if (!r || !r.menu) { snackbar("That order link names a listing that is not in the directory."); location.replace("#/"); return; }
+  const valid = new Set(priceLines(r.menu).map((l) => l.key));
+  const lines = {};
+  for (const part of (p.get("items") || "").split(",")) {
+    const m = /^([a-z0-9.-]+)\*(\d{1,2})$/.exec(part.trim());
+    if (m && valid.has(m[1]) && Number(m[2]) >= 1) lines[m[1]] = Math.min(99, Number(m[2]));
+  }
+  if (!Object.keys(lines).length) { snackbar("That order link has no items from this menu."); location.replace("#/r/" + r.id); return; }
+  if (state.basket && state.basket.rid !== r.id && basketCount() > 0 &&
+    !(await ask("Replace your basket?", "Your basket contains items from another business. Replace them with the items in this link?", "Replace"))) { location.replace("#/basket"); return; }
+  const zone = p.get("zone") || state.area || "";
+  state.basket = { rid: r.id, version: r.menu.version, mode: p.get("mode") === "pickup" ? "pickup" : "delivery", zone: state.areaById.has(zone) ? zone : "", ward: "", lines, note: (p.get("note") || "").slice(0, 200) };
+  saveBasket();
+  snackbar("Order prepared. Check it, add your details and send it.");
+  location.replace("#/basket");
 }
 
 function fixFooterLink() {
@@ -1148,7 +1314,7 @@ function fixFooterLink() {
     const p = document.querySelector("footer p");
     p.replaceChildren("Created using ", h("a", { class: "link", href: main, rel: "noopener" }, "Hana"), " by ",
       h("a", { class: "link", href: "https://hamidyasir.com", rel: "noopener" }, "Hamid Yasir & Co."), " ",
-      h("a", { class: "link", href: "#/terms" }, "Terms"), " ", h("a", { class: "link", href: main, rel: "noopener" }, "All restaurants on Hana"));
+      h("a", { class: "link", href: "#/terms" }, "Terms"), " ", h("a", { class: "link", href: main, rel: "noopener" }, "All businesses on Hana"));
     for (const n of document.querySelectorAll('[data-nav="list"] span')) n.textContent = "Menu";
   }
 }

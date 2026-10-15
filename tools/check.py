@@ -441,7 +441,7 @@ def check_photos(photos, where, rel):
         err(rel, f"{where} must be a list")
         return
     if len(photos) > PHOTO_MAX_COUNT:
-        err(rel, f"{where}: at most {PHOTO_MAX_COUNT} photos")
+        err(rel, f"{where}: no more than {PHOTO_MAX_COUNT} photos")
     for i, ph in enumerate(photos):
         w = f"{where}[{i}]"
         if not isinstance(ph, dict):
@@ -630,7 +630,7 @@ def check_menu(menu_path, root, area_ids):
                         and LAT_RANGE[0] <= z["lat"] <= LAT_RANGE[1] and LON_RANGE[0] <= z["lon"] <= LON_RANGE[1]):
                     err(rel, f"{w}: circle needs lat and lon inside Bangladesh")
                 if not is_num(z.get("radius_m")) or not (0 < z["radius_m"] <= 30000):
-                    err(rel, f"{w}: radius_m must be more than 0 and at most 30000")
+                    err(rel, f"{w}: radius_m must be more than 0 and no more than 30000")
             elif shape == "polygon":
                 check_polygon(z.get("geojson"), f"{w}.geojson", rel)
             else:
@@ -648,7 +648,7 @@ def check_menu(menu_path, root, area_ids):
         if f in data and data[f] not in (True, False, None):
             err(rel, f"{f} must be true, false or null (not stated)")
     if "cuisine" in data and not (isinstance(data["cuisine"], str) and 0 < len(data["cuisine"]) <= 40):
-        err(rel, "cuisine must be a short text, at most 40 characters")
+        err(rel, "cuisine must be short text of no more than 40 characters")
     check_image(data.get("cover"), "cover", rel)
     for i, it in enumerate(data.get("items") or []):
         if isinstance(it, dict):
@@ -864,6 +864,14 @@ def check_peers(root):
                 err("peers.json", f"peers[{i}]: must be an https address")
 
 
+def check_feed(root):
+    """feed.xml must match the listings, so Fediverse followers see every change."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import build_feed
+    if not (root / "feed.xml").is_file() or (root / "feed.xml").read_text(encoding="utf-8") != build_feed.build(root):
+        err("feed.xml", "out of date; run python3 tools/build_feed.py")
+
+
 def check_vouches(root):
     vdir = root / "vouches"
     vouchers = load_json(root / "vouchers.json", root)
@@ -922,7 +930,7 @@ chip circle dark field fill flush gap-top group-title l label left left-align li
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
 tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label
-cover thumb credit food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
+cover thumb credit zone-row kind-tabs food-icon large cat-strip cat-tile cat-list page-head dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
 
 
 def check_ui(root):
@@ -965,6 +973,7 @@ def main():
                 check_menu(d / "menu.json", root, area_ids)
                 check_version_chain(d, root)
     check_vouches(root)
+    check_feed(root)
     check_text_files(root)
     check_ui(root)
     for line in WARNINGS + ERRORS:

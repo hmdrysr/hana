@@ -101,6 +101,12 @@ class Repo:
 
 
 def run_check(repo, extra=None):
+    try:  # keep feed.xml in step with the edited listings, as a contributor would
+        sys.path.insert(0, str(HERE))
+        import build_feed
+        (repo.root / "feed.xml").write_text(build_feed.build(repo.root), encoding="utf-8")
+    except Exception:
+        pass
     for name, text in (extra or {}).items():
         (repo.root / name).write_text(text)
     r = subprocess.run([sys.executable, str(CHECK), "--root", str(repo.root)], capture_output=True, text=True)
@@ -363,6 +369,8 @@ check_case("picture that is a script", True, "must be an https JPEG",
            edit_v1(lambda m: m["items"][0].update(image={"src": "https://upload.wikimedia.org/x.svg"})))
 check_case("picture with unknown fields", True, "may only have src and credit",
            edit_v1(lambda m: m["items"][0].update(image={"commons": "File:Pizza.jpg"})))
+check_case("an out-of-date feed.xml is reported", True, "feed.xml: out of date",
+           edit_v1(lambda m: None), extra={"feed.xml": "<feed/>"})
 check_case("confirmation feed on an unclaimed listing", True, "only for claimed",
            edit_v1(lambda m: m.update(confirmation_feed="https://ntfy.example.org/x")))
 def regions_edit(fn):

@@ -101,6 +101,13 @@ function setupThemeToggle() {
 
 /* ---------------------------------------------------------------- helpers */
 
+/* Empty parts (null, undefined, false) are skipped everywhere, so a conditional part of a
+   page can never show up as the word "null". */
+for (const name of ["append", "replaceChildren"]) {
+  const orig = Element.prototype[name];
+  Element.prototype[name] = function (...kids) { return orig.apply(this, kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false)); };
+}
+
 function h(tag, attrs) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -560,7 +567,7 @@ function safeImageUrl(u) {
    from Wikimedia Commons. No searching, so no request is made until a cover scrolls into
    view. A business's own cover always takes priority. "path" is Commons' storage folder. */
 const COVERS = {
-  indian: { file: "Indian-Food-wikicont.jpg", path: "c/c1", credit: "Indian food" },
+  south_asian: { file: "Indian-Food-wikicont.jpg", path: "c/c1", credit: "South Asian food" },
   bangladeshi: { file: "Bangladeshi_Prawn_Curry.jpg", path: "3/3f", credit: "Prawn curry, by Jubair Bin Iqbal, CC BY-SA" },
   pizza: { file: "Eq_it-na_pizza-margherita_sep2005_sml.jpg", path: "a/a3", credit: "Pizza margherita, by Valerio Capello" },
   fried_chicken: { file: "Fried-Chicken-Set.jpg", path: "2/2c", credit: "Fried chicken" },
@@ -575,7 +582,7 @@ const FOOD = [
   ["fried_chicken", "Fried chicken", "chicken", /fried chicken|wings?\b|popcorn|strips?\b|drumstick|nugget|broast|crispy chicken/i],
   ["biryani", "Biryani", "biryani", /biryani|biriyani|kacchi|tehari|polao|pulao/i],
   ["bangladeshi", "Bangladeshi", "rice", /bangla|bengali|bhuna|bhorta|vorta|mezban|khichuri|bhaji|bhat\b/i],
-  ["indian", "Indian", "curry", /india|tandoor|tikka masala|masala|curry|naan|paneer|korma|butter chicken|\bdal\b|dahi|chaat/i],
+  ["south_asian", "South Asian", "curry", /south asian|india|pakistan|nepal|tandoor|tikka masala|masala|curry|naan|paneer|korma|butter chicken|\bdal\b|dahi|chaat/i],
   ["chinese", "Chinese and Thai", "noodles", /chinese|thai|chow ?mein|noodle|fried rice|dim ?sum|dumpling|wonton|szechuan|ramen|manchurian/i],
   ["pasta", "Pasta", "pasta", /pasta|spaghetti|lasagn|penne|fettuccine|macaroni|carbonara/i],
   ["kebab", "Kebabs and grills", "kebab", /kebab|kabab|grill|bbq|shashlik|steak|chaap|tikka|meat box/i],
@@ -590,11 +597,26 @@ const FOOD = [
   ["breakfast", "Breakfast", "breakfast", /breakfast|paratha|porota|\beggs?\b|omelette/i],
   ["combo", "Combos and platters", "combo", /combo|platter|set menu|meal box|family pack/i],
 ];
-const FOOD_BY_KEY = Object.fromEntries(FOOD.map((f) => [f[0], f]));
+/* Grocery stores sort their products into these instead. */
+const GROCERY = [
+  ["produce", "Fruit and vegetables", "produce", /vegetable|fruit|potato|onion|tomato|banana|apple|mango|orange|greens|\bshak\b|chilli|chili|garlic|ginger|lemon|cucumber|carrot/i],
+  ["meat_fish", "Meat and fish", "fish", /beef|mutton|chicken|fish|prawn|shrimp|meat|hilsa|ilish|rui\b/i],
+  ["dairy", "Dairy and eggs", "dairy", /milk|\beggs?\b|butter|cheese|yogh?urt|\bdoi\b|ghee|cream/i],
+  ["bakery", "Bread and bakery", "bakery", /bread|\bbuns?\b|cake|rusk|toast/i],
+  ["staples", "Rice, flour and lentils", "rice", /rice|\bchal\b|flour|atta|maida|lentil|\bdal\b|sugar|\bsalt\b|semolina|suji/i],
+  ["oil_spices", "Oil and spices", "spices", /\boil\b|spice|masala|turmeric|cumin|chilli powder|pepper|coriander/i],
+  ["snacks", "Snacks", "snacks", /snack|chips|chanachur|noodles|chocolate|biscuit|cookie/i],
+  ["drink", "Drinks", "drink", /water|juice|soda|\btea\b|coffee|drink|cola/i],
+  ["household", "Household and cleaning", "household", /soap|detergent|clean|tissue|toilet|dishwash|shampoo|toothpaste/i],
+  ["baby", "Baby care", "baby", /baby|diaper|nappy|formula/i],
+];
+const FOOD_BY_KEY = Object.fromEntries(GROCERY.concat([["grocery", "Groceries", "grocery", /grocery|supermarket|super ?shop/i]], FOOD).map((f) => [f[0], f]));
+function isGrocery(m) { return !!m && /grocery|supermarket|super ?shop|convenience/i.test(m.kind || ""); }
 const COVER_OF = { biryani: "bangladeshi" };
-function foodCat(text) { for (const f of FOOD) if (text && f[3].test(text)) return f[0]; return null; }
-function itemCat(it) { return foodCat(it.name) || foodCat(it.category) || foodCat(it.section); }
+function foodCat(text, list) { for (const f of list || FOOD) if (text && f[3].test(text)) return f[0]; return null; }
+function itemCat(it, m) { const l = isGrocery(m) ? GROCERY : FOOD; return foodCat(it.name, l) || foodCat(it.category, l) || foodCat(it.section, l); }
 function cuisineKey(m) {
+  if (isGrocery(m)) return "grocery";
   const own = foodCat(m.cuisine);
   if (own) return own;
   const score = {};
@@ -638,7 +660,7 @@ function picture(info, cls, alt, key) {
     } } });
   return img;
 }
-function itemPicture(it) { return it.image && safeImageUrl(it.image.src) ? picture({ src: safeImageUrl(it.image.src) }, "thumb", "", itemCat(it)) : placeholder("thumb", itemCat(it)); }
+function itemPicture(it, m) { const k = itemCat(it, m); return it.image && safeImageUrl(it.image.src) ? picture({ src: safeImageUrl(it.image.src) }, "thumb", "", k) : placeholder("thumb", k); }
 
 /* Clears the picture search results that earlier versions stored. */
 try { Object.keys(localStorage).filter((k) => k.startsWith("hana.img:")).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
@@ -650,7 +672,7 @@ try { Object.keys(localStorage).filter((k) => k.startsWith("hana.img:")).forEach
    directory_url when online. mode "business" shows one listing, with the Hana credit. */
 async function buildStandalone(opts) {
   const fetchText = (u) => fetch(u, { cache: "no-cache" }).then((r) => { if (!r.ok) throw new Error(u + " could not be loaded"); return r.text(); });
-  const [page, coreJs, appJs, beer, theme, fontBuf] = await Promise.all(["index.html", "core.js", "app.js", "theme/beer.min.css", "theme/theme.css"].map(fetchText)
+  const [page, coreJs, appJs, beer, theme, bookJs, fontBuf] = await Promise.all(["index.html", "core.js", "app.js", "theme/beer.min.css", "theme/theme.css", "phonebook.js"].map(fetchText)
     .concat([fetch("theme/material-symbols-subset.woff2").then((r) => r.arrayBuffer())]));
   const sprite = (await fetchText("icons/food.svg")).replace("<svg ", "<svg hidden ");
   const fontB64 = btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(fontBuf))));
@@ -670,7 +692,7 @@ async function buildStandalone(opts) {
   const snapJs = "window.HANA_SNAPSHOT=" + JSON.stringify(snapshot).replace(/</g, "\\u003c") + ";";
   const css = beer + "\n" + theme.replace("url(material-symbols-subset.woff2)", "url(data:font/woff2;base64," + fontB64 + ")");
   const hash = async (s) => "'sha256-" + btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", utf8(s)))))) + "'";
-  const scripts = [snapJs, esc(coreJs), esc(appJs)];
+  const scripts = [snapJs, esc(coreJs), esc(appJs), esc(bookJs)];
   const csp = "default-src 'none'; img-src 'self' data: blob: https://upload.wikimedia.org https://raw.githubusercontent.com https://codeberg.org https://gitlab.com https://i.ibb.co; " +
     "connect-src https:; font-src data:; style-src " + (await hash(css)) + "; script-src " + (await Promise.all(scripts.map(hash))).join(" ") + "; base-uri 'none'; form-action 'none'";
   let html = page

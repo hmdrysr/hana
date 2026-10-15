@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Hana: food and groceries in Chittagong</title>
+  <subtitle>New listings and price changes. Prices include all charges; payment on delivery only.</subtitle>
+  <link rel="alternate" href="https://hmdrysr.github.io/hana/"/>
+  <link rel="self" href="https://hmdrysr.github.io/hana/feed.xml"/>
+  <id>https://hmdrysr.github.io/hana/</id>
+  <updated>2026-10-15T01:10:00+06:00</updated>
+  <author><name>Hana Community</name></author>
+  <entry>
+    <title>Meal Master: version 1 of the menu</title>
+    <link href="https://hmdrysr.github.io/hana/#/r/bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b"/>
+    <id>tag:hana,2026:bee9f4b3ba09a8f47ca77d741df138917ea6c584407e9b8a7418313d42340d9b:v1</id>
+    <updated>2026-10-15T01:10:00+06:00</updated>
+    <summary>First listing, entered by volunteer hmdrysr. Not yet confirmed by the business.</summary>
+  </entry>
+  <entry>
+    <title>Sliced: version 1 of the menu</title>
+    <link href="https://hmdrysr.github.io/hana/#/r/8a46c5952246c7de87f00b22ceba64fa1d57e834ecae91c4067ac0d0e2c9c5f0"/>
+    <id>tag:hana,2026:8a46c5952246c7de87f00b22ceba64fa1d57e834ecae91c4067ac0d0e2c9c5f0:v1</id>
+    <updated>2026-10-15T01:10:00+06:00</updated>
+    <summary>First listing, entered by volunteer hmdrysr. Not yet confirmed by the business.</summary>
+  </entry>
+  <entry>
+    <title>Tava Restaurant: version 1 of the menu</title>
+    <link href="https://hmdrysr.github.io/hana/#/r/6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7"/>
+    <id>tag:hana,2026:6c6cfbab5f1ad5a85d0ec7e83545bdb47077cea462f1868bcef6cc3d547d21d7:v1</id>
+    <updated>2026-10-15T01:10:00+06:00</updated>
+    <summary>First listing, entered by volunteer hmdrysr. Not yet confirmed by the business.</summary>
+  </entry>
+</feed>
