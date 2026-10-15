@@ -20,6 +20,7 @@ const ICONS = {
   storefront: "M840-519v339q0 24-18 42t-42 18H179q-24 0-42-18t-18-42v-339q-28-24-37-59t2-70l43-135q8-27 28-42t46-15h553q28 0 49 15.5t29 41.5l44 135q11 35 1.5 70T840-519Zm-270-31q29 0 49-19t16-46l-25-165H510v165q0 26 17 45.5t43 19.5Zm-187 0q28 0 47.5-19t19.5-46v-165H350l-25 165q-4 26 14 45.5t44 19.5Zm-182 0q24 0 41.5-16.5T263-607l26-173H189l-46 146q-10 31 8 57.5t50 26.5Zm557 0q32 0 50.5-26t8.5-58l-46-146H671l26 173q3 24 20.5 40.5T758-550ZM179-180h601v-311q1 1-6.5 1H758q-25 0-47.5-10.5T666-533q-16 20-40 31.5T573-490q-30 0-51.5-8.5T480-527q-15 18-38 27.5t-52 9.5q-31 0-55-11t-41-32q-24 21-47 32t-46 11h-13.5q-6.5 0-8.5-1v311Zm601 0H179h601Z",
   shopping_bag: "M220-80q-24 0-42-18t-18-42v-520q0-24 18-42t42-18h110v-10q0-63 43.5-106.5T480-880q63 0 106.5 43.5T630-730v10h110q24 0 42 18t18 42v520q0 24-18 42t-42 18H220Zm0-60h520v-520H630v90q0 12.75-8.68 21.37-8.67 8.63-21.5 8.63-12.82 0-21.32-8.63-8.5-8.62-8.5-21.37v-90H390v90q0 12.75-8.68 21.37-8.67 8.63-21.5 8.63-12.82 0-21.32-8.63-8.5-8.62-8.5-21.37v-90H220v520Zm170-580h180v-10q0-38-26-64t-64-26q-38 0-64 26t-26 64v10ZM220-140v-520 520Z",
   receipt_long: "M222-80q-43.75 0-74.37-30.63Q117-141.25 117-185v-125h127v-570l59.8 60 59.8-60 59.8 60 59.8-60 59.8 60 60-60 60 60 60-60 60 60 60-60v695q0 43.75-30.62 74.37Q781.75-80 738-80H222Zm516-60q20 0 32.5-12.5T783-185v-595H304v470h389v125q0 20 12.5 32.5T738-140ZM357-622v-60h240v60H357Zm0 134v-60h240v60H357Zm333-134q-12 0-21-9t-9-21q0-12 9-21t21-9q12 0 21 9t9 21q0 12-9 21t-21 9Zm0 129q-12 0-21-9t-9-21q0-12 9-21t21-9q12 0 21 9t9 21q0 12-9 21t-21 9ZM221-140h412v-110H177v65q0 20 12.65 32.5T221-140Zm-44 0v-110 110Z",
+  expand_more: "M480-345 240-585l56-56 184 184 184-184 56 56-240 240Z",
   info: "M453-280h60v-240h-60v240Zm50.5-323.2q9.5-9.2 9.5-22.8 0-14.45-9.48-24.22-9.48-9.78-23.5-9.78t-23.52 9.78Q447-640.45 447-626q0 13.6 9.48 22.8 9.48 9.2 23.5 9.2t23.52-9.2ZM480.27-80q-82.74 0-155.5-31.5Q252-143 197.5-197.5t-86-127.34Q80-397.68 80-480.5t31.5-155.66Q143-709 197.5-763t127.34-85.5Q397.68-880 480.5-880t155.66 31.5Q709-817 763-763t85.5 127Q880-563 880-480.27q0 82.74-31.5 155.5Q817-252 763-197.68q-54 54.31-127 86Q563-80 480.27-80Zm.23-60Q622-140 721-239.5t99-241Q820-622 721.19-721T480-820q-141 0-240.5 98.81T140-480q0 141 99.5 240.5t241 99.5Zm-.5-340Z",
   search: "M796-121 533-384q-30 26-70 40.5T378-329q-108 0-183-75t-75-181q0-106 75-181t182-75q106 0 180.5 75T632-585q0 43-14 83t-42 75l264 262-44 44ZM377-389q81 0 138-57.5T572-585q0-81-57-138.5T377-781q-82 0-139.5 57.5T180-585q0 81 57.5 138.5T377-389Z",
   add: "M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z",
@@ -498,7 +499,8 @@ function setupUpdates(files) {
       const fingerprint = () => Promise.all(files.map((f) => fetch(f, { cache: "no-cache" }).then((r) => r.ok ? r.arrayBuffer() : new ArrayBuffer(0)).then((b) => sha256Hex(new Uint8Array(b)))))
         .then((hs) => hs.join(""));
       let known = null;
-      fingerprint().then((f) => { known = f; }).catch(() => {});
+      /* Taken a few seconds after start-up so it does not compete with the page loading. */
+      setTimeout(() => fingerprint().then((f) => { known = f; }).catch(() => {}), 4000);
       const check = () => {
         if (document.visibilityState !== "visible" || known === null) return;
         reg.update();
@@ -524,61 +526,75 @@ function safeImageUrl(u) {
   } catch (e) { return null; }
 }
 
-const OPEN_LICENCE = /^(cc0|cc[ -]by(-sa)?( \d\.\d)?|public domain|pdm)/i;
-function plainText(html) { return new DOMParser().parseFromString(String(html || ""), "text/html").body.textContent.trim().replace(/\s+/g, " "); }
-
-/* Finds an openly licensed photo on Wikimedia Commons (free, no key, no account).
-   want: { file: "File:Name.jpg" } for a chosen file, or { search: "words" }.
-   Results are kept on the device for 30 days. Returns { src, credit, page } or null. */
-async function commonsImage(want) {
-  const key = "hana.img:" + (want.file || "q:" + want.search);
-  try {
-    const hit = JSON.parse(localStorage.getItem(key) || "null");
-    if (hit && Date.now() - hit.at < 30 * 86400000) return hit.v;
-  } catch (e) { /* ignore */ }
-  const p = new URLSearchParams({ action: "query", format: "json", origin: "*", prop: "imageinfo", iiprop: "url|extmetadata|mime", iiurlwidth: "640" });
-  if (want.file) p.set("titles", want.file);
-  else { p.set("generator", "search"); p.set("gsrnamespace", "6"); p.set("gsrlimit", "8"); p.set("gsrsearch", want.search + " filetype:bitmap"); }
-  let v = null;
-  try {
-    const r = await fetch("https://commons.wikimedia.org/w/api.php?" + p.toString(), { cache: "force-cache" });
-    const pages = Object.values(((await r.json()).query || {}).pages || {}).sort((a, b) => (a.index || 0) - (b.index || 0));
-    for (const pg of pages) {
-      const ii = (pg.imageinfo || [])[0];
-      if (!ii || !/^image\/(jpeg|png|webp)$/.test(ii.mime)) continue;
-      const meta = ii.extmetadata || {};
-      const lic = plainText(meta.LicenseShortName && meta.LicenseShortName.value);
-      const src = safeImageUrl(ii.thumburl || ii.url);
-      if (!src || !OPEN_LICENCE.test(lic)) continue;
-      const artist = plainText(meta.Artist && meta.Artist.value) || "Unknown author";
-      v = { src, credit: "Photo: " + artist.slice(0, 80) + ", " + lic + ", Wikimedia Commons", page: /^https:\/\/commons\.wikimedia\.org\//.test(ii.descriptionurl || "") ? ii.descriptionurl : null };
-      break;
-    }
-  } catch (e) { return null; }
-  try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), v })); } catch (e) { /* ignore */ }
-  return v;
+/* Default covers: one openly licensed photo of plated restaurant food per cuisine, hot-linked
+   from Wikimedia Commons. No searching, so no request is made until a cover scrolls into
+   view. A business's own cover always takes priority. "path" is Commons' storage folder. */
+const COVERS = {
+  indian: { file: "Indian-Food-wikicont.jpg", path: "c/c1", credit: "Indian food" },
+  bangladeshi: { file: "Bangladeshi_Prawn_Curry.jpg", path: "3/3f", credit: "Prawn curry, by Jubair Bin Iqbal, CC BY-SA" },
+  pizza: { file: "Eq_it-na_pizza-margherita_sep2005_sml.jpg", path: "a/a3", credit: "Pizza margherita, by Valerio Capello" },
+  fried_chicken: { file: "Fried-Chicken-Set.jpg", path: "2/2c", credit: "Fried chicken" },
+  burger: { file: "NCI_Visuals_Food_Hamburger.jpg", path: "6/62", credit: "Hamburger, by Renee Comet, public domain" },
+  chinese: { file: "Chinese_meal.jpg", path: "1/14", credit: "Chinese meal, by ZiCheng Xu, CC BY-SA" },
+};
+const CUISINES = [
+  ["bangladeshi", "Bangladeshi", /bangla|bengali|bhuna|kacchi|kala ?bhuna|bhorta|mezban|khichuri|tehari|polao/i],
+  ["indian", "Indian", /india|biryani|biriyani|tandoor|tikka|masala|curry|naan|kebab|kabab|dal\b|paneer|korma/i],
+  ["pizza", "Pizza", /pizza/i],
+  ["fried_chicken", "Fried chicken", /fried chicken|wings?\b|popcorn|strips?\b|drumstick|nugget|broast/i],
+  ["burger", "Burgers and fast food", /burger|fast food|fries|sandwich|hot ?dog|sub\b|wrap/i],
+  ["chinese", "Chinese and Thai", /chinese|thai|chow ?mein|noodle|fried rice|dim ?sum|dumpling|wonton|szechuan/i],
+];
+function cuisineKey(m) {
+  for (const [key, , re] of CUISINES) if (m.cuisine && re.test(m.cuisine)) return key;
+  const score = {};
+  for (const it of m.items || []) {
+    const text = [it.section, it.category, it.name].join(" ");
+    for (const [key, , re] of CUISINES) if (re.test(text)) { score[key] = (score[key] || 0) + 1; break; }
+  }
+  const best = Object.entries(score).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
+}
+function coverFor(m) {
+  if (m.cover && safeImageUrl(m.cover.src)) return { src: safeImageUrl(m.cover.src), credit: m.cover.credit ? String(m.cover.credit).slice(0, 120) : "Photo supplied by the business" };
+  const c = COVERS[cuisineKey(m)];
+  if (!c) return null;
+  const f = encodeURIComponent(c.file), base = "https://upload.wikimedia.org/wikipedia/commons/";
+  return { src: base + "thumb/" + c.path + "/" + f + "/960px-" + f, fallback: base + c.path + "/" + f,
+    credit: "Stock photo: " + c.credit + ", Wikimedia Commons", page: "https://commons.wikimedia.org/wiki/File:" + f };
 }
 
-/* A picture element that fills itself in when it scrolls into view. spec: an item or menu
-   "image" field ({ src } or { commons }), with a search phrase as the fallback. */
-function lazyPicture(spec, fallbackSearch, cls, alt) {
-  const wrap = h("figure", { class: "flush" });
-  if (!settings().pictures) return wrap;
-  const fill = async () => {
-    let v = null;
-    if (spec && spec.src && safeImageUrl(spec.src)) v = { src: safeImageUrl(spec.src), credit: spec.credit ? String(spec.credit).slice(0, 120) : "Photo supplied by the business", page: null };
-    else if (spec && spec.commons) v = await commonsImage({ file: String(spec.commons) });
-    if (!v && fallbackSearch) v = await commonsImage({ search: fallbackSearch });
-    if (!v) { wrap.remove(); return; }
-    wrap.replaceChildren(h("img", { src: v.src, alt: alt || "", class: cls, loading: "lazy", decoding: "async", referrerpolicy: "no-referrer" }),
-      cls === "cover" ? h("figcaption", { class: "credit" }, v.page ? h("a", { href: v.page, class: "link", rel: "noopener", target: "_blank" }, v.credit) : v.credit, spec ? "" : ". Approximate picture.") : null);
-  };
-  if ("IntersectionObserver" in window) {
-    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); fill(); } }, { rootMargin: "200px" });
-    setTimeout(() => io.observe(wrap), 0);
-  } else fill();
-  return wrap;
+/* A plain drawing of a covered dish, shown where no picture has been supplied. */
+function dishArt() {
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("viewBox", "0 0 64 64");
+  svg.setAttribute("aria-hidden", "true");
+  for (const d of ["M12 42a20 20 0 0 1 40 0Z", "M29 20a3 3 0 1 1 6 0a3 3 0 1 1-6 0Z", "M6 45h52a2.5 2.5 0 0 1 0 5H6a2.5 2.5 0 0 1 0-5Z"]) {
+    const p = document.createElementNS(SVGNS, "path");
+    p.setAttribute("d", d);
+    p.setAttribute("fill", "currentColor");
+    svg.append(p);
+  }
+  return svg;
 }
+function placeholder(cls) { return h("div", { class: cls + " placeholder", role: "presentation" }, dishArt()); }
+
+/* A picture that loads only when it nears the screen. Falls back to the original file, then
+   to the drawing, so a missing or blocked picture never leaves a gap. */
+function picture(info, cls, alt) {
+  if (!info || !settings().pictures) return placeholder(cls);
+  let triedFallback = !info.fallback;
+  const img = h("img", { src: info.src, alt: alt || "", class: cls, loading: "lazy", decoding: "async", referrerpolicy: "no-referrer",
+    on: { error: () => {
+      if (!triedFallback) { triedFallback = true; img.src = info.fallback; return; }
+      img.replaceWith(placeholder(cls));
+    } } });
+  return img;
+}
+function itemPicture(it) { return it.image && safeImageUrl(it.image.src) ? picture({ src: safeImageUrl(it.image.src) }, "thumb", "") : placeholder("thumb"); }
+
+/* Clears the picture search results that earlier versions stored. */
+try { Object.keys(localStorage).filter((k) => k.startsWith("hana.img:")).forEach((k) => localStorage.removeItem(k)); } catch (e) { /* ignore */ }
 
 /* ---------------------------------------------------------------- standalone copy */
 

@@ -679,9 +679,11 @@ The restaurant list shows 12 listings per page and the Orders page 10 orders per
 
 ### 13.3 Pictures
 
-- A listing may give a `cover` and each item an `image`: either `{"src": "<https address>"}` on a host in `rules.json` `image_hosts` (Wikimedia Commons, GitHub, Codeberg, GitLab and ImgBB at first), or `{"commons": "File:Name.jpg"}`.
-- Without one, the app looks up an approximate, openly licensed photo on Wikimedia Commons (free, no key, no account), using the item name or the listing's `cuisine`, and labels it as approximate with its author and licence. Only CC0, public-domain, CC BY and CC BY-SA files are used.
-- Safeguards: only https JPEG, PNG, WebP or AVIF files from the allowed hosts; shown with `<img>`, which never runs code; the page's Content Security Policy blocks every other image host; text from Commons is reduced to plain text; `tools/check.py` rejects anything else in menu files. Pictures can be turned off in Settings. Unsplash is not used because its service requires an API key and its own terms.
+- A listing may give a `cover` and each item an `image`: `{"src": "<https address>", "credit": "optional"}` on a host in `rules.json` `image_hosts` (Wikimedia Commons, GitHub, Codeberg, GitLab and ImgBB at first).
+- A listing without a cover shows a fixed stock photo of plated restaurant food for its cuisine (`COVERS` in `core.js`, openly licensed files on Wikimedia Commons, credited with a link to the file page). The cuisine comes from the listing's `cuisine`, or else from its section and item names. Nothing is searched for, so no unrelated picture can appear.
+- An item without its own picture shows a plain drawing of a covered dish. A picture appears only once the business supplies one.
+- Pictures load only as they near the screen. If a picture fails, the drawing is shown instead.
+- Safeguards: only https JPEG, PNG, WebP or AVIF files from the allowed hosts; shown with `<img>`, which never runs code; the page's Content Security Policy blocks every other image host; `tools/check.py` rejects anything else in menu files. Pictures can be turned off in Settings. Unsplash is not used because its service requires an API key and its own terms.
 
 ### 13.4 Standalone copies and a business's own website
 

@@ -470,27 +470,28 @@ def check_photos(photos, where, rel):
 # ---------------------------------------------------------------- pictures in menus
 
 IMAGE_EXT = re.compile(r"\.(jpe?g|png|webp|avif)$", re.I)
-COMMONS_FILE = re.compile(r"^File:[^<>|{}\[\]#]+\.(jpe?g|png|webp)$", re.I)
 
 
 def check_image(img, where, rel):
-    """A picture is either {"src": address on an allowed host} or {"commons": "File:Name.jpg"}."""
+    """A picture is {"src": address on an allowed host, "credit": optional text}. Items without
+    one show a plain drawing; listings without a cover get a stock photo for their cuisine."""
     if img is None:
         return
     if not isinstance(img, dict):
         err(rel, f"{where} must be an object")
         return
     hosts = RULES.get("image_hosts") or []
+    if set(img) - {"src", "credit"}:
+        err(rel, f"{where} may only have src and credit")
     if "src" in img:
         from urllib.parse import urlparse
         u = urlparse(str(img["src"]))
         if u.scheme != "https" or u.hostname not in hosts or not IMAGE_EXT.search(u.path or ""):
             err(rel, f"{where}.src must be an https JPEG, PNG, WebP or AVIF file on one of: {', '.join(hosts)}")
-    elif "commons" in img:
-        if not (isinstance(img["commons"], str) and COMMONS_FILE.match(img["commons"])):
-            err(rel, f"{where}.commons must be a Wikimedia Commons file name like File:Pizza.jpg")
     else:
-        err(rel, f"{where} needs src or commons")
+        err(rel, f"{where} needs src")
+    if "credit" in img and not (isinstance(img["credit"], str) and len(img["credit"]) <= 120):
+        err(rel, f"{where}.credit must be text of up to 120 characters")
 
 
 # ---------------------------------------------------------------- menu
@@ -921,7 +922,7 @@ chip circle dark field fill flush gap-top group-title l label left left-align li
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
 tertiary-container textarea top-align transparent vertical vertical-padding wrap light field-label
-cover thumb credit text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
+cover thumb credit dish dish-text dish-side dish-add dish-tabs rcard rcard-body hero placeholder basket-bar info-list text-large text-larger scheme-teal scheme-indigo scheme-green scheme-plum scheme-contrast""".split())
 
 
 def check_ui(root):

@@ -23,20 +23,26 @@ self.addEventListener("activate", (e) => {
     .then(() => self.clients.claim()));
 });
 
+/* On a slow connection the saved copy is used after 2.5 seconds, while the fresh copy keeps
+   loading in the background and is saved for next time. */
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
-  const fresh = req.mode === "navigate"
-    ? fetch(url.href, { cache: "no-cache", credentials: "same-origin" })
-    : fetch(req, { cache: "no-cache" });
-  e.respondWith(fresh.then((res) => {
-    if (res.ok) {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req.mode === "navigate" ? url.pathname : req, copy));
-    }
-    return res;
-  }).catch(() => caches.match(req.mode === "navigate" ? url.pathname : req)
-    .then((hit) => hit || caches.match(req, { ignoreSearch: true }))
-    .then((hit) => hit || caches.match("index.html"))));
+  const key = req.mode === "navigate" ? url.pathname : req;
+  const saved = () => caches.match(key).then((hit) => hit || caches.match(req, { ignoreSearch: true }))
+    .then((hit) => hit || (req.mode === "navigate" ? caches.match("index.html") : undefined));
+  const fresh = (req.mode === "navigate" ? fetch(url.href, { cache: "no-cache", credentials: "same-origin" }) : fetch(req, { cache: "no-cache" }))
+    .then((res) => {
+      if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(key, copy)); }
+      return res;
+    });
+  e.waitUntil(fresh.catch(() => null));
+  e.respondWith(new Promise((resolve) => {
+    let done = false;
+    const finish = (r) => { if (!done && r) { done = true; resolve(r); } };
+    const timer = setTimeout(() => saved().then(finish), 2500);
+    fresh.then((r) => { clearTimeout(timer); finish(r); })
+      .catch(() => { clearTimeout(timer); saved().then((r) => { finish(r); if (!done) { done = true; resolve(Response.error()); } }); });
+  }));
 });

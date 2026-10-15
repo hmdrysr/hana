@@ -361,8 +361,8 @@ check_case("picture on another host", True, "image_hosts" if False else "must be
            edit_v1(lambda m: m.update(cover={"src": "https://evil.example/x.jpg"})))
 check_case("picture that is a script", True, "must be an https JPEG",
            edit_v1(lambda m: m["items"][0].update(image={"src": "https://upload.wikimedia.org/x.svg"})))
-check_case("bad Commons file name", True, "Wikimedia Commons file name",
-           edit_v1(lambda m: m["items"][0].update(image={"commons": "File:<script>.jpg"})))
+check_case("picture with unknown fields", True, "may only have src and credit",
+           edit_v1(lambda m: m["items"][0].update(image={"commons": "File:Pizza.jpg"})))
 check_case("confirmation feed on an unclaimed listing", True, "only for claimed",
            edit_v1(lambda m: m.update(confirmation_feed="https://ntfy.example.org/x")))
 def regions_edit(fn):

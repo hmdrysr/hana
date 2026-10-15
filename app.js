@@ -20,16 +20,17 @@ const state = {
 
 async function loadAll() {
   try {
-    try { Object.assign(state.site, await fetchJson("site.json")); } catch (e) { /* optional file */ }
-    try { Object.assign(state.rules, await fetchJson("rules.json")); } catch (e) { /* the built-in defaults apply */ }
+    /* All four files load at once rather than one after another. */
+    const [site, rules, areas, index] = await Promise.all([
+      fetchJson("site.json").catch(() => ({})), fetchJson("rules.json").catch(() => ({})), fetchJson("areas.json"), fetchJson("index.json")]);
+    Object.assign(state.site, site);
+    Object.assign(state.rules, rules);
     if (SNAP) Object.assign(state.site, SNAP.site);
     if (Array.isArray(state.rules.image_hosts)) IMAGE_HOSTS = state.rules.image_hosts.slice();
-    const areas = await fetchJson("areas.json");
     state.areas = areas.areas || [];
     state.areaById = new Map(state.areas.map((a) => [a.id, a]));
     const a = state.areaById.get(state.area);
     if (state.area && (!a || a.kind !== "zone")) { state.area = ""; store.set("hana.area", ""); }
-    const index = await fetchJson("index.json");
     const seen = store.get("hana.seen", {});
     state.restaurants = await Promise.all((index.restaurants || []).map(async (row) => {
       const out = { id: row.id, name: row.name, menu: null, raw: null, problem: "" };
@@ -265,20 +266,54 @@ function restaurantCard(r, zone, delivers, dishHits) {
     return h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, r.name), h("p", { class: "muted" }, r.problem || "This menu is not available."));
   }
   const chips = [statusChip(m)];
-  if (m.claimed === false) chips.push(chip("Not yet confirmed by the business", "warn"));
+  if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
   if (!delivers) chips.push(chip("Does not deliver to " + areaName(state.area), "warn"));
-  const kids = [
-    h("a", { href: "#/r/" + r.id, class: "row" },
-      h("div", { class: "max" }, h("h2", { class: "card-title" }, r.name), h("div", { class: "muted" }, (m.kind || "Restaurant") + " · " + locatedIn(m)))),
+  const body = [
+    h("h2", { class: "card-title" }, h("a", { href: "#/r/" + r.id }, r.name)),
+    h("div", { class: "small-text muted" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
     h("nav", { class: "wrap small-space" }, chips),
   ];
-  if (delivers) kids.push(h("p", { class: "small-text muted flush" }, feeSummary(zone || onlyZone(m))));
+  if (delivers) body.push(h("p", { class: "small-text muted flush" }, feeSummary(zone || onlyZone(m))));
   if (dishHits.length) {
-    kids.push(h("ul", { class: "list" }, dishHits.slice(0, 5).map((it) => h("li", null,
+    body.push(h("ul", { class: "list" }, dishHits.slice(0, 5).map((it) => h("li", null,
       h("a", { href: "#/r/" + r.id, class: "max" }, it.name), h("span", { class: "price" }, fromPrice(it))))));
-    if (dishHits.length > 5) kids.push(h("p", { class: "small-text muted" }, (dishHits.length - 5) + " more on the restaurant page"));
+    if (dishHits.length > 5) body.push(h("p", { class: "small-text muted flush" }, (dishHits.length - 5) + " more on the restaurant page"));
   }
-  return h("article", { class: "round border no-elevate" }, ...kids);
+  return h("article", { class: "round border no-elevate rcard" },
+    h("a", { href: "#/r/" + r.id, tabindex: "-1", "aria-hidden": "true" }, picture(coverFor(m), "cover", "")),
+    h("div", { class: "rcard-body" }, body));
+}
+
+/* Lets the customer pick a size or option, as food delivery apps do, instead of listing
+   every option on the menu page. */
+function chooseOption(r, it) {
+  const d = h("dialog", { "aria-label": it.name },
+    h("h5", null, it.name),
+    it.description ? h("p", { class: "small-text muted" }, it.description) : null,
+    h("ul", { class: "list border" }, it.options.map((op) => h("li", null,
+      h("div", { class: "max" }, op.label), h("span", { class: "price" }, money(op.price)),
+      h("button", { type: "button", class: "circle", "aria-label": "Add " + it.name + ", " + op.label + ", " + money(op.price),
+        on: { click: () => { d.close(); addToBasket(r, it.id + "." + op.id, it.name + " (" + op.label + ")"); } } }, icon("add"))))),
+    h("nav", { class: "right-align" }, h("button", { type: "button", class: "border", on: { click: () => d.close() } }, "Cancel")));
+  d.addEventListener("close", () => d.remove());
+  document.body.append(d);
+  if (d.showModal) d.showModal(); else d.setAttribute("open", "");
+}
+
+function dishRow(r, it, canOrder) {
+  const add = () => {
+    if (!canOrder) return;
+    if (it.options) chooseOption(r, it); else addToBasket(r, it.id, it.name);
+  };
+  return h("li", { class: "dish", on: { click: add } },
+    h("div", { class: "max dish-text" },
+      h("div", { class: "bold" }, it.name),
+      it.description ? h("div", { class: "small-text muted" }, it.description) : null,
+      h("div", { class: "price" }, fromPrice(it))),
+    h("div", { class: "dish-side" },
+      settings().pictures ? itemPicture(it) : null,
+      h("button", { type: "button", class: "circle dish-add", disabled: !canOrder,
+        "aria-label": "Add " + it.name + (it.options ? ", choose an option" : ", " + money(it.price)) }, icon("add"))));
 }
 
 async function addToBasket(r, key, label) {
@@ -307,42 +342,23 @@ function viewRestaurant(id) {
   if (!r) return show("list", "Not found", pageTitle("Restaurant not found"), h("p", null, h("a", { class: "link", href: "#/" }, "Back to all restaurants")));
   const m = r.menu;
   if (!m) return show("list", r.name, pageTitle(r.name), notice("warn", r.problem || "This menu is not available."));
+  const os = orderingState(m);
+  const myZone = state.area ? zoneFor(m, state.area) : onlyZone(m);
+  const cover = coverFor(m);
 
+  const chips = [os.closed && os.next ? chip("Closed · opens " + whenText(os.next)) : statusChip(m)];
+  if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
+  if (state.area && !zoneFor(m, state.area)) chips.push(chip("Does not list delivery to " + areaName(state.area), "warn"));
   const nodes = [
     h("nav", null, h("a", { href: "#/", class: "button circle transparent", "aria-label": "Back to all restaurants" }, icon("arrow_back")), h("h1", { class: "page-title max" }, m.name)),
-    h("p", { class: "muted" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
-    h("nav", { class: "wrap small-space" }, statusChip(m)),
-    lazyPicture(m.cover, (m.cuisine || ((m.items || [])[0] || {}).section || m.kind || "food") + " food", "cover", "Picture of " + (m.cuisine || "the food")),
+    h("figure", { class: "flush hero" }, picture(cover, "cover", ""), cover ? h("figcaption", { class: "credit" }, cover.page ? h("a", { href: cover.page, class: "link", rel: "noopener", target: "_blank" }, cover.credit) : cover.credit) : null),
+    h("p", { class: "muted flush" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
+    h("nav", { class: "wrap small-space" }, chips),
+    h("p", { class: "small-text muted flush" }, feeSummary(myZone) + (m.pickup === true ? " · Pickup available" : "") +
+      ". Pay on delivery or at pickup; never in advance." + (os.closed && os.canOrder ? " You can schedule an order for when it opens." : "")),
   ];
-  const os = orderingState(m);
-  if (os.closed) {
-    nodes.push(notice(os.canOrder ? "info" : "warn", h("p", { class: "flush" },
-      "Closed now." + (os.next ? " Opens " + whenText(os.next) + "." : "") +
-      (os.canOrder ? " You can place a scheduled order for when it is open." : " Ordering is available when the business is open."))));
-  }
-  if (m.claimed === false) nodes.push(notice("warn", h("p", { class: "bold flush" }, "Not yet confirmed by the business"), h("p", { class: "flush" }, m.listing_note || "")));
-  nodes.push(h("p", { class: "small-text muted" }, "Prices from version " + m.version + ", published " + longDate(m.announcement && m.announcement.published) + "."));
-  if (m.price_history && m.price_history.length) {
-    nodes.push(h("details", null, h("summary", { class: "link" }, "Price changes (" + m.price_history.length + ")"),
-      m.price_history.slice().reverse().map((p) => h("div", null, h("p", { class: "bold" }, longDate(p.published) + ": " + p.summary),
-        h("ul", { class: "list" }, p.changes.map((c) => h("li", null, c.label + ": " + (c.old === null ? "new" : money(c.old)) + " to " + (c.new === null ? "removed" : money(c.new)))))))));
-  }
+  nodes.push(restaurantInfo(m));
 
-  nodes.push(sectionTitle("Delivery"));
-  const zones = (m.delivery && m.delivery.zones) || [];
-  nodes.push(h("ul", { class: "list border" }, zones.map((z) => h("li", null, icon("location_on"),
-    h("div", { class: "max" }, h("div", null, zoneLabel(z)), h("div", { class: "small-text muted" }, feeSummary(z)))))));
-  nodes.push(h("p", { class: "small-text muted" }, "The business sets one fixed delivery charge for each area, up to the Hana limit of " + money(state.rules.max_delivery_fee) + ". Hana adds no fees. The business may still decline an order."));
-  nodes.push(h("p", null, "Pickup: " + (m.pickup === true ? "available" : m.pickup === false ? "not offered" : "not stated; ask the business")));
-
-  nodes.push(sectionTitle("Prices and payment"));
-  nodes.push(h("ul", { class: "list border" },
-    h("li", null, icon("check_circle"), h("div", { class: "max" }, "All prices include VAT and every other charge. The delivery fee is the only addition.")),
-    h("li", null, icon("check_circle"), h("div", { class: "max" }, "Pay on delivery or at pickup only: " + paymentText(m) + ".")),
-    h("li", null, icon("warning"), h("div", { class: "max" }, "Never pay in advance. Hana does not allow prepayment. If a business asks you to pay before delivery, do not pay, and report the listing."))));
-  if (state.area && !zoneFor(m, state.area)) nodes.push(notice("warn", h("p", { class: "flush" }, "This business does not list delivery to " + areaName(state.area) + ". You can still ask.")));
-
-  nodes.push(sectionTitle("Menu"));
   const sections = new Map();
   for (const it of m.items || []) {
     const sec = it.section || "Menu";
@@ -350,8 +366,9 @@ function viewRestaurant(id) {
     sections.get(sec).push(it);
   }
   if (sections.size > 1) {
-    nodes.push(h("nav", { class: "wrap small-space", "aria-label": "Menu sections" },
-      Array.from(sections.keys()).map((sec, i) => h("a", { href: "#/r/" + r.id, class: "chip small border", on: { click: (e) => { e.preventDefault(); const t = document.getElementById("sec-" + i); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, sec))));
+    nodes.push(h("nav", { class: "dish-tabs", "aria-label": "Menu sections" },
+      Array.from(sections.keys()).map((sec, i) => h("a", { href: "#/r/" + r.id, class: "chip small border",
+        on: { click: (e) => { e.preventDefault(); const t = document.getElementById("sec-" + i); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); } } }, sec))));
   }
   let secIndex = 0;
   for (const [sec, items] of sections) {
@@ -359,41 +376,56 @@ function viewRestaurant(id) {
     let lastCat = null;
     for (const it of items) {
       if (it.category && it.category !== lastCat) { lastCat = it.category; lis.push(h("li", { class: "overline-label" }, it.category)); }
-      const lines = it.options ? it.options.map((op) => ({ key: it.id + "." + op.id, label: op.label, price: op.price })) : [{ key: it.id, label: "", price: it.price }];
-      lis.push(h("li", { class: "vertical-padding" },
-        it.image || settings().pictures ? lazyPicture(it.image, it.name + " food", "thumb", "") : null,
-        h("div", { class: "max" },
-          h("div", { class: "bold" }, it.name),
-          it.description ? h("div", { class: "small-text muted" }, it.description) : null,
-          h("nav", { class: "wrap small-space gap-top" }, lines.map((l) => h("button", {
-            type: "button", class: "chip medium border", disabled: !os.canOrder,
-            "aria-label": "Add " + it.name + (l.label ? ", " + l.label : "") + ", " + money(l.price),
-            on: { click: () => addToBasket(r, l.key, it.name + (l.label ? " (" + l.label + ")" : "")) },
-          }, icon("add"), h("span", { class: "price" }, (l.label ? l.label + " · " : "") + money(l.price))))))));
+      lis.push(dishRow(r, it, os.canOrder));
     }
-    nodes.push(h("h3", { class: "group-title", id: "sec-" + secIndex++ }, sec), h("ul", { class: "list border" }, lis));
+    nodes.push(h("h2", { class: "group-title", id: "sec-" + secIndex++ }, sec), h("ul", { class: "list border" }, lis));
   }
-  nodes.push(h("nav", { class: "gap-top" }, h("a", { href: "#/basket", class: "button responsive" }, icon("shopping_bag"), h("span", null, "View basket"))));
-
-  nodes.push(sectionTitle("Contact"));
-  nodes.push(h("ul", { class: "list border" },
-    (m.contact || []).map((c) => h("li", null, icon((CHANNELS[c.app] || {}).icon || "chat"),
-      h("div", { class: "max" }, h("div", null, (CHANNELS[c.app] ? CHANNELS[c.app].label : c.app) + (c.preferred ? " (preferred)" : "")), h("div", { class: "small-text muted" }, contactText(c.app, c.id))))),
-    h("li", null, icon("call"), h("div", { class: "max" }, h("div", null, "Business phone"), h("div", { class: "small-text muted" }, m.business_phone))),
-    h("li", null, icon("location_on"), h("div", { class: "max" }, h("div", null, "Address"), h("div", { class: "small-text muted" }, m.address)))));
-
-  nodes.push(sectionTitle("Opening hours"));
-  if (!m.hours) nodes.push(h("p", { class: "muted" }, "Not stated."));
-  else {
-    nodes.push(h("ul", { class: "list border" }, DAYS.map((d) => h("li", null, h("div", { class: "max" }, DAY_NAMES[d]), h("span", null, hoursText(m.hours[d]))))));
-    nodes.push(h("p", { class: "small-text muted" }, "Open now is based on your phone's clock."));
-  }
+  nodes.push(h("a", { href: "#/basket", class: "button responsive basket-bar", id: "basket-bar", hidden: !(state.basket && state.basket.rid === r.id && basketCount()) },
+    icon("shopping_bag"), h("span", { id: "basket-bar-text" }, "View basket")));
   show("list", m.name, ...nodes);
+  updateBasketBar();
+}
+
+function updateBasketBar() {
+  const bar = document.getElementById("basket-bar");
+  if (!bar) return;
+  const n = basketCount();
+  bar.hidden = !n;
+  document.getElementById("basket-bar-text").textContent = "View basket · " + n + (n === 1 ? " item" : " items");
+}
+
+/* Everything a customer may want to check but should not have to scroll past. */
+function restaurantInfo(m) {
+  const kids = [];
+  if (m.claimed === false) kids.push(notice("warn", h("p", { class: "bold flush" }, "Not yet confirmed by the business"), h("p", { class: "flush" }, m.listing_note || "")));
+  const zones = (m.delivery && m.delivery.zones) || [];
+  kids.push(h("h3", { class: "overline-label" }, "Delivery"),
+    h("ul", { class: "list border" }, zones.map((z) => h("li", null, icon("location_on"),
+      h("div", { class: "max" }, h("div", null, zoneLabel(z)), h("div", { class: "small-text muted" }, feeSummary(z)))))),
+    h("p", { class: "small-text muted" }, "The business sets one fixed delivery charge for each area, up to the Hana limit of " + money(state.rules.max_delivery_fee) + ". Hana adds no fees. Pickup: " + (m.pickup === true ? "available" : m.pickup === false ? "not offered" : "not stated; ask the business") + "."));
+  kids.push(h("h3", { class: "overline-label" }, "Payment"),
+    h("p", { class: "small-text" }, "All prices include VAT and every other charge. The delivery fee is the only addition. Pay on delivery or at pickup only: " + paymentText(m) + ". If a business asks you to pay before delivery, do not pay, and report the listing."));
+  kids.push(h("h3", { class: "overline-label" }, "Contact"),
+    h("ul", { class: "list border" },
+      (m.contact || []).map((c) => h("li", null, icon((CHANNELS[c.app] || {}).icon || "chat"),
+        h("div", { class: "max" }, h("div", null, (CHANNELS[c.app] ? CHANNELS[c.app].label : c.app) + (c.preferred ? " (preferred)" : "")), h("div", { class: "small-text muted" }, contactText(c.app, c.id))))),
+      h("li", null, icon("call"), h("div", { class: "max" }, h("div", null, "Business phone"), h("div", { class: "small-text muted" }, m.business_phone))),
+      h("li", null, icon("location_on"), h("div", { class: "max" }, h("div", null, "Address"), h("div", { class: "small-text muted" }, m.address)))));
+  kids.push(h("h3", { class: "overline-label" }, "Opening hours"),
+    m.hours ? h("ul", { class: "list border" }, DAYS.map((d) => h("li", null, h("div", { class: "max" }, DAY_NAMES[d]), h("span", null, hoursText(m.hours[d])))))
+      : h("p", { class: "muted" }, "Not stated."));
+  kids.push(h("p", { class: "small-text muted" }, "Prices from version " + m.version + ", published " + longDate(m.announcement && m.announcement.published) + ". Open now is based on your phone's clock."));
+  if (m.price_history && m.price_history.length) {
+    kids.push(h("details", null, h("summary", { class: "link" }, "Price changes (" + m.price_history.length + ")"),
+      m.price_history.slice().reverse().map((p) => h("div", null, h("p", { class: "bold" }, longDate(p.published) + ": " + p.summary),
+        h("ul", { class: "list" }, p.changes.map((c) => h("li", null, c.label + ": " + (c.old === null ? "new" : money(c.old)) + " to " + (c.new === null ? "removed" : money(c.new)))))))));
+  }
+  return h("details", { class: "info-list" }, h("summary", { class: "row" }, icon("info"), h("span", { class: "max" }, "Delivery areas, payment, contact and hours"), icon("expand_more")), kids);
 }
 
 /* ---------------------------------------------------------------- basket and checkout */
 
-function saveBasket() { store.set("hana.basket", state.basket); updateBasketBadge(); }
+function saveBasket() { store.set("hana.basket", state.basket); updateBasketBadge(); updateBasketBar(); }
 function basketCount() { return state.basket ? Object.values(state.basket.lines).reduce((a, b) => a + b, 0) : 0; }
 
 function updateBasketBadge() {

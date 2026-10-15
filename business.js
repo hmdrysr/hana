@@ -281,7 +281,8 @@ function itemsToText(items) {
     it.name,
     it.options ? it.options.map((o) => o.label + ": " + o.price).join("; ") : String(it.price),
     it.description || "",
-  ].join(" | ").replace(/ \| $/, "")).join("\n");
+    it.image ? it.image.src : "",
+  ].join(" | ").replace(/( \| )+$/, "")).join("\n");
 }
 
 function textToItems(text, oldItems) {
@@ -290,7 +291,9 @@ function textToItems(text, oldItems) {
   text.split("\n").map((l) => l.trim()).filter(Boolean).forEach((line, n) => {
     const parts = line.split("|").map((x) => x.trim());
     if (parts.length < 3) { errors.push("Line " + (n + 1) + ": use Section | Name | Price."); return; }
+    const pic = parts.length > 3 && /^https?:\/\//i.test(parts[parts.length - 1]) ? parts.pop() : "";
     const [secCat, name, priceText, description] = parts;
+    if (pic && !safeImageUrl(pic)) { errors.push("Line " + (n + 1) + ": the picture must be a JPEG, PNG or WebP file on one of the listed hosts."); return; }
     const [section, category] = secCat.split("/").map((x) => x.trim());
     const old = byName.get(norm(name));
     let id = old ? old.id : slug(name);
@@ -299,6 +302,7 @@ function textToItems(text, oldItems) {
     const it = { id, name, section: section || "Menu" };
     if (category) it.category = category;
     if (description) it.description = description;
+    if (pic) it.image = { src: safeImageUrl(pic) };
     if (/^\d+$/.test(priceText)) it.price = Number(priceText);
     else {
       const opts = priceText.split(";").map((x) => x.trim()).filter(Boolean).map((x) => {
@@ -371,7 +375,7 @@ function viewJoin() {
     const wa = (m.contact || []).find((c) => c.app === "whatsapp");
     set("whatsapp", wa ? "+" + wa.id : "");
     set("items", itemsToText(m.items));
-    set("cuisine", m.cuisine || "");
+    set("cuisine", (CUISINES.find((c) => c[0] === cuisineKey(m)) || [0, ""])[1]);
     renderFees();
     snackbar("Filled in from the existing listing. Check every detail.");
   }
@@ -381,8 +385,8 @@ function viewJoin() {
     sectionTitle("1. Your business"),
     textField("name", "Business name", input("name", { maxlength: 80 })),
     select("kind", "Type of business", KINDS.map((k) => [k, k]), KINDS[0]),
-    textField("cuisine", "Main cuisine (optional), like Pizza or Indian", input("cuisine", { maxlength: 40 })),
-    hint("Used to pick a default cover picture from Wikimedia Commons until you add your own."),
+    select("cuisine", "Main cuisine", [["", "Other or mixed"]].concat(CUISINES.map((c) => [c[1], c[1]])), ""),
+    hint("Picks a stock cover photo until you add your own."),
     textField("phone", "Business phone", input("phone", { inputmode: "tel", maxlength: 14, on: { change: checkMerge } })),
     mergeBox,
     hint("Write it like +8801XXXXXXXXX."),
@@ -424,7 +428,7 @@ function viewJoin() {
     h("nav", { class: "vertical left-align" }, Object.entries(B.rules.payment_methods_on_delivery || {}).map(([k, label]) => check("pay-" + k, label, k === "cash"))),
 
     sectionTitle("4. Menu"),
-    h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description (optional). Add a category after the section with a slash, like Indian / Starters. For sizes, write the prices like 8 inch: 529; 12 inch: 749. Prices are whole taka and include VAT and every other charge."),
+    h("p", { class: "small-text muted" }, "One item per line: Section | Name | Price | Description (optional) | Picture address (optional). Items without a picture show a plain drawing. Add a category after the section with a slash, like Indian / Starters. For sizes, write the prices like 8 inch: 529; 12 inch: 749. Prices are whole taka and include VAT and every other charge."),
     textField("items", "Menu items", h("textarea", { id: "items", rows: 10 })),
 
     sectionTitle("5. Where your menu file will live"),
