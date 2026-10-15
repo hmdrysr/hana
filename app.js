@@ -696,6 +696,13 @@ function newCode() {
   return b32(b).slice(0, 6);
 }
 
+/* Orders saved by older versions, or damaged by hand, must never stop the app. */
+(function cleanOrders() {
+  const o = store.get("hana.orders", []);
+  const c = (Array.isArray(o) ? o : []).filter((x) => x && typeof x === "object" && typeof x.code === "string" && x.code)
+    .map((x) => Object.assign(x, { items: Array.isArray(x.items) ? x.items.filter((i) => i && typeof i === "object") : [] }));
+  if (!Array.isArray(o) || c.length !== o.length || c.some((x, i) => x !== o[i])) store.set("hana.orders", c);
+})();
 function pinLink(p) { return "https://www.openstreetmap.org/?mlat=" + p.lat + "&mlon=" + p.lon + "#map=18/" + p.lat + "/" + p.lon; }
 /* Saved delivery addresses, on this phone only (up to five). */
 function savedAddresses() { return store.get("hana.addresses", []); }
@@ -913,8 +920,13 @@ function viewBasket() {
     h("input", { type: "radio", name: "channel", value: String(i), checked: c.preferred || (i === 0 && !anyPreferred) }),
     h("span", null, CHANNELS[c.app].label + (c.app === "hana" ? "" : c.app === "endpoint" ? " (" + contactText(c.app, c.id) + ")" : " · " + contactText(c.app, c.id)))));
 
+  let sending = false;
   const form = h("form", { novalidate: true, on: { submit: async (e) => {
     e.preventDefault();
+    /* One order per tap: repeated taps while it is being prepared are ignored. */
+    if (sending) return;
+    sending = true;
+    setTimeout(() => { sending = false; }, 2000);
     const errors = [];
     const z = deliveryZone();
     if (b.mode === "delivery" && liveOf(r.id).pickup_only) errors.push("This business is taking pickup orders only right now.");

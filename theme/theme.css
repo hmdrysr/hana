@@ -841,7 +841,8 @@ nav.cat-strip[hidden] {
   gap: 0.5rem;
 }
 .zone-row > :first-child {
-  flex: 1 1 14rem;
+  flex: 1 1 min(14rem, 100%);
+  min-inline-size: 0;
   margin: 0;
 }
 .zone-row > button {
@@ -1231,4 +1232,17 @@ dialog > nav {
 .qr svg {
   inline-size: min(70vw, 18rem);
   block-size: auto;
+}
+
+/* At large text sizes, header buttons wrap under the title, and selects never widen the page. */
+nav.page-head {
+  flex-wrap: wrap;
+}
+.field,
+.field > select {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.hero + .row {
+  flex-wrap: wrap;
 }
