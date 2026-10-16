@@ -50,6 +50,18 @@ Planned upgrades for Hana. Nothing here is built yet. Each item lists the condit
 - **What:** a regular customer saves a basket as "usual breakfast" or "office lunch", and the search box remembers recent searches, both on the phone only with an easy clear button.
 - **Waiting for:** evidence from usability sessions that "Order again" and favourites are not already enough.
 
+### Replacing a lost or exposed business key
+
+- **What:** a business whose device is lost, or whose recovery phrase or key file is exposed, replaces its signing and order keys without losing its listing. Customers' apps show the change plainly ("This business replaced its key on …") instead of silently trusting the new key.
+- **How:** the old key signs a short statement naming the new key; if the old key is lost, two vouchers confirm the business again (`CLAIMS.md`) and sign the recovery. The new menu version carries the statement; `tools/check.py` refuses a key change without one. Orders already open stay tied to the key that confirmed them.
+- **Waiting for:** tests that cover each case (signed handover, voucher recovery, an attacker's unsigned key change, open orders across the change), and one supervised run with a real business. Until then, an exposed key is handled by a maintainer by hand, as a new claim.
+
+### A business's own ntfy server
+
+- **What:** a business, or the community, runs its own ntfy server for orders, so floods of made-up orders can be limited by the server and ntfy.sh's daily limits no longer apply.
+- **How:** customers' apps would open each order's private reply address on the business's server instead of ntfy.sh, and the app's content security policy would allow that server.
+- **Waiting for:** a tested setup guide for a free host, and a business that needs it.
+
 ### Others under consideration
 
 - Splitting `list.json` by zone once it nears its size limit.

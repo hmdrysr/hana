@@ -9,6 +9,7 @@ Do not open a public issue for a security problem. Use the repo's private vulner
 - A menu file that makes the app show scripts, HTML or styles (the app must show restaurant text as plain text only).
 - A way to make the app accept a menu with a bad hash or bad signature.
 - A way to take over a restaurant's listing without its key.
+- A way to make customers' apps believe a status (offline, sold out, pickup only) the business did not sign, or to make the business tools take in one order twice.
 - Anything that sends a customer's location, address, phone number or orders off the device.
 - A dependency with a known serious flaw.
 - A leak of private data in the repo history.

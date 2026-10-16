@@ -205,6 +205,8 @@ Menus are signed by their owners and checked against published hashes, so an alt
 
 They travel through ntfy, a free, open-source relay that needs no account, and they are encrypted end to end so that only the business can read them. If the relay is unavailable, customers can still send their order by any other channel the business lists, such as WhatsApp, text message or email.
 
+Encryption hides what is in an order, but the relay can still see when messages are sent, how large they are and the network addresses involved. It keeps messages for about 12 hours. A business's "taking orders" status and today's sold-out items are signed by the business, so nobody else can change them, but they are not secret. The phone number on an order is the one the customer typed; Hana does not check it.
+
 ### Can it be followed on social media?
 
 Yes. Hana publishes an open feed of new listings and price changes that can be followed from the Fediverse (Mastodon and similar networks) without signing up anywhere new.

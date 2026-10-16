@@ -503,7 +503,9 @@ with sync_playwright() as p:
     def fake_ntfy(route):
         req = route.request
         path = req.url.split("https://ntfy.sh/", 1)[1]
-        if req.method == "POST":
+        if path.startswith("hana-down"):
+            route.abort()
+        elif req.method == "POST":
             topic = path.strip("/")
             msg = {"id": "m" + str(sum(len(v) for v in box.values()) + 1), "time": int(datetime.now().timestamp()), "event": "message", "topic": topic, "message": req.post_data}
             box.setdefault(topic, []).append(msg)
@@ -530,13 +532,108 @@ with sync_playwright() as p:
     }""")
     ok("an order sent in Hana is encrypted, opened only with the business key, and answered on its own channel",
        sealed["text"].startswith("Order ABC123") and sealed["reply"] == "CONFIRMED ABC123" and not sealed["plain"], sealed)
-    online = dp.evaluate("""async () => { const d = { topic: "https://ntfy.sh/hana-presence0123456789" };
-        const before = await isOnline(d); await ntfyPost(presenceTopic(d.topic), "online"); const after = await isOnline(d); return [before, after]; }""")
-    ok("a business shows as available only after its tools say so", online == [False, True], online)
+    # Presence is signed: forged, replayed, stale and unsigned signals are not believed.
+    pres = dp.evaluate("""async () => {
+        B.key = await createKey(); const keys = [B.key.publicB64];
+        const evil = await createKey();
+        const d = { topic: "https://ntfy.sh/hana-presence0123456789" }, pt = presenceTopic(d.topic);
+        const out = {};
+        out.none = (await presence(d, keys)).state;
+        await ntfyPost(pt, "online");
+        out.unsigned = (await presence(d, keys)).state;
+        const off = await signPresence(B.key.jwk, d.topic, "offline", null, new Date(Date.now() - 60000));
+        await ntfyPost(pt, off);
+        out.offline = (await presence(d, keys)).state;
+        await ntfyPost(pt, await signPresence(B.key.jwk, d.topic, "online", { sold: [], busy: 0 }));
+        out.online = (await presence(d, keys)).state;
+        await ntfyPost(pt, off);
+        out.replayedOffline = (await presence(d, keys)).state;
+        await ntfyPost(pt, await signPresence(evil.jwk, d.topic, "offline", null, new Date(Date.now() + 1000)));
+        const forged = await signPresence(evil.jwk, d.topic, "online", { sold: ["fries"], pickup_only: true }, new Date(Date.now() + 2000));
+        await ntfyPost(pt, forged);
+        const p = await presence(d, keys);
+        out.forged = [p.state, p.sold.length, p.pickup_only];
+        const tampered = JSON.parse((await signPresence(B.key.jwk, d.topic, "online", {}, new Date(Date.now() + 3000))).slice(10)); tampered.s = "offline";
+        await ntfyPost(pt, "presence1 " + JSON.stringify(tampered));
+        out.tampered = (await presence(d, keys)).state;
+        const d2 = { topic: "https://ntfy.sh/hana-stale0123456789" };
+        await ntfyPost(presenceTopic(d2.topic), await signPresence(B.key.jwk, d2.topic, "online", {}, new Date(Date.now() - 40 * 60000)));
+        out.stale = (await presence(d2, keys)).state;
+        const d3 = { topic: "https://ntfy.sh/hana-other0123456789" };
+        await ntfyPost(presenceTopic(d3.topic), await signPresence(B.key.jwk, d.topic, "online", {}));
+        out.otherTopic = (await presence(d3, keys)).state;
+        out.unreachable = (await presence({ topic: "https://ntfy.sh/hana-down0123456789" }, keys)).state;
+        return out; }""")
+    ok("with no signal, a business shows as unavailable; an unsigned signal shows as could not check", pres["none"] == "offline" and pres["unsigned"] == "unknown", pres)
+    ok("a signed signal sets the status, and the one signed last wins", pres["offline"] == "offline" and pres["online"] == "online", pres)
+    ok("an authentic offline signal posted again cannot hide a newer online one", pres["replayedOffline"] == "online", pres)
+    ok("a signal signed with another key cannot mark the business offline, sold out or pickup only", pres["forged"] == ["online", 0, False], pres)
+    ok("an altered signed signal is rejected", pres["tampered"] == "online", pres)
+    ok("an old signed signal posted again is ignored as stale", pres["stale"] == "offline", pres)
+    ok("a signal signed for another business's address is rejected", pres["otherTopic"] == "offline", pres)
+    ok("when the order service cannot be reached, the status is could not check, not available", pres["unreachable"] == "unknown", pres)
     live = dp.evaluate("""async () => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-today0123456789" }));
-        saveToday({ sold: ["fries"], busy: 30, pickup_only: true }); await new Promise((r) => setTimeout(r, 300));
-        return presence({ topic: "https://ntfy.sh/hana-today0123456789" }); }""")
-    ok("sold-out items, busy time and pickup only reach customers with the presence signal", live["online"] and live["sold"] == ["fries"] and live["busy"] == 30 and live["pickup_only"], live)
+        saveToday({ sold: ["fries"], busy: 30, pickup_only: true }); await new Promise((r) => setTimeout(r, 500));
+        return presence({ topic: "https://ntfy.sh/hana-today0123456789" }, [B.key.publicB64]); }""")
+    ok("sold-out items, busy time and pickup only reach customers with the signed presence signal", live["online"] and live["sold"] == ["fries"] and live["busy"] == 30 and live["pickup_only"], live)
+    # Order intake: replays, made-up orders, oversized messages and floods.
+    intake = dp.evaluate("""async () => {
+        localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-intake0123456789" }));
+        localStorage.removeItem("hana.biz.inbox"); localStorage.removeItem("hana.biz.seen");
+        const direct = { topic: "https://ntfy.sh/hana-intake0123456789", enc_key: B.key.enc.pub };
+        const msg = (code) => "Order " + code + " (sent with Hana)\\nCHECK hana1 H=000000000000 Z=pickup I=x*1 S=0 F=0 C=00000000";
+        const now = Math.floor(Date.now() / 1000);
+        const take = (id, message, time) => takeMessage({ id, time: time || now, message, topic: "hana-intake0123456789" });
+        const out = {};
+        const s = await sealOrder(direct, { message: msg("RPA234"), code: "RPA234", cpub: null, sealed_at: new Date().toISOString() });
+        out.first = await take("a1", s.envelope);
+        out.replay = await take("a2", s.envelope);
+        out.replayLater = await take("a3", s.envelope, now + 3600);
+        const s2 = await sealOrder(direct, { message: msg("RPA235"), code: "RPA235", cpub: null, sealed_at: new Date().toISOString() });
+        out.second = await take("a4", s2.envelope);
+        out.count = inboxOrders().length;
+        localStorage.setItem("hana.biz.inbox", JSON.stringify(inboxOrders().filter((o) => o.code !== "RPA234")));
+        out.afterInboxCleared = await take("a5", s.envelope);
+        const old = await sealOrder(direct, { message: msg("ADE234"), code: "ADE234", cpub: null, sealed_at: new Date(Date.now() - 2 * 86400000).toISOString() });
+        out.old = await take("a6", old.envelope);
+        const legacy = await sealOrder(direct, { message: msg("GEN234"), code: "GEN234", cpub: null });
+        out.legacy = await take("a7", legacy.envelope);
+        const evilReply = await sealOrder(direct, { message: msg("EVA234"), code: "EVA234", cpub: null, reply: "https://evil.example/collect", sealed_at: new Date().toISOString() });
+        out.evilReply = await take("a8", evilReply.envelope);
+        const noCheck = await sealOrder(direct, { message: "Order NCK234 please", code: "NCK234", sealed_at: new Date().toISOString() });
+        out.noCheck = await take("a9", noCheck.envelope);
+        const badCode = await sealOrder(direct, { message: msg("x"), code: { nested: { deep: [1, [2, [3]]] } }, sealed_at: new Date().toISOString() });
+        out.badCode = await take("a10", badCode.envelope);
+        out.huge = await take("a11", "HANA1 " + "A".repeat(40000) + ".B");
+        out.garbage = await take("a12", "HANA1 abc.def");
+        const o = inboxOrders().find((x) => x.code === "RPA235");
+        const chat = "HANA1R " + await dSeal(await aesFromRaw(o.keyRaw), { from: "c", t: "chat", text: "Where is it?", at: new Date().toISOString() });
+        const topic = o.reply.split("/").pop();
+        out.chat1 = await takeMessage({ id: "c1", time: now, message: chat, topic });
+        out.chat2 = await takeMessage({ id: "c2", time: now, message: chat, topic });
+        out.chats = inboxOrders().find((x) => x.code === "RPA235").chat.length;
+        const cancel = "HANA1R " + await dSeal(await aesFromRaw(o.keyRaw), { from: "c", t: "cancel", at: new Date().toISOString() });
+        out.cancel1 = await takeMessage({ id: "k1", time: now, message: cancel, topic });
+        out.cancel2 = await takeMessage({ id: "k2", time: now, message: cancel, topic });
+        const t0 = performance.now();
+        for (let i = 0; i < 230; i++) { const f = await sealOrder(direct, { message: msg("F" + String(i).padStart(5, "0")), code: "F" + String(i).padStart(5, "0"), sealed_at: new Date().toISOString() }); await take("f" + i, f.envelope); }
+        out.flood = [inboxOrders().length, Math.round(performance.now() - t0)];
+        return out; }""")
+    ok("an order posted again under a new relay message id is taken in once", intake["first"] and not intake["replay"] and not intake["replayLater"] and intake["count"] == 2, intake)
+    ok("two genuinely different orders stay separate", intake["second"], intake)
+    ok("a replay is still caught after the order has left the inbox", not intake["afterInboxCleared"], intake)
+    ok("an order sealed more than a day before it arrived is rejected; orders from older apps without a time are kept", not intake["old"] and intake["legacy"], intake)
+    ok("a made-up order that names a reply address elsewhere is rejected", not intake["evilReply"], intake)
+    ok("malformed, oversized and nested payloads are dropped without breaking the inbox", not intake["noCheck"] and not intake["badCode"] and not intake["huge"] and not intake["garbage"], intake)
+    ok("a flood of made-up orders leaves the inbox bounded", intake["flood"][0] <= 200, intake["flood"])
+    ok("a customer message or cancellation posted again has no second effect", intake["chat1"] and not intake["chat2"] and intake["chats"] == 1 and intake["cancel1"] and not intake["cancel2"], intake)
+    dp.evaluate("""() => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-down0123456789" })); localStorage.setItem("hana.biz.phone", "+8801729298282"); localStorage.removeItem("hana.biz.inbox"); }""")
+    dp.goto(BIZ + "#/confirm")
+    dp.wait_for_timeout(1500)
+    inb = dp.inner_text("main")
+    ok("when the order service cannot be reached, the inbox says so with Retry instead of showing no orders", "Could not reach the order service" in inb and "No orders in the last 24 hours" not in inb and dp.locator("button:has-text('Retry')").count() == 1, inb[:400])
+    dp.goto(BIZ + "#/")
+    dp.wait_for_selector(".page-title")
     dp.evaluate("""() => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-testtopic0123456789" }));
         localStorage.setItem("hana.biz.inbox", JSON.stringify([{ id: "x1", time: Math.floor(Date.now() / 1000), code: "ABC123", text: "Order ABC123 Z=pickup ", reply: "https://ntfy.sh/hana-o-test0123456789", keyRaw: "", status: "accepted", step: "accepted", accepted_at: Date.now() }])); }""")
     dp.evaluate("""() => { document.getElementById("main").replaceChildren(progressPanel(inboxOrders()[0], () => {})); }""")
@@ -634,6 +731,9 @@ with sync_playwright() as p:
     dm.wait_for_selector(".page-title")
     ok("a demo listing says it is not a real place", "Demo, just for fun" in dm.inner_text("main") and "Not a real place" in dm.inner_text("main"))
     dm.click("button[aria-label^='Add Bun']")
+    dm.wait_for_timeout(200)
+    bar = dm.inner_text("#basket-bar")
+    ok("the basket bar shows the item count and, with every price listed, the subtotal", "1 item" in bar and "BDT" in bar, bar)
     dm.goto(BASE + "#/basket")
     dm.wait_for_selector("#zone")
     dm.select_option("#zone", "khulshi")

@@ -97,22 +97,68 @@ function ntfyListen(topics, onMessage) {
   return () => es.close();
 }
 
-/* Presence: open business tools post "online" every 5 minutes and "offline" when closed. A
-   business counts as available if it posted "online" within the last 12 minutes. */
+/* Presence: open business tools post a signed status every 5 minutes and "offline" when closed.
+   Each message is "presence1 <json>" with {s: "online" | "offline", at, sold, busy, pickup_only,
+   sig}, signed with the listing key (or a staff key) over the presence topic and the body.
+   A customer's app accepts only messages that:
+   - carry a valid signature from a key in the signed menu (owner or staff);
+   - reached the relay in the last 12 minutes, with a signing time within 15 minutes of that
+     (an old message posted again gets a new relay time but keeps its old signing time).
+   Of those, the one signed last wins, so a replayed "offline" cannot hide a newer "online".
+   The result is one of three states, never a guess:
+   - "online": a valid, fresh signal says the business is taking orders;
+   - "offline": no valid signal, or the latest one says offline;
+   - "unknown": the relay could not be reached, or only unsigned or uncheckable signals arrived.
+   Sold-out items, busy time and pickup only are used only from a verified "online" signal. */
 const PRESENCE_EVERY_MS = 5 * 60000;
-/* The "online" message may carry today's details as JSON: {"sold": [item ids], "busy": extra
-   minutes, "pickup_only": true}. They reset at midnight in the business tools. */
-async function presence(direct) {
-  try {
-    const msgs = await ntfyPoll(presenceTopic(direct.topic), "12m");
-    const last = msgs[msgs.length - 1];
-    const m = /^online(?: (\{.*\}))?$/.exec((last && last.message) || "");
-    if (!m) return { online: false, sold: [], busy: 0, pickup_only: false };
-    let d = {}; try { d = JSON.parse(m[1] || "{}"); } catch (e) { d = {}; }
-    return { online: true, sold: Array.isArray(d.sold) ? d.sold.map(String) : [], busy: Math.min(120, Math.max(0, Number(d.busy) || 0)), pickup_only: d.pickup_only === true };
-  } catch (e) { return { online: true, sold: [], busy: 0, pickup_only: false }; /* the service is unreachable: do not blame the business */ }
+function presenceBytes(topic, body) {
+  const b = JSON.parse(JSON.stringify(body));
+  delete b.sig;
+  return dTe.encode("hana-presence-1\n" + presenceTopic(topic) + "\n" + canonicalJSON(b));
 }
-async function isOnline(direct) { return (await presence(direct)).online; }
+/* Business: the text to post, signed with the listing (or staff) key. */
+async function signPresence(jwk, topic, s, today, when) {
+  const t = today || {};
+  const body = { s, at: (when || new Date()).toISOString(), sold: Array.isArray(t.sold) ? t.sold.map(String) : [], busy: Math.min(120, Math.max(0, Number(t.busy) || 0)), pickup_only: t.pickup_only === true };
+  const priv = await crypto.subtle.importKey("jwk", Object.assign({ ext: true }, jwk), { name: "Ed25519" }, false, ["sign"]);
+  body.sig = b64u(new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, priv, presenceBytes(topic, body))));
+  return "presence1 " + JSON.stringify(body);
+}
+const NO_LIVE = { sold: [], busy: 0, pickup_only: false };
+/* Customer: keys are the base64url public keys from the signed menu (owner, then staff). */
+async function presence(direct, keys) {
+  let msgs;
+  try { msgs = await ntfyPoll(presenceTopic(direct.topic), "12m"); } catch (e) { return Object.assign({ state: "unknown", online: false, reason: "unreachable" }, NO_LIVE); }
+  const ks = (keys || []).filter((k) => typeof k === "string" && k);
+  let best = null, unverified = false;
+  for (const m of msgs) {
+    const text = String(m.message || "");
+    if (text.length > 4096) continue;
+    const pm = /^presence1 (\{.*\})$/.exec(text);
+    if (!pm) { if (/^online\b/.test(text)) unverified = true; continue; }
+    let b; try { b = JSON.parse(pm[1]); } catch (e) { continue; }
+    if (!b || (b.s !== "online" && b.s !== "offline") || typeof b.sig !== "string") continue;
+    const at = Date.parse(b.at);
+    if (!Number.isFinite(at) || !Number.isFinite(m.time) || Math.abs(m.time * 1000 - at) > 15 * 60000) continue;
+    let ok = false, cannot = false;
+    for (const k of ks) {
+      let r = null;
+      try { r = await ed25519Verify(unb64u(k), presenceBytes(direct.topic, b), unb64u(b.sig)); } catch (e) { r = false; }
+      if (r === true) { ok = true; break; }
+      if (r === null) cannot = true;
+    }
+    if (!ok) { if (cannot || !ks.length) unverified = true; continue; }
+    if (!best || at > best.at) best = { at, b };
+  }
+  if (best && best.b.s === "online") {
+    const d = best.b;
+    return { state: "online", online: true, sold: Array.isArray(d.sold) ? d.sold.map(String).slice(0, 500) : [], busy: Math.min(120, Math.max(0, Number(d.busy) || 0)), pickup_only: d.pickup_only === true };
+  }
+  if (best) return Object.assign({ state: "offline", online: false }, NO_LIVE);
+  if (unverified) return Object.assign({ state: "unknown", online: false, reason: "unverified" }, NO_LIVE);
+  return Object.assign({ state: "offline", online: false }, NO_LIVE);
+}
+async function isOnline(direct, keys) { return (await presence(direct, keys)).online; }
 
 /* Browser alerts through ntfy's own web push, for the given topic addresses on one server. */
 async function ntfyPush(topics) {

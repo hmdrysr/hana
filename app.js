@@ -674,6 +674,7 @@ function viewRestaurant(id) {
           e.currentTarget.disabled = false;
         } } }, icon("send"), h("span", null, "Send the report"))))));
   }
+  state.barMenu = { rid: r.id, menu: m };
   show("list", m.name, ...nodes);
   if (state.focusItem) {
     const li = Array.from(document.querySelectorAll("main li.dish")).find((x) => { const t = x.querySelector(".bold"); return t && t.textContent === state.focusItem; });
@@ -681,11 +682,21 @@ function viewRestaurant(id) {
   }
   updateBasketBar();
   /* A business that takes orders in Hana is available only while its business tools are open. */
-  if (m.direct && m.claimed !== false) presence(m.direct).then((p) => {
+  if (m.direct && m.claimed !== false) presence(m.direct, [m.owner && m.owner.public_key].concat(((m.owner && m.owner.staff) || []).map((x) => x.public_key))).then((p) => {
     state.offline = state.offline || new Set();
+    state.unknown = state.unknown || new Set();
     state.live = state.live || {};
     state.live[r.id] = p;
     const head = document.querySelector("main .page-head");
+    state.unknown.delete(r.id);
+    if (p.state === "unknown") {
+      state.offline.delete(r.id);
+      state.unknown.add(r.id);
+      if (head) head.after(notice("info", h("p", { class: "bold flush" }, "Could not check whether it is taking orders"), h("p", { class: "flush" }, p.reason === "unreachable"
+        ? "The order service could not be reached just now. You can still send an order; if the business does not confirm it within 15 minutes, it is cancelled and you owe nothing."
+        : "Its availability signal could not be verified, so sold-out items and busy times are not shown. You can still send an order; if the business does not confirm it within 15 minutes, it is cancelled and you owe nothing.")));
+      return;
+    }
     if (p.online) {
       state.offline.delete(r.id);
       for (const id of p.sold) {
@@ -727,7 +738,15 @@ function updateBasketBar() {
   if (!bar) return;
   const n = basketCount();
   bar.hidden = !n;
-  document.getElementById("basket-bar-text").textContent = "View basket · " + n + (n === 1 ? " item" : " items");
+  /* The subtotal is shown only when every item in the basket has a listed price. */
+  let sub = null;
+  const m = state.barMenu;
+  if (n && m && state.basket && state.basket.rid === m.rid) {
+    const pl = {}; for (const l of priceLines(m.menu)) pl[l.key] = l.price;
+    sub = 0;
+    for (const [k, q] of Object.entries(state.basket.lines)) { if (typeof pl[k] !== "number") { sub = null; break; } sub += pl[k] * q; }
+  }
+  document.getElementById("basket-bar-text").textContent = "View basket · " + n + (n === 1 ? " item" : " items") + (sub !== null ? " · " + money(sub) : "");
 }
 
 /* Everything a customer may want to check but should not have to scroll past. */
@@ -1090,7 +1109,7 @@ function viewBasket() {
     if (errors.length) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, errors.join(" ")))); return; }
     store.set("hana.me", remember.checked ? { name: name.value.trim(), address: address.value.trim(), phone: phone.value.trim() } : { name: "", address: "", phone: "" });
     const scheduled = when.value || null;
-    const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), phone: /^\+8801\d{9}$/.test(ph) ? ph : "", address: address.value.trim(), pin: b.mode === "delivery" ? pin : null, note: note.value.trim(), swap: swap.value ? SWAPS[swap.value].toLowerCase().replace(/^call/, "please call").replace(/^replace/, "please replace").replace(/^leave/, "please leave") + "." : "", scheduled });
+    let o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), phone: /^\+8801\d{9}$/.test(ph) ? ph : "", address: address.value.trim(), pin: b.mode === "delivery" ? pin : null, note: note.value.trim(), swap: swap.value ? SWAPS[swap.value].toLowerCase().replace(/^call/, "please call").replace(/^replace/, "please replace").replace(/^leave/, "please leave") + "." : "", scheduled });
     if (b.mode === "delivery" && label.value.trim()) saveAddress({ label: label.value.trim(), address: address.value.trim(), zone: b.zone, ward: b.ward || "", pin });
     const c = channels[Number((form.querySelector("input[name=channel]:checked") || { value: 0 }).value)];
     const ch = CHANNELS[c.app];
@@ -1098,9 +1117,18 @@ function viewBasket() {
     let sealedInfo = null;
     let orderKey = null;
     if (c.app === "hana") {
-      orderKey = await makeOrderKey();
-      try { sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code, cpub: orderKey ? orderKey.pub : null }); await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; } catch (err) { directError = err.message; }
-      if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent in Hana. " + directError + " Choose another way to send it."))); return; }
+      /* A retry of the same order resends the same sealed message with the same code, so if the
+         first attempt did reach the business, it still sees one order. */
+      const fp = r.id + "\n" + c.id + "\n" + o.message.split(o.code).join("");
+      const again = state.pendingSend && state.pendingSend.fp === fp ? state.pendingSend : null;
+      if (again) { o = again.o; orderKey = again.orderKey; sealedInfo = again.sealedInfo; }
+      else orderKey = await makeOrderKey();
+      try {
+        if (!sealedInfo) sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code, cpub: orderKey ? orderKey.pub : null, sealed_at: new Date().toISOString() });
+        state.pendingSend = { fp, o, orderKey, sealedInfo };
+        await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; state.pendingSend = null;
+      } catch (err) { directError = err.message; }
+      if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent in Hana. " + directError + " Tap Send again to retry: it resends the same order " + o.code + ", so the business will not get it twice. You can also choose another way to send it."))); return; }
     } else if (c.app === "demo") {
       sentDirect = true; /* a demo order stays on this phone */
     } else if (ch.direct) {
