@@ -376,6 +376,8 @@ with sync_playwright() as p:
     ok("repeated taps on Send create one order", ip.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').length") == 1)
     plain = ip.inner_text("pre").strip()
     ok("an item note goes into the message", "Dahi Bara (2 pieces) (note: no onion)" in plain, plain[:300])
+    links = ip.eval_on_selector_all("a[href^='https://wa.me/'], a[href^='sms:']", "e => e.map((x) => decodeURIComponent(x.href.split(/[?&](?:text|body)=/)[1] || ''))")
+    ok("the substitution choice and item note arrive intact in the WhatsApp and text-message links", links and all("If an item is not available: please call me first." in x and "(note: no onion)" in x for x in links), [x[-120:] for x in links])
     ok("the substitution choice goes into the message", "If an item is not available: please call me first." in plain, plain[-300:])
     ok("a volunteer listing gets a plain message with no codes", plain.startswith("Hello, I'd like to order from Tava Restaurant.") and "CHECK" not in plain and "CONFIRMED" not in plain and plain.endswith("Thank you!"), plain[-200:])
     ip.goto(BASE + "#/orders")
@@ -568,6 +570,18 @@ with sync_playwright() as p:
     ok("an unsigned update is ignored and a signed one is accepted", signing["steps"] == ["out:true"], signing["steps"])
     ok("the customer's messages are signed and cannot be altered", signing["mine"] is True and signing["forged"] is False, signing)
     ok("the complaint summary carries the signed records", "(signed by the business)" in signing["summary"] and "Signed records" in signing["summary"])
+    # A dropped connection on first load: the error explains itself, and Try again recovers.
+    rc = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
+    rp = rc.new_page()
+    down = {"on": True}
+    rc.route("**/*.json", lambda r: r.abort() if down["on"] else r.continue_())
+    rp.goto(BASE + "#/")
+    rp.wait_for_selector("text=Try again", timeout=15000)
+    down["on"] = False
+    rp.click("button:has-text('Try again')")
+    rp.wait_for_selector("#q", timeout=15000)
+    ok("after a dropped connection, Try again loads the directory", "TONG" in rp.inner_text("main") or rp.locator("#results").count() == 1)
+    rc.close()
     # Demo listings: orders are confirmed and delivered on their own, with clear labels.
     TONG = json.loads(urllib.request.urlopen(ROOT_URL + "/list.json").read())
     TONG = next(x["id"] for x in TONG["listings"] if x.get("handle") == "tong")

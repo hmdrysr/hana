@@ -318,7 +318,7 @@ function viewList() {
       if (!delivers && !state.showAll) { hidden++; continue; }
       if (state.cat && !(r.cats && r.cats.has(state.cat))) continue;
       if (state.favOnly && !favourites().includes(r.id)) continue;
-      if (state.openOnly && m && openNow(m.hours) === false) continue;
+      if (state.openOnly && m && openNow(m.hours) !== true) continue; /* known to be open, not merely not known to be closed */
       if (state.pickupOnly && m && m.pickup === false) continue;
       const nameHit = fuzzyMatches(state.query.replace(/^@/, ""), r.name + " " + (m ? (m.kind || "") + " " + (m.handle || "") : ""));
       const hits = q ? searchItems(r).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
@@ -343,7 +343,7 @@ function viewList() {
     const toggle = (key, text) => h("button", { type: "button", class: "chip small" + (state[key] ? "" : " border"), "aria-pressed": String(!!state[key]),
       on: { click: () => { state[key] = !state[key]; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } }, h("span", null, text));
     const sortSel = h("select", { id: "sort", "aria-label": "Sort", on: { change: (e) => { state.sort = e.target.value; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } },
-      [["name", "Sort: name"], ["fee", "Sort: lowest delivery fee"], ["confirmed", "Sort: most recently confirmed"]].map(([v, t]) => h("option", { value: v, selected: (state.sort || "name") === v }, t)));
+      [["name", "Sort: name"], ["fee", "Sort: lowest delivery fee"], ["confirmed", "Sort: prices updated most recently"]].map(([v, t]) => h("option", { value: v, selected: (state.sort || "name") === v }, t)));
     head.push(h("nav", { class: "wrap small-space" }, toggle("openOnly", "Open now"), toggle("pickupOnly", "Pickup"), favourites().length || state.favOnly ? toggle("favOnly", "Favourites") : null),
       q ? null : h("div", { class: "field suffix border round small" }, sortSel, icon("arrow_drop_down")));
     listHead.replaceChildren(...(q && !cards.length ? [] : head).filter(Boolean));
@@ -394,6 +394,7 @@ function viewList() {
     h("div", { class: "zone-row" },
       zoneSelect("area", state.area, setZone, "Choose your zone"),
       h("button", { type: "button", class: "border", on: { click: () => locateZone(setZone) } }, icon("location_on"), h("span", null, "Use my location"))),
+    h("p", { class: "small-text muted flush" }, "Choosing a zone shares nothing. Use my location sends your position, rounded to about 100 metres, to OpenStreetMap's free lookup service to name your area."),
     h("div", { class: "field prefix round fill has-clear" }, icon("search"), search, clearButton(search)),
     tabs,
     catHead,
@@ -928,7 +929,8 @@ function viewBasket() {
       h("p", { class: "flush" }, "You added items from version " + b.version + " of the menu. It is now version " + menu.version + ", and the current prices are shown. " + (menu.announcement ? menu.announcement.summary : ""))));
   }
   if (menu.demo === true) nodes.push(demoNotice());
-  else if (menu.claimed === false) nodes.push(notice("warn", h("p", { class: "flush" }, "This listing is not yet confirmed by the business. Check the prices when the business confirms your order.")));
+  else if (menu.claimed === false) nodes.push(notice("warn", h("p", { class: "bold flush" }, "You are sending an enquiry, not a confirmed order"),
+    h("p", { class: "flush" }, "A community volunteer listed this place, so its prices and delivery charge may have changed. Your message asks the business to confirm them and the total. Agree on them in your chat before the order is made, and pay only on delivery.")));
 
   const list = h("ul", { class: "list border" });
   const totals = h("article", { class: "round no-elevate surface-container-high stack" });
@@ -1743,7 +1745,7 @@ function viewSettings() {
       btn.disabled = false;
     } } }, icon("download"), h("span", null, "Download offline copy"))),
     sectionTitle("Other regions"),
-    h("p", { class: "small-text muted" }, "Hana may run in other cities, each as its own community-run directory. Your phone can check which one covers where you are. Your position is compared on this phone only and is never sent anywhere."),
+    h("p", { class: "small-text muted" }, "Hana may run in other cities, each as its own community-run directory. Your phone can check which one covers where you are. For this check, your position is compared on this phone only and is not sent anywhere. (Use my location on the home page is different: it sends a rounded position to OpenStreetMap to name your zone.)"),
     h("nav", null, h("button", { type: "button", class: "border", on: { click: findRegion } }, icon("location_on"), h("span", null, "Find the Hana for my area"))),
     h("div", { id: "region-out", "aria-live": "polite" }));
 }

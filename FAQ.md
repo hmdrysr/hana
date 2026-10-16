@@ -59,7 +59,7 @@ Large platforms sit between businesses and their customers. With that much marke
 You do not have to switch. Hana is for people who want to:
 
 - order from a favourite place at its real prices;
-- see the full price, including delivery, before ordering, with no surprises at checkout;
+- see every known charge, including delivery, before ordering; anything not listed is clearly flagged, and your message asks the business to confirm it;
 - pay the business directly, on delivery, without handing payment details to anyone;
 - skip ads, pop-up offers, surge pricing and pressure to tip;
 - order without creating an account or being tracked.
@@ -114,7 +114,9 @@ A lower commission is better than a higher one, but it keeps the same arrangemen
 
 ### Do I need technical skills?
 
-No. The business tools work on any phone browser, with a step-by-step Get started checklist. Sign-in uses your phone's fingerprint, face or screen lock, or a five-word recovery phrase. A volunteer can enter your listing for you, and you can claim it later.
+Not for the everyday work. Taking orders, marking items sold out and setting busy times work in any phone browser, with a step-by-step Get started checklist, and sign-in uses your phone's fingerprint, face or screen lock, or a five-word recovery phrase.
+
+Two steps are more technical today: claiming a listing and publishing menu changes need a free account on an open forge such as GitHub or Codeberg. A volunteer can enter your listing and help with that setup. A simpler, phone-only way to claim and publish is on the [roadmap](ROADMAP.md).
 
 ### Do I have to keep my dine-in and delivery prices the same?
 

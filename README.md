@@ -16,6 +16,7 @@ Every document in this repository, in one place. Each link opens on GitHub.
 - [FAQ](FAQ.md): why Hana exists, how delivery works and how it stays free
 - [Terms of Use](TERMS.md): the rules for businesses and customers, records, disputes and privacy
 - [Roadmap](ROADMAP.md): planned upgrades and the conditions each must meet first
+- [Testing Hana with people](TESTING-WITH-PEOPLE.md): short usability sessions and the release-readiness checklist
 
 **For businesses and volunteers**
 - [Claiming a listing](CLAIMS.md): how a business claims its listing and how the community verifies it
