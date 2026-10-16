@@ -112,6 +112,8 @@ function zoneLabel(z) { return z.shape === "named" ? (z.areas || []).map(areaNam
 function onlyZone(menu) { const z = (menu.delivery && menu.delivery.zones) || []; return z.length === 1 ? z[0] : null; }
 
 function toMin(hhmm) { const p = hhmm.split(":"); return Number(p[0]) * 60 + Number(p[1]); }
+/* A closing time of 23:59 means open to the end of the day, so 00:00 to 23:59 is open all day. */
+function endMin(hhmm) { return hhmm === "23:59" ? 1440 : toMin(hhmm); }
 
 /* Open now, from the phone's clock. An end earlier than the start means the business closes after midnight. */
 function openNow(hours, when) {
@@ -120,7 +122,7 @@ function openNow(hours, when) {
   const idx = (now.getDay() + 6) % 7;
   const mins = now.getHours() * 60 + now.getMinutes();
   for (const [s, e] of hours[DAYS[idx]] || []) {
-    const a = toMin(s), b = toMin(e);
+    const a = toMin(s), b = endMin(e);
     if (b > a ? (mins >= a && mins < b) : mins >= a) return true;
   }
   for (const [s, e] of hours[DAYS[(idx + 6) % 7]] || []) {
@@ -506,7 +508,7 @@ function chooseOption(r, it) {
 function readyToOrder(r) {
   const m = r.menu, os = orderingState(m);
   if (state.offline && state.offline.has(r.id)) {
-    return ask(m.name + " is temporarily unavailable", "Its staff are busy and are not taking new orders at the moment. Please check back shortly.", "OK").then(() => false);
+    return ask(m.name + " is not taking orders right now", "The business has stopped taking new orders for now. Please check back shortly.", "OK").then(() => false);
   }
   if (!os.closed) return Promise.resolve(true);
   if (state.basket && state.basket.rid === r.id && state.basket.scheduled) return Promise.resolve(true);
@@ -689,6 +691,14 @@ function viewRestaurant(id) {
     state.live[r.id] = p;
     const head = document.querySelector("main .page-head");
     state.unknown.delete(r.id);
+    state.noSignal = state.noSignal || new Set();
+    state.noSignal.delete(r.id);
+    if (p.state === "none") {
+      state.offline.delete(r.id);
+      state.noSignal.add(r.id);
+      if (head) head.after(notice("info", h("p", { class: "bold flush" }, "Not confirmed as taking orders in Hana right now"), h("p", { class: "flush" }, "Its order tools have not checked in during the last 12 minutes, so an order sent in Hana might not be seen. " + (orderChannels(m).some((c) => c.app !== "hana") ? "You can use one of its other ways to order, or check back shortly." : "Please check back shortly."))));
+      return;
+    }
     if (p.state === "unknown") {
       state.offline.delete(r.id);
       state.unknown.add(r.id);
@@ -708,7 +718,7 @@ function viewRestaurant(id) {
       return;
     }
     state.offline.add(r.id);
-    if (head) head.after(notice("warn", h("p", { class: "bold flush" }, "Temporarily unavailable"), h("p", { class: "flush" }, "Its staff are busy and are not taking new orders at the moment. Please check back shortly.")));
+    if (head) head.after(notice("warn", h("p", { class: "bold flush" }, "Not taking orders right now"), h("p", { class: "flush" }, "The business has stopped taking new orders for now. Please check back shortly.")));
   });
 }
 
@@ -1098,7 +1108,8 @@ function viewBasket() {
     const chosen = channels[Number((form.querySelector("input[name=channel]:checked") || { value: 0 }).value)];
     const ph = phone.value.replace(/[\s-]/g, "").replace(/^0/, "+880").replace(/^880/, "+880");
     if (chosen && chosen.app === "hana" && !/^\+8801\d{9}$/.test(ph)) errors.push("Enter your mobile number in the format 01XXXXXXXXX, so the business and its rider can reach you.");
-    if (chosen && chosen.app === "hana" && state.offline && state.offline.has(r.id)) errors.push("This business is temporarily unavailable. Please try again shortly.");
+    if (chosen && chosen.app === "hana" && state.offline && state.offline.has(r.id)) errors.push("This business has stopped taking new orders for now. Please try again shortly.");
+    if (chosen && chosen.app === "hana" && state.noSignal && state.noSignal.has(r.id)) errors.push("This business's order tools have not checked in recently, so an order sent in Hana might not be seen. Choose another way to send it, or try again shortly.");
     if (b.mode === "delivery" && !address.value.trim()) errors.push("Enter an address or landmark.");
     if (!channels.length) errors.push("This listing has no way to send a written order.");
     if (os.closed && !os.canOrder) errors.push("This business is closed and does not take scheduled orders.");
@@ -1120,15 +1131,37 @@ function viewBasket() {
       /* A retry of the same order resends the same sealed message with the same code, so if the
          first attempt did reach the business, it still sees one order. */
       const fp = r.id + "\n" + c.id + "\n" + o.message.split(o.code).join("");
-      const again = state.pendingSend && state.pendingSend.fp === fp ? state.pendingSend : null;
+      /* The pending order is kept on the phone for a day, so a retry after a refresh or a
+         restart still resends the same order. A changed basket or details make a new one. */
+      const pend = state.pendingSend || store.get("hana.pending", null);
+      const again = pend && pend.fp === fp && Date.now() - (pend.at || 0) < 86400000 ? pend : null;
       if (again) { o = again.o; orderKey = again.orderKey; sealedInfo = again.sealedInfo; }
-      else orderKey = await makeOrderKey();
+      else {
+        /* An earlier send whose outcome was uncertain, for a basket that has since changed, may
+           still have reached the business: cancel it first (signed), so only the new one is made. */
+        if (pend && pend.sealedInfo && pend.o) {
+          const old = { code: pend.o.code, sign_key: pend.orderKey ? pend.orderKey.jwk : null };
+          try { await postSealed(pend.sealedInfo.orderTopic, pend.sealedInfo.key, await customerUpdate(old, { t: "cancel", code: old.code })); } catch (e) { /* best effort */ }
+          store.set("hana.pending", null); state.pendingSend = null;
+        }
+        orderKey = await makeOrderKey();
+      }
       try {
         if (!sealedInfo) sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code, cpub: orderKey ? orderKey.pub : null, sealed_at: new Date().toISOString() });
-        state.pendingSend = { fp, o, orderKey, sealedInfo };
-        await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; state.pendingSend = null;
-      } catch (err) { directError = err.message; }
-      if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent in Hana. " + directError + " Tap Send again to retry: it resends the same order " + o.code + ", so the business will not get it twice. You can also choose another way to send it."))); return; }
+        state.pendingSend = { fp, o, orderKey, sealedInfo, at: again ? again.at : Date.now() };
+        store.set("hana.pending", state.pendingSend);
+        await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true;
+        state.pendingSend = null; store.set("hana.pending", null);
+      } catch (err) { directError = err; }
+      if (!sentDirect) {
+        /* Three outcomes, said precisely: sent (below), not sent (the relay refused it), or
+           unknown (the connection dropped, so it may have arrived). */
+        const unsure = !directError || directError.uncertain;
+        out.replaceChildren(unsure
+          ? notice("warn", h("p", { class: "bold flush" }, "Order " + o.code + " may or may not have reached the business"), h("p", { class: "flush" }, "The connection dropped before the order service answered. Tap Send again: it resends the same order " + o.code + ", so the business will not get it twice. If you order another way instead, mention order " + o.code + " so it is not prepared twice."))
+          : notice("warn", h("p", { class: "bold flush" }, "Order " + o.code + " was not sent"), h("p", { class: "flush" }, (directError.message || "") + " Tap Send to try again, or choose another way to send it.")));
+        return;
+      }
     } else if (c.app === "demo") {
       sentDirect = true; /* a demo order stays on this phone */
     } else if (ch.direct) {

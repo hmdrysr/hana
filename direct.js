@@ -76,9 +76,13 @@ async function readSealed(topic, keyRaw, since) {
   return out;
 }
 
+/* A refused post means it was not sent; a dropped connection means it may have been
+   (err.uncertain), and the caller must say so. */
 async function ntfyPost(topic, text) {
-  const r = await fetch(topic, { method: "POST", body: text, cache: "no-store" });
-  if (!r.ok) throw new Error("The order service answered " + r.status + ".");
+  let r;
+  try { r = await fetch(topic, { method: "POST", body: text, cache: "no-store" }); }
+  catch (e) { const err = new Error("The connection dropped."); err.uncertain = true; throw err; }
+  if (!r.ok) throw new Error("The order service refused it (" + r.status + ").");
 }
 async function ntfyPoll(topic, since) {
   const r = await fetch(topic.replace(/\/$/, "") + "/json?poll=1&since=" + encodeURIComponent(since || "12h"), { cache: "no-store" });
@@ -107,7 +111,9 @@ function ntfyListen(topics, onMessage) {
    Of those, the one signed last wins, so a replayed "offline" cannot hide a newer "online".
    The result is one of three states, never a guess:
    - "online": a valid, fresh signal says the business is taking orders;
-   - "offline": no valid signal, or the latest one says offline;
+   - "offline": the latest valid signal says the business stopped taking orders (its decision);
+   - "none": no valid signal in the last 12 minutes, so its order tools are probably closed, but
+     that is not a decision anyone made: it is shown as "not confirmed", not as "not taking orders";
    - "unknown": the relay could not be reached, or only unsigned or uncheckable signals arrived.
    Sold-out items, busy time and pickup only are used only from a verified "online" signal. */
 const PRESENCE_EVERY_MS = 5 * 60000;
@@ -156,7 +162,7 @@ async function presence(direct, keys) {
   }
   if (best) return Object.assign({ state: "offline", online: false }, NO_LIVE);
   if (unverified) return Object.assign({ state: "unknown", online: false, reason: "unverified" }, NO_LIVE);
-  return Object.assign({ state: "offline", online: false }, NO_LIVE);
+  return Object.assign({ state: "none", online: false }, NO_LIVE);
 }
 async function isOnline(direct, keys) { return (await presence(direct, keys)).online; }
 

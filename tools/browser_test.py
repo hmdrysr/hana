@@ -564,13 +564,13 @@ with sync_playwright() as p:
         out.otherTopic = (await presence(d3, keys)).state;
         out.unreachable = (await presence({ topic: "https://ntfy.sh/hana-down0123456789" }, keys)).state;
         return out; }""")
-    ok("with no signal, a business shows as unavailable; an unsigned signal shows as could not check", pres["none"] == "offline" and pres["unsigned"] == "unknown", pres)
+    ok("with no signal, a business shows as not confirmed (not as a decision to stop); an unsigned signal shows as could not check", pres["none"] == "none" and pres["unsigned"] == "unknown", pres)
     ok("a signed signal sets the status, and the one signed last wins", pres["offline"] == "offline" and pres["online"] == "online", pres)
     ok("an authentic offline signal posted again cannot hide a newer online one", pres["replayedOffline"] == "online", pres)
     ok("a signal signed with another key cannot mark the business offline, sold out or pickup only", pres["forged"] == ["online", 0, False], pres)
     ok("an altered signed signal is rejected", pres["tampered"] == "online", pres)
-    ok("an old signed signal posted again is ignored as stale", pres["stale"] == "offline", pres)
-    ok("a signal signed for another business's address is rejected", pres["otherTopic"] == "offline", pres)
+    ok("an old signed signal posted again is ignored as stale", pres["stale"] == "none", pres)
+    ok("a signal signed for another business's address is rejected", pres["otherTopic"] == "none", pres)
     ok("when the order service cannot be reached, the status is could not check, not available", pres["unreachable"] == "unknown", pres)
     live = dp.evaluate("""async () => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-today0123456789" }));
         saveToday({ sold: ["fries"], busy: 30, pickup_only: true }); await new Promise((r) => setTimeout(r, 500));
@@ -627,11 +627,58 @@ with sync_playwright() as p:
     ok("malformed, oversized and nested payloads are dropped without breaking the inbox", not intake["noCheck"] and not intake["badCode"] and not intake["huge"] and not intake["garbage"], intake)
     ok("a flood of made-up orders leaves the inbox bounded", intake["flood"][0] <= 200, intake["flood"])
     ok("a customer message or cancellation posted again has no second effect", intake["chat1"] and not intake["chat2"] and intake["chats"] == 1 and intake["cancel1"] and not intake["cancel2"], intake)
+    edges = dp.evaluate("""() => { const now = Date.now(), r = Math.floor(now / 1000), iso = (ms) => new Date(ms).toISOString();
+        return { legacy: orderAgeOk(undefined, r), legacyNoRelay: orderAgeOk(undefined, 0), noRelay: orderAgeOk(iso(now), undefined), zeroRelay: orderAgeOk(iso(now), 0),
+          badRelay: orderAgeOk(iso(now), "soon"), relayFarOff: orderAgeOk(iso(now), r + 3600), badSealed: orderAgeOk("yesterday", r), numberSealed: orderAgeOk(now, r),
+          justInside: orderAgeOk(iso(now - 86400000 + 60000), r), justOutside: orderAgeOk(iso(now - 86400000 - 60000), r),
+          smallSkew: orderAgeOk(iso(now + 5 * 60000), r), future: orderAgeOk(iso(now + 15 * 60000), r) }; }""")
+    ok("new-format orders fail closed on a missing, zero, malformed or implausible relay time", not any(edges[k] for k in ("noRelay", "zeroRelay", "badRelay", "relayFarOff", "badSealed", "numberSealed")), edges)
+    ok("the one-day limit holds at its edges, with small clock skew allowed and the future refused", edges["justInside"] and not edges["justOutside"] and edges["smallSkew"] and not edges["future"], edges)
+    ok("orders from older apps, with no sealing time, take the separate accepted path", edges["legacy"] and edges["legacyNoRelay"], edges)
+    hard = dp.evaluate("""async () => {
+        localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-hard0123456789" }));
+        const reset = () => { localStorage.removeItem("hana.biz.inbox"); localStorage.removeItem("hana.biz.seen"); seenCache = null; };
+        reset();
+        const direct = { topic: "https://ntfy.sh/hana-hard0123456789", enc_key: B.key.enc.pub };
+        const msg = (code) => "Order " + code + " (sent with Hana)\\nCHECK hana1 H=000000000000 Z=pickup I=x*1 S=0 F=0 C=00000000";
+        const now = Math.floor(Date.now() / 1000), out = {};
+        const take = (id, message) => takeMessage({ id, time: now, message, topic: "hana-hard0123456789" });
+        const seal = (code, extra) => sealOrder(direct, Object.assign({ message: msg(code), code, cpub: null }, extra || {}));
+        const oldNew = await seal("AAA111", { sealed_at: new Date(Date.now() - 25 * 3600000).toISOString() });
+        const legacy = await seal("AAA222");
+        out.legacyFirst = await take("h1", legacy.envelope);
+        reset();
+        out.oldAfterClear = await take("h2", oldNew.envelope);
+        out.legacyAfterClear = await take("h3", legacy.envelope);
+        reset();
+        const fresh = await seal("AAA333", { sealed_at: new Date().toISOString() });
+        const realSet = store.set; store.set = (k, v) => k === "hana.biz.inbox" ? false : realSet.call(store, k, v);
+        out.storageFull = await take("h4", fresh.envelope);
+        store.set = realSet;
+        out.seenAfterFail = hasSeen("AAA333." + fresh.orderTopic.slice(-24));
+        out.seenCheckWorks = (await take("h4b", (await seal("AAA444", { sealed_at: new Date().toISOString() })).envelope)) && hasSeen("AAA444." + inboxOrders()[0].reply.slice(-24));
+        out.afterSpace = await take("h5", fresh.envelope);
+        const l = inboxOrders(); l.find((o) => o.code === "AAA333").status = "accepted"; saveInbox(l);
+        const env = [];
+        for (let i = 0; i < 2000; i++) env.push((await seal("B" + String(i).padStart(5, "0"), { sealed_at: new Date().toISOString() })).envelope);
+        const t0 = performance.now();
+        for (let i = 0; i < env.length; i++) await take("x" + i, env[i]);
+        out.ms = Math.round(performance.now() - t0);
+        out.inbox = inboxOrders().length;
+        out.genuineKept = inboxOrders().some((o) => o.code === "AAA333" && o.status === "accepted");
+        out.bytes = (localStorage.getItem("hana.biz.inbox") || "").length + (localStorage.getItem("hana.biz.seen") || "").length;
+        out.replayAfterFlood = await take("x-again", env[0]);
+        return out; }""")
+    ok("after the duplicate record is lost, an old new-format order is still refused; an older app's order comes back (the documented limit)", hard["legacyFirst"] and not hard["oldAfterClear"] and hard["legacyAfterClear"], hard)
+    ok("an order that could not be stored is not marked as seen, and is taken in once storage works", not hard["storageFull"] and not hard["seenAfterFail"] and hard["seenCheckWorks"] and hard["afterSpace"], hard)
+    ok("2,000 distinct made-up orders: the inbox stays at 200 and an order being prepared is kept", hard["inbox"] <= 200 and hard["genuineKept"] and not hard["replayAfterFlood"], hard)
+    print("      measured: 2,000 orders taken in in %d ms; inbox and duplicate record use %d KB" % (hard["ms"], hard["bytes"] // 1024))
     dp.evaluate("""() => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-down0123456789" })); localStorage.setItem("hana.biz.phone", "+8801729298282"); localStorage.removeItem("hana.biz.inbox"); }""")
     dp.goto(BIZ + "#/confirm")
     dp.wait_for_timeout(1500)
     inb = dp.inner_text("main")
     ok("when the order service cannot be reached, the inbox says so with Retry instead of showing no orders", "Could not reach the order service" in inb and "No orders in the last 24 hours" not in inb and dp.locator("button:has-text('Retry')").count() == 1, inb[:400])
+    ok("after a flood, the inbox says there are unusually many new orders and points to Connections", "Unusually many new orders" in inb and "Check each one by phone" in inb, inb[:600])
     dp.goto(BIZ + "#/")
     dp.wait_for_selector(".page-title")
     dp.evaluate("""() => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-testtopic0123456789" }));
@@ -701,6 +748,8 @@ with sync_playwright() as p:
     page.evaluate("localStorage.removeItem('hana.orders')")
     bn = page.evaluate("[fuzzyMatches('চা', 'Tea (cha) Milk tea'), fuzzyMatches('বিরিয়ানি', 'Chicken Biryani'), fuzzyMatches('অজানা', 'Chicken Biryani'), fuzzyMatches('ডিম', 'Farm eggs')]")
     ok("searching in Bangla script finds the English menu words, and an unknown word finds nothing", bn == [True, True, False, True], bn)
+    allday = page.evaluate("(() => { const h = {}; for (const d of DAYS) h[d] = [['00:00', '23:59']]; const late = new Date(2026, 9, 16, 23, 59, 30); const night = { fri: [['18:00', '02:00']] }; return [openNow(h, late), openNow(night, new Date(2026, 9, 17, 1, 0)), openNow({ fri: [['09:00', '17:00']] }, new Date(2026, 9, 16, 17, 0))]; })()")
+    ok("a business open 00:00 to 23:59 is open in the last minute of the day; overnight and closing times still work", allday == [True, True, False], allday)
     mx = page.evaluate("[fuzzyMatches('চা', 'Masala tea'), fuzzyMatches('বিরানি', 'Kacchi biryani'), fuzzyMatches('মুরগী', 'Chicken roll'), fuzzyMatches('বিরিয়ানি kacchi', 'Kacchi biryani'), fuzzyMatches('kacchi বিরিয়ানি', 'Beef tehari'), fuzzyMatches('চা,', 'Masala tea')]")
     ok("Bangla spelling variants and mixed Bangla and English searches match correctly", mx == [True, True, True, True, False, True], mx)
     # A dropped connection on first load: the error explains itself, and Try again recovers.
@@ -759,6 +808,118 @@ with sync_playwright() as p:
     note = "%s is now BDT %s (it was BDT %s)." % (was[0], f"{was[1] + 5:,}", f"{was[1]:,}")
     ok("order again shows both the old and the new price when a price changed", note in dm.inner_text("main"), [note, dm.inner_text("main")[:300]])
     dm.context.close()
+    # Sending in Hana from the real checkout, with a relay that drops answers or refuses.
+    import base64, hashlib
+    from cryptography.hazmat.primitives.asymmetric import ec, ed25519
+    from cryptography.hazmat.primitives import serialization
+    b64u = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+    ek = ec.generate_private_key(ec.SECP256R1()); en = ek.private_numbers()
+    enc_pub = {"kty": "EC", "crv": "P-256", "x": b64u(en.public_numbers.x.to_bytes(32, "big")), "y": b64u(en.public_numbers.y.to_bytes(32, "big"))}
+    enc_priv = dict(enc_pub, d=b64u(en.private_value.to_bytes(32, "big")))
+    sk = ed25519.Ed25519PrivateKey.generate()
+    sk_pub = b64u(sk.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw))
+    sk_jwk = {"kty": "OKP", "crv": "Ed25519", "x": sk_pub, "d": b64u(sk.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption()))}
+    E2E = "https://ntfy.sh/hana-e2e0123456789"
+    lst = json.loads(urllib.request.urlopen(ROOT_URL + "/list.json").read())
+    lite = next(x for x in lst["listings"] if x.get("handle") == "tong")
+    menu = json.loads(urllib.request.urlopen(ROOT_URL + "/" + lite["location"]).read())
+    menu.update({"demo": False, "claimed": True, "owner": {"public_key": sk_pub}, "direct": {"topic": E2E, "enc_key": enc_pub}})
+    mbytes = json.dumps(menu).encode()
+    lite.update({"demo": False, "claimed": True, "menu_hash": hashlib.sha256(mbytes).hexdigest()})
+    lbytes = json.dumps(lst).encode()
+    relay = {"mode": "ok"}
+    def e2e_ntfy(route):
+        req = route.request
+        path = req.url.split("https://ntfy.sh/", 1)[1]
+        if req.method == "POST" and path.strip("/") == "hana-e2e0123456789":
+            if relay["mode"] == "refuse":
+                return route.fulfill(status=500, body="")
+            msg = {"id": "e" + str(sum(len(v) for v in box.values()) + 1), "time": int(datetime.now().timestamp()), "event": "message", "topic": "hana-e2e0123456789", "message": req.post_data}
+            box.setdefault("hana-e2e0123456789", []).append(msg)
+            return route.abort() if relay["mode"] == "lose" else route.fulfill(status=200, content_type="application/json", body=json.dumps(msg))
+        fake_ntfy(route)
+    ectx = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
+    ectx.route("https://ntfy.sh/**", e2e_ntfy)
+    ectx.route("**/list.json", lambda r: r.fulfill(status=200, content_type="application/json", body=lbytes))
+    ectx.route("**/" + lite["location"], lambda r: r.fulfill(status=200, content_type="application/json", body=mbytes))
+    ep = ectx.new_page()
+    ep.on("pageerror", lambda e: errors.append(str(e)))
+    ep.goto(BASE + "#/")
+    ep.wait_for_selector("#q")
+    ep.evaluate("async ([jwk, topic]) => { await ntfyPost(presenceTopic(topic), await signPresence(jwk, topic, 'online', {})); }", [sk_jwk, E2E])
+    def checkout(adds):
+        ep.evaluate("() => { const o = JSON.parse(localStorage.getItem('hana.orders') || '[]'); o.forEach((x) => { x.status = 'cancelled'; }); localStorage.setItem('hana.orders', JSON.stringify(o)); }")
+        ep.goto(BASE + "#/r/" + lite["id"])
+        ep.wait_for_selector(".page-title")
+        ep.wait_for_timeout(400)
+        for _ in range(adds):
+            ep.click("button[aria-label^='Add Bun']")
+            ep.wait_for_timeout(150)
+        ep.goto(BASE + "#/basket")
+        ep.wait_for_selector("#zone")
+        fill_details()
+    def fill_details():
+        ep.select_option("#zone", "khulshi")
+        ep.fill("#name", "Test")
+        ep.fill("#address", "House 1")
+        ep.fill("#phone", "01712345678")
+    def send():
+        ep.wait_for_timeout(2100)
+        ep.click("button[type=submit]")
+    posts = lambda: [m["message"] for m in box.get("hana-e2e0123456789", [])]
+    checkout(1)
+    chans = ep.eval_on_selector_all("input[name=channel] + span", "e => e.map(x => x.textContent)")
+    relay["mode"] = "lose"
+    send()
+    ep.wait_for_selector("text=may or may not have reached the business", timeout=5000)
+    unsure = ep.inner_text("main")
+    code = re.search(r"Order ([0-9A-HJKMNP-TV-Z]{6}) may or may not", unsure).group(1)
+    ok("when the connection drops during sending, the customer is told the outcome is uncertain, not that it failed", "resends the same order " + code in unsure and len(posts()) == 1 and not ep.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').length"), [chans, unsure[:300]])
+    ep.reload()
+    ep.wait_for_selector("#zone")
+    fill_details()
+    relay["mode"] = "ok"
+    send()
+    ep.wait_for_url("**#/orders", timeout=5000)
+    p1 = posts()
+    saved = ep.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').map((o) => o.code)")
+    ok("after a refresh, Send again resends the identical sealed order with the same code", len(p1) == 2 and p1[0] == p1[1] and saved == [code], [len(p1), saved, code])
+    checkout(1)
+    relay["mode"] = "lose"
+    send()
+    ep.wait_for_selector("text=may or may not have reached the business", timeout=5000)
+    code2 = re.search(r"Order ([0-9A-HJKMNP-TV-Z]{6}) may or may not", ep.inner_text("main")).group(1)
+    replies_before = sum(1 for v in box.values() for m in v if m["message"].startswith("HANA1R "))
+    ep.goto(BASE + "#/r/" + lite["id"])
+    ep.wait_for_selector(".page-title")
+    ep.wait_for_timeout(300)
+    ep.click("button[aria-label^='Add Bun']")
+    ep.goto(BASE + "#/basket")
+    ep.wait_for_selector("#zone")
+    fill_details()
+    relay["mode"] = "ok"
+    send()
+    ep.wait_for_url("**#/orders", timeout=5000)
+    p2 = posts()
+    saved2 = ep.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').map((o) => o.code)")
+    ok("a changed basket is a new order: the stale pending order is not sent again", len(p2) == 4 and p2[3] != p2[2] and saved2[0] != code2 and code2 not in saved2, [len(p2), saved2, code2])
+    stale_cancel = sum(1 for v in box.values() for m in v if m["message"].startswith("HANA1R ")) - replies_before
+    ok("the earlier order whose outcome was uncertain is cancelled on its own channel before the new one is sent", stale_cancel == 1, stale_cancel)
+    checkout(1)
+    relay["mode"] = "refuse"
+    send()
+    ep.wait_for_selector("text=was not sent", timeout=5000)
+    ok("when the order service refuses an order, the customer is told it was not sent", "refused it (500)" in ep.inner_text("main") and len(posts()) == 4, ep.inner_text("main")[:300])
+    ep.goto(BIZ + "#/")
+    ep.wait_for_selector(".page-title")
+    took = ep.evaluate("""async ([priv, topic, msgs, extra]) => {
+        localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: topic })); localStorage.removeItem("hana.biz.inbox"); localStorage.removeItem("hana.biz.seen");
+        B.key = { enc: { priv } };
+        const r = await Promise.all(msgs.map((m) => takeMessage(m)));
+        for (const m of extra) await takeMessage(m);
+        return [r, inboxOrders().map((o) => o.code), inboxOrders().filter((o) => o.status === "cancelled").map((o) => o.code)]; }""", [enc_priv, E2E, box.get("hana-e2e0123456789", []), [dict(m, topic=t) for t, v in box.items() for m in v if m["message"].startswith("HANA1R ")]])
+    ok("the business sees each real order once, even when retries and duplicates arrive at the same moment", took[0] == [True, False, True, True] and len(took[1]) == 3 and code in took[1] and took[2] == [code2], took)
+    ectx.close()
     # Business sign-in: a recovery phrase and a passkey unlock the key from vault.json.
     vctx = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
     published = {}

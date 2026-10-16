@@ -1038,7 +1038,14 @@ function bizChat(o, redraw) {
 
 /* Orders that reached this device, kept for 24 hours: { id, time, code, text, reply, keyRaw, status }. */
 function inboxOrders() { const cut = Date.now() / 1000 - 86400; return store.get("hana.biz.inbox", []).filter((o) => o.time > cut); }
-function saveInbox(list) { store.set("hana.biz.inbox", list.slice(0, 200)); }
+/* At most 200 orders. Orders the business has already answered are kept before new ones, so a
+   flood of made-up orders cannot push out orders being prepared. Returns false if storage failed. */
+const INBOX_MAX = 200;
+function saveInbox(list) {
+  const acted = list.filter((o) => o.status !== "new"), fresh = list.filter((o) => o.status === "new");
+  const keep = new Set(acted.slice(0, INBOX_MAX).concat(fresh.slice(0, Math.max(0, INBOX_MAX - acted.length))));
+  return store.set("hana.biz.inbox", list.filter((o) => keep.has(o)));
+}
 
 /* A short two-tone alert, made by the browser (no sound file). */
 function chime() {
@@ -1056,12 +1063,23 @@ function chime() {
 
 /* Takes in one ntfy message: a new order (sealed, or plain from an older endpoint), or a
    customer's follow-up on an order's own topic. Returns true when something changed. */
-/* Orders already taken in, by order code and private reply address, for 7 days. The same
-   sealed order posted again (a replay, or a customer's retry) gets a new relay message id, so
-   the message id alone cannot catch it. */
-const SEEN_DAYS = 7;
-function seenOrders() { const cut = Date.now() - SEEN_DAYS * 86400000; return store.get("hana.biz.seen", []).filter((x) => x && x.at > cut); }
-function markSeen(key) { store.set("hana.biz.seen", [{ k: key, at: Date.now() }].concat(seenOrders()).slice(0, 3000)); }
+/* Orders already taken in, by order code and the end of the private reply address, for 7 days
+   and at most 10,000 orders (about 300 KB). The same sealed order posted again (a replay, or a
+   customer's retry) gets a new relay message id, so the message id alone cannot catch it.
+   What this guarantees, exactly:
+   - an order is taken in once while its record is kept: 7 days, unless more than 10,000 newer
+     orders arrive first, or this browser's site data is cleared (backups do not hold it);
+   - an order from a current app is also refused once it is more than a day old, whatever this
+     record holds, so after a day only orders from older apps (no sealing time) can come back. */
+const SEEN_DAYS = 7, SEEN_MAX = 10000;
+let seenCache = null;
+function seenKey(o) { return o.code + "." + String(o.reply).slice(-24); }
+function seenSet() {
+  if (!seenCache) { const cut = Date.now() - SEEN_DAYS * 86400000; seenCache = store.get("hana.biz.seen", []).filter((x) => x && x.at > cut); }
+  return seenCache;
+}
+function hasSeen(key) { return seenSet().some((x) => x.k === key); }
+function markSeen(key) { seenCache = [{ k: key, at: Date.now() }].concat(seenSet()).slice(0, SEEN_MAX); return store.set("hana.biz.seen", seenCache); }
 const MAX_MESSAGE = 32768;
 /* What a sealed order must look like before it is shown. Anything else is dropped quietly. */
 function validOrder(o, relayTime) {
@@ -1073,13 +1091,29 @@ function validOrder(o, relayTime) {
   const base = (conn().orders || NTFY_DEFAULT).replace(/[^/]+$/, "");
   if (typeof o.reply !== "string" || !o.reply.startsWith(base) || !/^hana-o-[0-9a-z]{24}$/.test(o.reply.slice(base.length))) return false;
   if (o.cpub !== undefined && o.cpub !== null && (typeof o.cpub !== "string" || o.cpub.length > 64)) return false;
-  /* Orders from current apps carry the time they were sealed: one sealed more than a day before
-     it reached the relay is a replay. Older apps send no time and are still accepted. */
-  if (o.sealed_at !== undefined) { const t = Date.parse(o.sealed_at); if (!Number.isFinite(t) || (relayTime && Math.abs(relayTime * 1000 - t) > 86400000)) return false; }
-  return true;
+  return orderAgeOk(o.sealed_at, relayTime);
 }
-async function takeMessage(m) {
+/* Orders from current apps carry the time they were sealed. They are refused unless the relay's
+   time is present and plausible (within 10 minutes of this device's clock), and the order was
+   sealed at most a day before it reached the relay and at most 10 minutes after (clock skew).
+   Orders from older apps carry no sealing time: they are accepted, and rely on the record above. */
+function orderAgeOk(sealedAt, relayTime) {
+  if (sealedAt === undefined) return true;
+  const t = typeof sealedAt === "string" ? Date.parse(sealedAt) : NaN;
+  const r = Number(relayTime) * 1000;
+  if (!Number.isFinite(t) || !Number.isFinite(r) || r <= 0 || Math.abs(r - Date.now()) > 10 * 60000) return false;
+  return t <= r + 10 * 60000 && t >= r - 86400000;
+}
+/* Messages are taken in one at a time, so the same order arriving twice at once (the first poll
+   and the live connection together) cannot slip past the duplicate check. */
+let takeQueue = Promise.resolve();
+function takeMessage(m) { const run = takeQueue.then(() => takeOne(m)); takeQueue = run.catch(() => false); return run; }
+/* New orders taken in recently, for the overload notice. */
+const recentNew = [];
+const POLL_MAX = 300, FLOOD_AT = 30;
+async function takeOne(m) {
   const list = inboxOrders();
+  let newKey = null;
   const text = m.message || "";
   if (text.length > MAX_MESSAGE) return false;
   if (list.some((o) => o.id === m.id)) return false;
@@ -1088,9 +1122,8 @@ async function takeMessage(m) {
     let opened = null;
     try { opened = await openOrder(B.key.enc.priv, text); } catch (e) { return false; }
     if (!opened || !validOrder(opened.order, m.time)) return false;
-    const key = opened.order.code + " " + opened.order.reply;
-    if (list.some((o) => o.code === opened.order.code && o.reply === opened.order.reply) || seenOrders().some((x) => x.k === key)) return false;
-    markSeen(key);
+    newKey = seenKey(opened.order);
+    if (list.some((o) => o.code === opened.order.code && o.reply === opened.order.reply) || hasSeen(newKey)) return false;
     list.unshift({ id: m.id, time: m.time, code: opened.order.code, text: opened.order.message, reply: opened.order.reply, keyRaw: opened.keyRaw, cpub: typeof opened.order.cpub === "string" ? opened.order.cpub : null, status: "new" });
   } else if (CHECK_LINE.test(text)) {
     list.unshift({ id: m.id, time: m.time, code: (/(?:CONFIRMED|Order reference|Order) ([0-9A-HJKMNP-TV-Z]{6})/.exec(text) || [])[1] || "?", text, status: "new" });
@@ -1116,7 +1149,9 @@ async function takeMessage(m) {
     if (!o) return false;
     o.status = "cancelled";
   }
-  saveInbox(list);
+  /* An order counts as seen only once it is safely stored, so a storage failure cannot lose it. */
+  if (!saveInbox(list)) { snackbar("This device's storage is full, so a new order could not be kept. Free some space, then reopen Orders."); return false; }
+  if (newKey) { markSeen(newKey); recentNew.push(Date.now()); }
   return true;
 }
 
@@ -1131,7 +1166,7 @@ function viewConfirm() {
     if (!found.error) { try { localStorage.setItem("hana.biz.phone", val("listing-phone")); } catch (e) { /* ignore */ } }
     return found;
   };
-  let found = null, stop = () => {}, failedAt = null, checkedAt = null;
+  let found = null, stop = () => {}, failedAt = null, checkedAt = null, skipped = 0;
   async function draw() {
     if (!document.body.contains(inbox)) { stop(); return; }
     if (!found || found.error) found = await listing();
@@ -1141,8 +1176,13 @@ function viewConfirm() {
     const fail = failedAt ? notice("warn", h("p", { class: "bold flush" }, "Could not reach the order service"),
       h("p", { class: "flush" }, "New orders may be waiting. " + (checkedAt ? "Last checked at " + clock(String(checkedAt.getHours()).padStart(2, "0") + ":" + String(checkedAt.getMinutes()).padStart(2, "0")) + ". " : "") + "Orders already shown here are kept."),
       h("nav", null, h("button", { type: "button", class: "border", on: { click: () => listen() } }, h("span", null, "Retry")))) : null;
-    if (!list.length) { inbox.replaceChildren(...[fail, failedAt ? null : h("p", { class: "muted" }, "No orders in the last 24 hours. New orders appear here by themselves, with a sound.")].filter(Boolean)); return; }
-    inbox.replaceChildren(...[fail].filter(Boolean), ...list.map((o) => {
+    /* Many new orders at once may be made up. The tools cannot tell, so they say so plainly. */
+    const lately = recentNew.filter((t) => t > Date.now() - 10 * 60000).length;
+    const flood = lately > FLOOD_AT || skipped ? notice("warn", h("p", { class: "bold flush" }, "Unusually many new orders"),
+      h("p", { class: "flush" }, (lately > FLOOD_AT ? lately + " new orders in the last 10 minutes. " : "") + (skipped ? skipped + " older messages were skipped to keep these tools quick. " : "") + "Some may be made up. Check each one by phone before preparing it. If it continues, pause new orders and make a new order address under Connections."),
+      h("nav", null, h("a", { class: "button border", href: "#/connect" }, h("span", null, "Open Connections")))) : null;
+    if (!list.length) { inbox.replaceChildren(...[fail, flood, failedAt ? null : h("p", { class: "muted" }, c.paused ? "No orders in the last 24 hours." : "No orders in the last 24 hours. New orders appear here by themselves, with a sound.")].filter(Boolean)); return; }
+    inbox.replaceChildren(...[fail, flood].filter(Boolean), ...list.map((o) => {
       const body = h("div");
       const label = o.status === "cancelled" ? "cancelled by the customer" : o.status === "answered" ? "answered" : o.status === "accepted" ? STEP_TEXT[o.step || "accepted"].toLowerCase() : o.status === "done" ? "completed" : "new";
       const det = h("details", { class: "info-list", open: o.status === "new" },
@@ -1162,9 +1202,20 @@ function viewConfirm() {
   async function listen() {
     stop();
     if (!c.orders) return;
-    const topics = [c.orders].concat(inboxOrders().filter((o) => o.reply && o.status !== "cancelled").map((o) => o.reply)).slice(0, 30);
+    /* One connection follows the order address and up to 29 open orders: orders being prepared
+       first, then the newest new ones. Finished, declined and cancelled orders are left out. */
+    const open = inboxOrders().filter((o) => o.reply && o.status !== "cancelled" && o.status !== "answered" && o.status !== "done" && !["delivered", "picked"].includes(o.step));
+    const topics = [c.orders].concat(open.filter((o) => o.status !== "new").concat(open.filter((o) => o.status === "new")).map((o) => o.reply)).slice(0, 30);
     let failed = false;
-    for (const t of topics) { try { for (const m of await ntfyPoll(t, "12h")) await takeMessage(Object.assign({ topic: t.split("/").pop() }, m)); } catch (e) { failed = true; } }
+    skipped = 0;
+    for (const t of topics) {
+      try {
+        /* At most the newest 300 messages per address in one pass, so a flood cannot stall the tools. */
+        const msgs = await ntfyPoll(t, "12h");
+        skipped += Math.max(0, msgs.length - POLL_MAX);
+        for (const m of msgs.slice(-POLL_MAX)) await takeMessage(Object.assign({ topic: t.split("/").pop() }, m));
+      } catch (e) { failed = true; }
+    }
     if (failed) failedAt = new Date(); else { failedAt = null; checkedAt = new Date(); }
     draw();
     stop = ntfyListen(topics, async (m) => {
