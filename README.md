@@ -6,6 +6,8 @@ Created by [Hamid Yasir & Co.](https://hamidyasir.com) for the people of Chittag
 
 Live site (once GitHub Pages is turned on; see `SETUP.md`): https://hmdrysr.github.io/hana/
 
+Questions about why Hana exists, how delivery works and how it stays free are answered in `FAQ.md`.
+
 ## Terms
 
 Hana is a directory and an order-preparation tool. Each order is a contract between the customer and the business alone; Hamid Yasir & Co. and the Hana Community are not parties to it and do not handle payments, food or deliveries. The full terms, including the rules for businesses and the limitation of liability, are in `TERMS.md` and on the app's Terms page.
