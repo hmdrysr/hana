@@ -351,7 +351,7 @@ function viewList() {
     /* Sorting is the customer's choice; nothing is ever ranked by payment or popularity. */
     const feeOf = ([r, zone]) => { const z = zone || (r.lite && onlyZone(r.lite)); return z && typeof z.fee === "number" ? z.fee : Infinity; };
     if (!q && state.sort === "fee") cards.sort((a, b) => feeOf(a) - feeOf(b));
-    if (!q && state.sort === "confirmed") cards.sort((a, b) => String((b[0].lite || {}).published || "").localeCompare(String((a[0].lite || {}).published || "")));
+    if (!q && state.sort === "confirmed") cards.sort((a, b) => String((b[0].lite || {}).prices_confirmed || "").localeCompare(String((a[0].lite || {}).prices_confirmed || "")));
     const PER = 12;
     const pages = Math.max(1, Math.ceil(cards.length / PER));
     if (state.page >= pages) state.page = pages - 1;
@@ -453,9 +453,10 @@ function fromPrice(it) {
 function confirmChip(m) {
   if (m.demo === true) return chip("Demo, just for fun: not a real place", "warn");
   if (m.claimed === false) return chip("Community listed: confirm prices with the business", "warn");
-  const t = m.published ? new Date(m.published).getTime() : NaN;
-  if (!isNaN(t) && Date.now() - t > 90 * 86400000) return chip("Prices not reconfirmed since " + longDate(m.published), "warn");
-  return chip("Business confirmed" + (m.published ? " · prices " + longDate(m.published) : ""), "ok");
+  const at = m.prices_confirmed || pricesConfirmedAt(m);
+  const t = at ? new Date(at).getTime() : NaN;
+  if (!isNaN(t) && Date.now() - t > 90 * 86400000) return chip("Prices not reconfirmed since " + longDate(at), "warn");
+  return chip("Business confirmed" + (at ? " · prices confirmed " + longDate(at) : ""), "ok");
 }
 function restaurantCard(r, zone, delivers, dishHits) {
   const m = r.lite;
@@ -582,7 +583,7 @@ function viewRestaurant(id) {
   const cover = coverFor(m);
 
   const chips = [os.closed && os.next ? chip("Closed · opens " + whenText(os.next) + (m.claimed === false ? " (hours not confirmed)" : "")) : statusChip(m)];
-  const when = m.announcement && m.announcement.published ? longDate(m.announcement.published) : "";
+  const when = pricesConfirmedAt(m) ? longDate(pricesConfirmedAt(m)) : "";
   if (m.demo === true) chips.push(chip("Demo, just for fun: not a real place", "warn"));
   else if (m.claimed === false) chips.push(chip("Not confirmed by the business" + (when ? " · entered " + when : ""), "warn"));
   else if (when) chips.push(chip("Prices confirmed " + when));

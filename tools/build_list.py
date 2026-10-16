@@ -17,6 +17,18 @@ ROOT = Path(__file__).resolve().parent.parent
 ENTRY = re.compile(r'\["([a-z_]+)", "([^"]+)", "([a-z_]+)", /(.+)/i\]')
 
 
+def prices_confirmed_at(m):
+    """Same rule as pricesConfirmedAt() in core.js."""
+    if m.get("prices_confirmed_at"):
+        return m["prices_confirmed_at"]
+    changed = [e for e in (m.get("price_history") or []) if isinstance(e, dict) and e.get("changes") and e.get("published")]
+    if changed:
+        return changed[-1]["published"]
+    if not m.get("price_history") or m.get("version") == 1:
+        return (m.get("announcement") or {}).get("published")
+    return None
+
+
 def rules(root):
     src = (root / "core.js").read_text(encoding="utf-8")
     out = {}
@@ -70,7 +82,7 @@ def build(root=ROOT):
         listings.append({
             "id": row["id"], "name": m["name"], "handle": m.get("handle"), "kind": m.get("kind"),
             "neighbourhood": m.get("neighbourhood"), "claimed": m.get("claimed"), "demo": True if m.get("demo") is True else None, "version": m.get("version"),
-            "published": (m.get("announcement") or {}).get("published"),
+            "prices_confirmed": prices_confirmed_at(m),
             "menu_hash": row["menu_hash"], "location": loc, "cuisine": m.get("cuisine"), "cuisine_key": ck, "cats": cats,
             "cover": m.get("cover"), "hours": m.get("hours"), "delivery": m.get("delivery"), "pickup": m.get("pickup"),
             "scheduled_orders": m.get("scheduled_orders"), "direct": m.get("direct") if m.get("claimed") else None, "business_phone": m.get("business_phone"),

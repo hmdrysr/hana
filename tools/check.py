@@ -753,6 +753,9 @@ def check_menu(menu_path, root, area_ids):
     ph = data.get("price_history")
     if not isinstance(ph, list):
         err(rel, "price_history is required (a list, empty for version 1)")
+    pca = data.get("prices_confirmed_at")
+    if pca is not None and not (isinstance(pca, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([+-]\d{2}:\d{2}|Z)", pca)):
+        err(rel, "prices_confirmed_at, when present, must be a date and time such as 2026-10-16T09:30:00+06:00")
     return data
 
 

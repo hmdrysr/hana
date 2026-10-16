@@ -36,8 +36,8 @@ Planned upgrades for Hana. Nothing here is built yet. Each item lists the condit
 ### Claiming and publishing from a phone, with no forge account
 
 - **What:** a business claims its listing and publishes menu changes from the business tools alone, with no GitHub or Codeberg account.
-- **How:** the business tools already sign every menu with the owner's key. The signed menu is posted to a community ntfy topic; a scheduled GitHub Action in the Hana repository collects it, checks the signature against the owner key named in the claim, runs `tools/check.py` and commits it. Because the signature proves who wrote the menu, no person or token needs write access on the owner's behalf. The first claim is still vouched for by two community members, who confirm the business by phone or in person.
-- **Waiting for:** a design review of the claim step (how the owner's key is first linked to the business without an account), abuse limits on the topic, and a test with two or more real businesses. Existing forge-based claims keep working unchanged.
+- **How:** the business tools already sign every menu with the owner's key. The signed menu is posted to a community ntfy topic; a scheduled GitHub Action in the Hana repository collects it, checks the signature against the owner key named in the claim, runs `tools/check.py` and commits it. The signature proves only that the owner's key signed the menu, not who the business is, so the first claim is still vouched for by two community members, who confirm the business by phone or in person and link its key to the listing. After that, no person needs write access on the owner's behalf.
+- **Waiting for:** a design review of how the owner's key is first linked to the verified business, how duplicate or replayed submissions are rejected (menu versions and hash chains already order them), and how the scheduled workflow handles untrusted submissions without exposing its write credentials; abuse limits on the topic; and a test with two or more real businesses. Existing forge-based claims keep working unchanged.
 
 ### Others under consideration
 

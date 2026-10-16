@@ -909,6 +909,19 @@ function nextOpening(hours, when) {
 
 setupThemeToggle();
 
+/* When a listing's prices were last confirmed: the explicit prices_confirmed_at (set when a
+   price changes or the owner reconfirms them), else the latest price-history entry with a real
+   price or fee change, else the first publication. A menu edit that changes no price does not
+   count. tools/build_list.py works this out the same way for list.json. */
+function pricesConfirmedAt(m) {
+  if (!m) return null;
+  if (m.prices_confirmed_at) return m.prices_confirmed_at;
+  const changed = (m.price_history || []).filter((e) => e && Array.isArray(e.changes) && e.changes.length && e.published);
+  if (changed.length) return changed[changed.length - 1].published;
+  if ((m.price_history || []).length === 0 || m.version === 1) return (m.announcement && m.announcement.published) || null;
+  return null;
+}
+
 /* Bangla: a small word list (i18n/bn.json), loaded only when chosen, replaces the interface's
    fixed labels as they appear. Business names, dishes and order messages stay as written. */
 function language() { try { return localStorage.getItem("hana.lang") === "bn" ? "bn" : "en"; } catch (e) { return "en"; } }

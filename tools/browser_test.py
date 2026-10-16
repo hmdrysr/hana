@@ -570,6 +570,13 @@ with sync_playwright() as p:
     ok("an unsigned update is ignored and a signed one is accepted", signing["steps"] == ["out:true"], signing["steps"])
     ok("the customer's messages are signed and cannot be altered", signing["mine"] is True and signing["forged"] is False, signing)
     ok("the complaint summary carries the signed records", "(signed by the business)" in signing["summary"] and "Signed records" in signing["summary"])
+    pc = page.evaluate("""() => [
+        pricesConfirmedAt({ version: 1, price_history: [], announcement: { published: "2026-10-01T10:00:00+06:00" } }),
+        pricesConfirmedAt({ version: 3, announcement: { published: "2026-10-20T10:00:00+06:00" }, price_history: [
+            { version: 2, published: "2026-10-10T10:00:00+06:00", changes: [{ key: "x", old: 10, new: 12 }] },
+            { version: 3, published: "2026-10-20T10:00:00+06:00", changes: [] }] }),
+        pricesConfirmedAt({ version: 3, prices_confirmed_at: "2026-10-25T10:00:00+06:00", price_history: [] })]""")
+    ok("the price date moves only with a price change or an explicit reconfirmation", pc == ["2026-10-01T10:00:00+06:00", "2026-10-10T10:00:00+06:00", "2026-10-25T10:00:00+06:00"], pc)
     # A dropped connection on first load: the error explains itself, and Try again recovers.
     rc = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
     rp = rc.new_page()
@@ -580,7 +587,8 @@ with sync_playwright() as p:
     down["on"] = False
     rp.click("button:has-text('Try again')")
     rp.wait_for_selector("#q", timeout=15000)
-    ok("after a dropped connection, Try again loads the directory", "TONG" in rp.inner_text("main") or rp.locator("#results").count() == 1)
+    rp.wait_for_selector("#results .card-title", timeout=15000)
+    ok("after a dropped connection, Try again loads the directory", "TONG: NOT A REAL PLACE" in rp.inner_text("#results") and "could not be loaded" not in rp.inner_text("main"))
     rc.close()
     # Demo listings: orders are confirmed and delivered on their own, with clear labels.
     TONG = json.loads(urllib.request.urlopen(ROOT_URL + "/list.json").read())

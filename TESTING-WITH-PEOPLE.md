@@ -7,13 +7,13 @@ Automated tests show that the code does what it is meant to do. Only people show
 - **Who:** one person at a time who has never seen Hana. For the business sessions, a restaurant or grocery owner who has never used GitHub.
 - **Device:** their own phone if possible; otherwise an inexpensive Android phone on mobile data, not Wi-Fi.
 - **Rules:** give the task, then stay quiet. Do not explain the screen or help unless they are completely stuck. Note where they pause, tap the wrong thing or look unsure. Twenty minutes is enough.
-- **Record:** write what happened, not what you think caused it. File each problem with the [phone test report form]({{REPO_URL}}/issues/new/choose).
+- **Record:** write what happened, not what you think caused it. File each problem with the [phone test report form](https://github.com/hmdrysr/hana/issues/new/choose).
 
 ## Customer tasks
 
 1. Find something to eat for under BDT 300 and say where it is sold.
 2. Find out whether that place delivers to your area and what the delivery charge is.
-3. Order it from the demo tea stall TONG for delivery, with a note on one item. Then say, in your own words, whether the order has been sent, received or accepted.
+3. Open the demo tea stall TONG, choose anything you like and order it for delivery, with a note on one item. Then say, in your own words, whether the order has been sent, received or accepted.
 4. Order from DUWAN for pickup. Check that no delivery questions were asked.
 5. Close the browser halfway through a basket, reopen Hana and finish the order.
 6. Turn on large text (Settings) and dark mode, and repeat task 1.

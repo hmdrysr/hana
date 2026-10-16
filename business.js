@@ -385,14 +385,15 @@ function listingHealth(m) {
   const missing = days.filter((d) => !(m.hours && Array.isArray(m.hours[d])));
   const zones = (m.delivery && m.delivery.zones) || [];
   const noFee = zones.filter((z) => typeof z.fee !== "number").length;
-  const pub = m.announcement && m.announcement.published ? new Date(m.announcement.published) : null;
+  const pubAt = pricesConfirmedAt(m);
+  const pub = pubAt ? new Date(pubAt) : null;
   const old = pub && Date.now() - pub.getTime() > 90 * 86400000;
   return [
     { ok: items.length > 0, text: "Menu: " + items.length + (items.length === 1 ? " item" : " items"), href: "#/update" },
     { ok: !unpriced, text: unpriced ? unpriced + " items have no price" : "Every item has a price", href: "#/update" },
     { ok: !missing.length, text: missing.length ? "Opening hours missing for " + missing.map((d) => names[d]).join(", ") : "Opening hours set for every day", href: "#/update" },
     { ok: zones.length > 0 && !noFee, text: !zones.length ? "No delivery areas yet" : noFee ? noFee + " delivery areas have no fee" : "Delivery areas and fees set", href: "#/update" },
-    { ok: !!pub && !old, text: !pub ? "Prices not published yet" : old ? "Prices due for confirmation (last published " + longDate(m.announcement.published) + ")" : "Prices confirmed " + longDate(m.announcement.published), href: "#/update" },
+    { ok: !!pub && !old, text: !pub ? "Prices not published yet" : old ? "Prices due for confirmation (last confirmed " + longDate(pubAt) + ")" : "Prices confirmed " + longDate(pubAt), href: "#/update" },
     { ok: m.claimed === true, text: m.claimed === true ? "Listing claimed by you" : "Listing not claimed yet", href: "#/claim" },
   ];
 }
@@ -1249,6 +1250,7 @@ function viewUpdate() {
       sectionTitle("Pickup"), check("pickup", "Customers can pick up orders", prev.pickup !== false),
       sectionTitle("Publish"),
       textField("summary", "Short public note about the change", input("summary", { maxlength: 200 })),
+      check("reconfirm", "Every price and delivery fee is current (this confirms them today, even if none changed)", false),
       B.key ? h("p", { class: "small-text muted" }, "Signing with key " + B.key.id + ".") : keyBox(),
       h("nav", null, h("button", { type: "button", class: "responsive", on: { click: publish } }, icon("verified"), h("span", null, "Prepare the new version"))));
   }
@@ -1271,7 +1273,7 @@ function viewUpdate() {
     else if (!next.owner || next.owner.public_key !== B.key.publicB64) errors.push("This key does not belong to this listing.");
     const changes = errors.length ? [] : diffMoney(prev, next);
     const otherChange = JSON.stringify(prev.items) !== JSON.stringify(next.items) || prev.pickup !== next.pickup || JSON.stringify(prev.direct || null) !== JSON.stringify(next.direct || null) || JSON.stringify((prev.owner || {}).staff || null) !== JSON.stringify((next.owner || {}).staff || null);
-    if (!errors.length && !changes.length && !otherChange) errors.push("Nothing has changed.");
+    if (!errors.length && !changes.length && !otherChange && !checked("reconfirm")) errors.push("Nothing has changed.");
     if (!val("summary")) errors.push("Write a short public note about the change.");
     if (errors.length) { out.replaceChildren(notice("warn", h("ul", null, Array.from(new Set(errors)).map((x) => h("li", null, x))))); out.scrollIntoView({ block: "nearest" }); return; }
     const stamp = new Date(Date.now() + 6 * 3600 * 1000).toISOString().slice(0, 19) + "+06:00";
@@ -1280,6 +1282,11 @@ function viewUpdate() {
     delete next.replaces; delete next.replaces_hash;
     next.announcement = { published: stamp, summary: val("summary"), changes };
     next.price_history = (prev.price_history || []).concat([{ version: next.version, published: stamp, summary: val("summary"), changes }]);
+    /* The confirmation date moves only when a price or fee changed, or the owner confirms that
+       every price is current. Other edits keep the earlier date. */
+    const reconfirm = document.getElementById("reconfirm");
+    if (changes.length || (reconfirm && reconfirm.checked)) next.prices_confirmed_at = stamp;
+    else { const keep = pricesConfirmedAt(prev); if (keep) next.prices_confirmed_at = keep; else delete next.prices_confirmed_at; }
     await signMenu(next, B.key);
     const text = new TextDecoder().decode(menuBytes(next));
     out.replaceChildren(
