@@ -293,17 +293,24 @@ const BN_WORDS = { "চা": "tea cha", "কফি": "coffee", "বিরিয�
   "পিৎজা": "pizza", "পিজা": "pizza", "কলা": "banana", "পানি": "water", "বিস্কুট": "biscuits", "সিঙ্গারা": "singara", "টমেটো": "tomatoes", "মরিচ": "chillies",
   "আটা": "flour atta", "ময়দা": "flour", "দুধ": "milk", "মাছ": "fish", "গরু": "beef", "খাসি": "mutton", "নুডলস": "noodles", "রুটি": "bread", "কেক": "cake",
   "বন": "bun", "লেবু": "lemon", "আদা": "ginger", "চিকেন": "chicken", "স্যুপ": "soup", "মিষ্টি": "sweet dessert", "জুস": "juice" };
-function fromBangla(q) {
-  if (!/[\u0980-\u09FF]/.test(q)) return q;
-  return String(q).split(/\s+/).map((w) => BN_WORDS[w] || (/[\u0980-\u09FF]/.test(w) ? "\u0000" : w)).join(" ");
+/* Common spelling variants map to the same English words. */
+Object.assign(BN_WORDS, { "বিরানি": "biryani", "বিরিয়ানী": "biryani", "মুরগী": "chicken", "পিঁয়াজ": "onions", "পেয়াজ": "onions", "খিচুরি": "khichuri", "তেহারী": "tehari", "মিস্টি": "sweet dessert", "চাউল": "rice" });
+/* Each query word becomes a list of alternatives; a Bangla word matches if any of its English words does. */
+function queryGroups(q) {
+  return String(q).normalize("NFC").split(/\s+/).filter(Boolean).flatMap((w) => {
+    if (!/[\u0980-\u09FF]/.test(w)) return norm(w).split(" ").filter(Boolean).map((t) => [t]);
+    const bw = w.replace(/[^\u0980-\u09FF]/g, "");
+    return [BN_WORDS[bw] ? BN_WORDS[bw].split(" ") : null];
+  });
 }
+function fromBangla(q) { return queryGroups(q).map((g) => (g ? g.join(" ") : "\u0000")).join(" "); }
 function fuzzyMatches(query, text) {
-  const bq = fromBangla(query);
-  if (bq.includes("\u0000")) return false;
-  const qs = norm(bq).split(" ").filter(Boolean);
+  const groups = queryGroups(query);
+  if (groups.some((g) => !g)) return false;
+  const qs = groups.filter((g) => g.length);
   if (!qs.length) return true;
   const words = norm(text).split(" ").filter(Boolean);
-  return qs.every((q) => words.some((w) => wordMatches(q, w)));
+  return qs.every((g) => g.some((q) => words.some((w) => wordMatches(q, w))));
 }
 
 /* ---------------------------------------------------------------- loading files */

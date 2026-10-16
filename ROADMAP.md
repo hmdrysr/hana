@@ -54,4 +54,5 @@ Planned upgrades for Hana. Nothing here is built yet. Each item lists the condit
 
 - Splitting `list.json` by zone once it nears its size limit.
 - Wider Bangla coverage (sentences and notices), with every page checked at 320 px.
+- A larger Bangla search word list, including romanised spellings such as "biriyani" and "murgi", built from searches that real customers report finding nothing for.
 - Automatic zone matching by drawn area boundaries, once the boundaries exist in `areas.json`.
