@@ -1,6 +1,6 @@
 # Frequently asked questions
 
-Answers for customers, businesses, riders, volunteers and anyone deciding whether to support Hana. For the full design, see `SPEC.md`; for the rules every listing follows, see `TERMS.md`.
+Answers for customers, businesses, riders, volunteers and anyone deciding whether to support Hana. For the full design, see [`SPEC.md`](SPEC.md); for the rules every listing follows, see [`TERMS.md`](TERMS.md).
 
 ## Contents
 
@@ -74,7 +74,7 @@ Businesses are free to offer their own deals, set their own prices and change th
 
 ### Are the prices real?
 
-Yes. Prices come only from the business's own published menu and include VAT and every other charge. The delivery fee is the only addition, it is set by the business for your area, and it can never exceed the cap in `rules.json`. There is no dynamic or surge pricing.
+Yes. Prices come only from the business's own published menu and include VAT and every other charge. The delivery fee is the only addition, it is set by the business for your area, and it can never exceed the cap in [`rules.json`](rules.json). There is no dynamic or surge pricing.
 
 ### Are there reviews or ratings?
 
@@ -106,7 +106,7 @@ Yes. TONG and DUWAN are demo places. You can order from them, watch the order ge
 
 ### Why would a business pay a platform 15 to 30 per cent, or even 1 per cent?
 
-That is the question Hana asks. A business sells food or groceries; it should not have to hand a share of every sale to whoever owns the software. Hana takes no percentage and no flat fee, now or later. That promise is protected in `GOVERNANCE.md`, and any change that adds fees is not accepted.
+That is the question Hana asks. A business sells food or groceries; it should not have to hand a share of every sale to whoever owns the software. Hana takes no percentage and no flat fee, now or later. That promise is protected in [`GOVERNANCE.md`](GOVERNANCE.md), and any change that adds fees is not accepted.
 
 ### Many restaurants are moving to a cheaper platform. Why not just do that?
 
@@ -122,7 +122,7 @@ No. You set your own prices. Hana only requires that the listed price is the ful
 
 ### I already use two or three delivery apps. Do I have to manage another screen?
 
-Hana is designed to reduce screens, not add one. It is an open directory, so any service can read it. Orders sent in Hana arrive in one inbox with a sound. Work on bringing notifications from other apps into the same list is planned once it can be done reliably with open-source tools (see `ROADMAP.md`).
+Hana is designed to reduce screens, not add one. It is an open directory, so any service can read it. Orders sent in Hana arrive in one inbox with a sound. Work on bringing notifications from other apps into the same list is planned once it can be done reliably with open-source tools (see [`ROADMAP.md`](ROADMAP.md)).
 
 ---
 
@@ -157,7 +157,7 @@ Yes, and that is encouraged. A group of riders, or a pool of workers who take on
 
 ### What is the BDT 150 cap?
 
-It is the highest delivery fee any listing may charge for one order, set in `rules.json`. It is a ceiling, not a target. Businesses set their own fee for each area, and many will charge much less.
+It is the highest delivery fee any listing may charge for one order, set in [`rules.json`](rules.json). It is a ceiling, not a target. Businesses set their own fee for each area, and many will charge much less.
 
 ### Is rider safety and identity checked?
 
@@ -177,7 +177,7 @@ Hana is built and maintained by volunteers and the community, like many open-sou
 
 ### Will Hana start charging later?
 
-No. Free listing, no commission and no paid placement are core promises protected by `GOVERNANCE.md`. Because the code and the directory are open, anyone could copy Hana and continue it if that promise were ever broken.
+No. Free listing, no commission and no paid placement are core promises protected by [`GOVERNANCE.md`](GOVERNANCE.md). Because the code and the directory are open, anyone could copy Hana and continue it if that promise were ever broken.
 
 ### What about payments?
 
@@ -189,7 +189,7 @@ Customers pay the business directly, on delivery or at pickup: cash, Bangla QR, 
 
 ### Who runs the servers when thousands of people use it?
 
-There are no servers to run. Hana is a set of static files. Each phone downloads a small copy of the directory and keeps it for offline use. Any number of people can host a copy (a mirror), and each copy is a full backup. If one host goes down, the others keep working. See `MIRRORING.md`.
+There are no servers to run. Hana is a set of static files. Each phone downloads a small copy of the directory and keeps it for offline use. Any number of people can host a copy (a mirror), and each copy is a full backup. If one host goes down, the others keep working. See [`MIRRORING.md`](MIRRORING.md).
 
 ### How big is it?
 
@@ -217,19 +217,19 @@ No one owns the directory. Hamid Yasir & Co. created Hana and credits it to the 
 
 ### Can other cities or countries use it?
 
-Yes. Any region can run its own Hana from the same code, and regional directories can link to one another. See `ADOPTING.md`.
+Yes. Any region can run its own Hana from the same code, and regional directories can link to one another. See [`ADOPTING.md`](ADOPTING.md).
 
 ### How do businesses get listed and verified?
 
-Anyone can enter a listing. A business then claims its own listing with a free account on an open forge, such as GitHub or Codeberg, and two community members vouch for the claim. Claimed listings are marked as confirmed; volunteer entries are clearly marked as not confirmed. See `CLAIMS.md`.
+Anyone can enter a listing. A business then claims its own listing with a free account on an open forge, such as GitHub or Codeberg, and two community members vouch for the claim. Claimed listings are marked as confirmed; volunteer entries are clearly marked as not confirmed. See [`CLAIMS.md`](CLAIMS.md).
 
 ### What stops Hana from becoming the next middleman?
 
-Its design and its rules. Hana holds no customer data, takes no money and owns nothing it could later charge for. Its promises (no commission, no paid placement, no exclusivity, no tracking) are written into `GOVERNANCE.md`, and because everything is open, a broken promise could simply be forked away.
+Its design and its rules. Hana holds no customer data, takes no money and owns nothing it could later charge for. Its promises (no commission, no paid placement, no exclusivity, no tracking) are written into [`GOVERNANCE.md`](GOVERNANCE.md), and because everything is open, a broken promise could simply be forked away.
 
 ### How can I help?
 
-List a business you know, test the app on your phone, report a wrong listing, help riders and businesses agree on fees in your area, translate, or improve the code. Most of these need no account. See `CONTRIBUTING.md`.
+List a business you know, test the app on your phone, report a wrong listing, help riders and businesses agree on fees in your area, translate, or improve the code. Most of these need no account. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ---
 
@@ -245,7 +245,7 @@ Perhaps, but offers funded by commissions are not free; they come out of busines
 
 ### Where is this heading?
 
-More and more people will ask an AI assistant to "order me this" rather than open an app. An assistant needs an open, reliable directory to do that, not ten closed apps. Hana is already readable by AI assistants (see `AGENTS.md`), so the businesses listed there can be found by whatever tool customers use next.
+More and more people will ask an AI assistant to "order me this" rather than open an app. An assistant needs an open, reliable directory to do that, not ten closed apps. Hana is already readable by AI assistants (see [`AGENTS.md`](AGENTS.md)), so the businesses listed there can be found by whatever tool customers use next.
 
 ### What has to happen for Hana to succeed?
 
