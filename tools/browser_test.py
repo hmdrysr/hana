@@ -650,6 +650,14 @@ with sync_playwright() as p:
     dm.evaluate("() => { const o = JSON.parse(localStorage.getItem('hana.orders')); o[0].created = new Date(Date.now() - 80000).toISOString(); localStorage.setItem('hana.orders', JSON.stringify(o)); }")
     dm.wait_for_selector("text=Hope you enjoyed your dopamine hit", timeout=5000)
     ok("a demo order is delivered on its own, labelled as a demo", "(demo)" in dm.inner_text("main") and "Problem with this order?" not in dm.inner_text("main") and "Order again" in dm.inner_text("main"))
+    # Order again with a real price change: the earlier order recorded BDT 5 less than today's menu.
+    was = dm.evaluate("() => { const o = JSON.parse(localStorage.getItem('hana.orders')); o[0].items[0].price -= 5; localStorage.setItem('hana.orders', JSON.stringify(o)); return [o[0].items[0].label, o[0].items[0].price]; }")
+    dm.goto(BASE + "#/orders")
+    dm.wait_for_selector("text=Order again")
+    dm.click("text=Order again")
+    dm.wait_for_selector("#zone")
+    note = "%s is now BDT %s (it was BDT %s)." % (was[0], f"{was[1] + 5:,}", f"{was[1]:,}")
+    ok("order again shows both the old and the new price when a price changed", note in dm.inner_text("main"), [note, dm.inner_text("main")[:300]])
     dm.context.close()
     # Business sign-in: a recovery phrase and a passkey unlock the key from vault.json.
     vctx = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
