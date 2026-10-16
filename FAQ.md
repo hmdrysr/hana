@@ -82,7 +82,7 @@ No. Ratings are easy to fake, easy to buy and easy to weaponize. Instead, Hana s
 
 ### Do I need to download an app or create an account?
 
-No. Hana runs in your phone's browser and can be added to your home screen like an app. It works offline after the first visit. Your name, address and order history stay on your phone.
+No. Hana runs in your phone's browser and can be added to your home screen like an app. It works offline after the first visit. Your name, address and order history stay on your phone. The only person who receives your details is the business you order from, because it needs them to deliver.
 
 ### What if something goes wrong with my order?
 

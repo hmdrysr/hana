@@ -257,7 +257,7 @@ function viewList() {
   const listHead = h("div", { class: "stack" });
   const tabs = h("nav", { class: "kind-tabs", "aria-label": "Type of business" });
   const search = h("input", {
-    type: "search", id: "q", placeholder: "Search Hana", autocomplete: "off", value: state.query,
+    type: "search", id: "q", placeholder: "Search dishes or places", autocomplete: "off", value: state.query,
     "aria-label": "Search food, groceries or places",
     on: {
       input: (e) => { state.query = e.target.value; state.page = 0; state.allDishes = false; render(); },
@@ -282,7 +282,7 @@ function viewList() {
       foodIcon(c.key, "large"), h("span", { class: "max" }, c.label),
       h("span", { class: "small-text muted" }, c.count + (c.count === 1 ? " place" : " places"))))));
 
-  if (state.openOnly === undefined) Object.assign(state, store.get("hana.filters", { openOnly: false, favOnly: false }));
+  if (state.openOnly === undefined) Object.assign(state, { openOnly: false, favOnly: false, pickupOnly: false, sort: "name" }, store.get("hana.filters", {}));
   function render() {
     const cats = availableCategories();
     if (state.cat && !cats.some((c) => c.key === state.cat)) state.cat = "";
@@ -319,6 +319,7 @@ function viewList() {
       if (state.cat && !(r.cats && r.cats.has(state.cat))) continue;
       if (state.favOnly && !favourites().includes(r.id)) continue;
       if (state.openOnly && m && openNow(m.hours) === false) continue;
+      if (state.pickupOnly && m && m.pickup === false) continue;
       const nameHit = fuzzyMatches(state.query.replace(/^@/, ""), r.name + " " + (m ? (m.kind || "") + " " + (m.handle || "") : ""));
       const hits = q ? searchItems(r).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
       if (q && !nameHit && !hits.length) continue;
@@ -340,10 +341,17 @@ function viewList() {
         h("label", { for: "showall", class: "max small-text" }, "Also show places that do not deliver to " + areaName(state.area) + (hidden ? " (" + hidden + " hidden)" : ""))));
     }
     const toggle = (key, text) => h("button", { type: "button", class: "chip small" + (state[key] ? "" : " border"), "aria-pressed": String(!!state[key]),
-      on: { click: () => { state[key] = !state[key]; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly }); state.page = 0; render(); } } }, h("span", null, text));
-    head.push(h("nav", { class: "wrap small-space" }, toggle("openOnly", "Open now"), favourites().length || state.favOnly ? toggle("favOnly", "Favourites") : null));
-    listHead.replaceChildren(...(q && !cards.length ? [] : head));
+      on: { click: () => { state[key] = !state[key]; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } }, h("span", null, text));
+    const sortSel = h("select", { id: "sort", "aria-label": "Sort", on: { change: (e) => { state.sort = e.target.value; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } },
+      [["name", "Sort: name"], ["fee", "Sort: lowest delivery fee"], ["confirmed", "Sort: most recently confirmed"]].map(([v, t]) => h("option", { value: v, selected: (state.sort || "name") === v }, t)));
+    head.push(h("nav", { class: "wrap small-space" }, toggle("openOnly", "Open now"), toggle("pickupOnly", "Pickup"), favourites().length || state.favOnly ? toggle("favOnly", "Favourites") : null),
+      q ? null : h("div", { class: "field suffix border round small" }, sortSel, icon("arrow_drop_down")));
+    listHead.replaceChildren(...(q && !cards.length ? [] : head).filter(Boolean));
 
+    /* Sorting is the customer's choice; nothing is ever ranked by payment or popularity. */
+    const feeOf = ([r, zone]) => { const z = zone || (r.lite && onlyZone(r.lite)); return z && typeof z.fee === "number" ? z.fee : Infinity; };
+    if (!q && state.sort === "fee") cards.sort((a, b) => feeOf(a) - feeOf(b));
+    if (!q && state.sort === "confirmed") cards.sort((a, b) => String((b[0].lite || {}).published || "").localeCompare(String((a[0].lite || {}).published || "")));
     const PER = 12;
     const pages = Math.max(1, Math.ceil(cards.length / PER));
     if (state.page >= pages) state.page = pages - 1;
@@ -374,9 +382,10 @@ function viewList() {
     if (!cards.length && !dishes.length) {
       kids.push(h("p", { class: "muted" }, state.tab === "grocery" && !state.restaurants.some((r) => isGrocery(r.lite))
         ? "No grocery stores are listed yet. A store can be added from About, under For businesses."
-        : "Nothing matches. Try a shorter search, another category or another zone."));
+        : "Nothing matches. Try a different spelling, a shorter search, another category or another zone."),
+        state.openOnly || state.favOnly || state.pickupOnly || state.cat ? h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { state.openOnly = state.favOnly = state.pickupOnly = false; state.cat = ""; store.set("hana.filters", { sort: state.sort }); render(); } } }, icon("close"), h("span", null, "Clear the filters"))) : null);
     }
-    results.replaceChildren(...kids);
+    results.replaceChildren(...kids.filter(Boolean));
   }
 
   show("list", "",
@@ -438,14 +447,22 @@ function fromPrice(it) {
   return known.length ? "from " + money(Math.min(...known)) : NO_PRICE;
 }
 
+/* Who confirmed a listing's prices, in three plain states: business confirmed, community
+   listed, or confirmation overdue (not reconfirmed for 90 days; not necessarily wrong). */
+function confirmChip(m) {
+  if (m.demo === true) return chip("Demo, just for fun: not a real place", "warn");
+  if (m.claimed === false) return chip("Community listed: confirm prices with the business", "warn");
+  const t = m.published ? new Date(m.published).getTime() : NaN;
+  if (!isNaN(t) && Date.now() - t > 90 * 86400000) return chip("Prices not reconfirmed since " + longDate(m.published), "warn");
+  return chip("Business confirmed" + (m.published ? " · prices " + longDate(m.published) : ""), "ok");
+}
 function restaurantCard(r, zone, delivers, dishHits) {
   const m = r.lite;
   if (!m) {
     return h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, r.name), h("p", { class: "muted" }, r.problem || "This menu is not available."));
   }
   const chips = [statusChip(m)];
-  if (m.demo === true) chips.push(chip("Demo, just for fun: not a real place", "warn"));
-  else if (m.claimed === false) chips.push(chip("Not confirmed by the business", "warn"));
+  chips.push(confirmChip(m));
   if (!delivers) chips.push(chip("Does not deliver to " + areaName(state.area), "warn"));
   const body = [
     h("h2", { class: "card-title" }, h("a", { href: "#/r/" + r.id }, r.name)),
@@ -850,7 +867,8 @@ async function buildOrder(r, f) {
     pickup ? "Pickup: I'll collect the order myself." : "Delivery address: " + f.address + ", " + zoneName,
     !pickup && f.pin ? "Map pin: " + pinLink(f.pin) : null,
     f.scheduled ? (pickup ? "Pickup time: " : "Delivery time: ") + longDate(f.scheduled.slice(0, 10)) + ", " + clock(f.scheduled.slice(11, 16)) : null,
-    f.note ? "Note: " + f.note : null, "",
+    f.note ? "Note: " + f.note : null,
+    f.swap ? "If an item is not available: " + f.swap : null, "",
     pickup ? "I'll pay at pickup. No advance payment, please." : "I'll pay by cash on delivery. No advance payment, please.", "",
     formal ? "To confirm, please reply: CONFIRMED " + code : null,
     "Thank you!",
@@ -884,7 +902,7 @@ function paymentText(m) {
 
 function viewBasket() {
   if (!state.basket || !basketCount()) {
-    return show("basket", "Basket", pageTitle("Basket"), h("p", { class: "muted" }, "Your basket is empty."),
+    return show("basket", "Basket", pageTitle("Basket"), h("p", { class: "muted" }, "Your basket is empty. Search for a dish or open a place to get started."),
       h("nav", null, h("a", { href: "#/", class: "button" }, icon("storefront"), h("span", null, "Browse the directory"))));
   }
   const r = restaurantById(state.basket.rid);
@@ -980,6 +998,9 @@ function viewBasket() {
   const name = h("input", { type: "text", id: "name", value: saved.name, autocomplete: "off", maxlength: 60, placeholder: " " });
   const phone = h("input", { type: "tel", id: "phone", value: saved.phone || "", autocomplete: "off", maxlength: 14, inputmode: "tel", placeholder: " " });
   const address = h("textarea", { id: "address", rows: 3, maxlength: 300, placeholder: " " }, saved.address);
+  /* What the business should do if something is out of stock (useful for groceries). */
+  const SWAPS = { "": "Not stated", call: "Call me first", similar: "Replace it with something similar", skip: "Leave it out" };
+  const swap = h("select", { id: "swap" }, Object.entries(SWAPS).map(([v, t]) => h("option", { value: v }, t)));
   const note = h("input", { type: "text", id: "note", maxlength: 200, autocomplete: "off", placeholder: " ", value: (state.basket && state.basket.note) || "" });
   const remember = h("input", { type: "checkbox", id: "remember", checked: !!saved.name });
   const label = h("input", { type: "text", id: "addr-label", maxlength: 20, autocomplete: "off", placeholder: " " });
@@ -1062,7 +1083,7 @@ function viewBasket() {
     if (errors.length) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, errors.join(" ")))); return; }
     store.set("hana.me", remember.checked ? { name: name.value.trim(), address: address.value.trim(), phone: phone.value.trim() } : { name: "", address: "", phone: "" });
     const scheduled = when.value || null;
-    const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), phone: /^\+8801\d{9}$/.test(ph) ? ph : "", address: address.value.trim(), pin: b.mode === "delivery" ? pin : null, note: note.value.trim(), scheduled });
+    const o = await buildOrder(r, { mode: b.mode, zone: b.zone, ward: b.ward, deliveryZone: z, name: name.value.trim(), phone: /^\+8801\d{9}$/.test(ph) ? ph : "", address: address.value.trim(), pin: b.mode === "delivery" ? pin : null, note: note.value.trim(), swap: swap.value ? SWAPS[swap.value].toLowerCase().replace(/^call/, "please call").replace(/^replace/, "please replace").replace(/^leave/, "please leave") + "." : "", scheduled });
     if (b.mode === "delivery" && label.value.trim()) saveAddress({ label: label.value.trim(), address: address.value.trim(), zone: b.zone, ward: b.ward || "", pin });
     const c = channels[Number((form.querySelector("input[name=channel]:checked") || { value: 0 }).value)];
     const ch = CHANNELS[c.app];
@@ -1118,6 +1139,7 @@ function viewBasket() {
     textField("name", "First name or nickname", name),
     textField("phone", "Mobile number (needed for orders sent in Hana)", phone),
     textField("note", "Note for the business (optional)", note),
+    selectField("swap", "If an item is not available", swap),
     h("p", { class: "small-text bold" }, "Send the order by"),
     h("nav", { class: "vertical left-align" }, channelRadios),
     notice("info", h("p", { class: "bold flush" }, "Pay on delivery"),
@@ -1907,7 +1929,8 @@ function downloadText(name, text, type) {
 function route() {
   trackPage();
   if (!state.loaded) {
-    return show("list", "", pageTitle("Hana"), state.loadError ? notice("warn", h("p", { class: "flush" }, state.loadError)) : h("p", { class: "muted" }, "Loading the directory…"));
+    return show("list", "", pageTitle("Hana"), state.loadError ? notice("warn", h("p", { class: "flush" }, state.loadError + " Check your connection, then try again."),
+      h("nav", null, h("button", { type: "button", on: { click: () => location.reload() } }, h("span", null, "Try again")))) : h("p", { class: "muted" }, "Loading the directory…"));
   }
   const hash = location.hash || "#/";
   if (hash.startsWith("#/order?")) return openOrderLink(hash.slice(8));

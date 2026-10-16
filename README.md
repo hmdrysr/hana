@@ -79,7 +79,7 @@ This explains why the project exists. It is not an audit: Hana has not measured 
 3. **No exclusivity.** A restaurant can list anywhere else, and can leave at any time.
 4. **The restaurant sets its own prices, fees, delivery zones and hours.** Nobody else can change them.
 5. **The customer chooses.** The customer picks which restaurant, how to order, and how much contact detail to share.
-6. **No accounts, no tracking and no collection of customer data.** Customer details stay on the customer's phone.
+6. **No accounts, no tracking and no collection of customer data.** Customer details stay on the customer's phone and go only to the business the customer orders from.
 7. **Open and portable.** Open-source code, open file formats, signed menus that any host can serve, and one-tap download of your own data.
 8. **Problems go to the proper public bodies.** The app points customers to the consumer rights authority, the police and others. See [`SPEC.md`](SPEC.md) section 9.
 9. **Every price change is public.** Changes to prices, delivery fees and minimum orders are announced inside the menu file and kept in its history. See [`SPEC.md`](SPEC.md) section 5.4.

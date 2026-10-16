@@ -839,7 +839,7 @@ article.rcard > a {
 /* ---------- Category strip and search ---------- */
 nav.cat-strip {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
   gap: 0.5rem;
   align-items: start;
   margin-block: 0.5rem;
@@ -1441,4 +1441,9 @@ section.order-hero > p.order-head {
 main article > details,
 main article > nav + nav {
   margin-block-start: 0.5rem;
+}
+button.cat-tile {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: manual;
 }

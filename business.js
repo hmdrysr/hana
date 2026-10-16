@@ -376,13 +376,36 @@ function setupSteps() {
     { done: !!store.get("hana.biz.poster", false), title: "Print your poster", text: "A QR code for your counter and bags.", href: "#/poster" },
   ];
 }
+/* Listing health: what in the published listing needs attention, each with where to fix it. */
+function listingHealth(m) {
+  if (!m) return [];
+  const days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], names = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday" };
+  const items = m.items || [];
+  const unpriced = items.filter((it) => it.price === null || (it.options || []).some((o) => o.price === null)).length;
+  const missing = days.filter((d) => !(m.hours && Array.isArray(m.hours[d])));
+  const zones = (m.delivery && m.delivery.zones) || [];
+  const noFee = zones.filter((z) => typeof z.fee !== "number").length;
+  const pub = m.announcement && m.announcement.published ? new Date(m.announcement.published) : null;
+  const old = pub && Date.now() - pub.getTime() > 90 * 86400000;
+  return [
+    { ok: items.length > 0, text: "Menu: " + items.length + (items.length === 1 ? " item" : " items"), href: "#/update" },
+    { ok: !unpriced, text: unpriced ? unpriced + " items have no price" : "Every item has a price", href: "#/update" },
+    { ok: !missing.length, text: missing.length ? "Opening hours missing for " + missing.map((d) => names[d]).join(", ") : "Opening hours set for every day", href: "#/update" },
+    { ok: zones.length > 0 && !noFee, text: !zones.length ? "No delivery areas yet" : noFee ? noFee + " delivery areas have no fee" : "Delivery areas and fees set", href: "#/update" },
+    { ok: !!pub && !old, text: !pub ? "Prices not published yet" : old ? "Prices due for confirmation (last published " + longDate(m.announcement.published) + ")" : "Prices confirmed " + longDate(m.announcement.published), href: "#/update" },
+    { ok: m.claimed === true, text: m.claimed === true ? "Listing claimed by you" : "Listing not claimed yet", href: "#/claim" },
+  ];
+}
 function viewSetup() {
   const steps = setupSteps(), n = steps.filter((x) => x.done).length;
+  const health = listingHealth(store.get("hana.biz.menu", null));
   show("home", "Get started", pageHeader("Get started", "#/"),
     h("p", null, n + " of " + steps.length + " steps done. Your progress is kept on this phone, so you can stop and continue later."),
     h("progress", { value: n, max: steps.length }),
     h("ul", { class: "list border more-list" }, steps.map((x, i) => h("li", null, h("a", { href: x.href, class: "row max" }, icon(x.done ? "check_circle" : "schedule"),
-      h("div", { class: "max" }, h("div", { class: "bold" }, (i + 1) + ". " + x.title + (x.done ? " (done)" : "")), h("div", { class: "small-text muted" }, x.text)))))));
+      h("div", { class: "max" }, h("div", { class: "bold" }, (i + 1) + ". " + x.title + (x.done ? " (done)" : "")), h("div", { class: "small-text muted" }, x.text)))))),
+    health.length ? sectionTitle("Your listing") : h("p", { class: "small-text muted" }, "Enter your business phone under Orders or Menu to see what your listing needs."),
+    health.length ? h("ul", { class: "list border more-list" }, health.map((x) => h("li", null, h("a", { href: x.href, class: "row max" }, icon(x.ok ? "check_circle" : "warning"), h("div", { class: "max" }, x.text))))) : null);
 }
 
 let qrLoaded = null;
@@ -461,7 +484,17 @@ function viewHome() {
       "Confirm or decline each order within " + (B.rules.confirmation_window_minutes || 15) + " minutes, in the customer's chat. Unconfirmed orders are cancelled automatically.",
       "Keep all order communications for at least " + (B.rules.record_retention_months || 6) + " months, or " + (B.rules.record_retention_months_when_disputed || 12) + " months if there is a dispute. Do not delete or unsend them.",
       "Two community members check each claim, and claims are reviewed every " + (B.rules.community_review_days || 180) + " days.",
-    ].map((x) => h("li", null, icon("check_circle"), h("div", { class: "max" }, x)))));
+    ].map((x) => h("li", null, icon("check_circle"), h("div", { class: "max" }, x)))),
+    h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, "How Hana works for your business"),
+      h("ul", { class: "list" }, [
+        "Free to list, with no commission and no paid placement, ever.",
+        "Customers find you in a searchable local directory and see your real prices.",
+        "Orders reach you by WhatsApp, text message or straight into these tools, with a sound.",
+        "You deliver with your own riders or a courier you choose, or customers pick up.",
+        "Update prices and mark items sold out from your phone. No computer needed.",
+        "A volunteer can list you first; you claim the listing when you are ready.",
+      ].map((x) => h("li", null, icon("check_circle"), h("div", { class: "max" }, x)))),
+      B.site.repo_url && !/\{\{/.test(B.site.repo_url) ? h("p", { class: "small-text" }, h("a", { href: B.site.repo_url + "/blob/main/FAQ.md#businesses", class: "link", target: "_blank", rel: "noopener" }, "Questions from business owners, answered")) : null));
 }
 
 /* ---------------------------------------------------------------- list or claim */
