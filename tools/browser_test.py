@@ -598,6 +598,10 @@ with sync_playwright() as p:
         out.old = await take("a6", old.envelope);
         const legacy = await sealOrder(direct, { message: msg("GEN234"), code: "GEN234", cpub: null });
         out.legacy = await take("a7", legacy.envelope);
+        out.legacyBad = [await take("a7b", (await sealOrder(direct, { message: msg("GEN235"), code: "GEN235", reply: "https://evil.example/x" })).envelope),
+          await take("a7c", (await sealOrder(direct, { message: msg("x"), code: 12345 })).envelope),
+          await take("a7d", (await sealOrder(direct, { message: "Order GEN236 please", code: "GEN236" })).envelope),
+          await take("a7e", (await sealOrder(direct, { message: msg("GEN237"), code: "GEN237", cpub: { x: 1 } })).envelope)];
         const evilReply = await sealOrder(direct, { message: msg("EVA234"), code: "EVA234", cpub: null, reply: "https://evil.example/collect", sealed_at: new Date().toISOString() });
         out.evilReply = await take("a8", evilReply.envelope);
         const noCheck = await sealOrder(direct, { message: "Order NCK234 please", code: "NCK234", sealed_at: new Date().toISOString() });
@@ -623,6 +627,7 @@ with sync_playwright() as p:
     ok("two genuinely different orders stay separate", intake["second"], intake)
     ok("a replay is still caught after the order has left the inbox", not intake["afterInboxCleared"], intake)
     ok("an order sealed more than a day before it arrived is rejected; orders from older apps without a time are kept", not intake["old"] and intake["legacy"], intake)
+    ok("an older app's order without a sealing time still passes every other check", intake["legacyBad"] == [False, False, False, False], intake["legacyBad"])
     ok("a made-up order that names a reply address elsewhere is rejected", not intake["evilReply"], intake)
     ok("malformed, oversized and nested payloads are dropped without breaking the inbox", not intake["noCheck"] and not intake["badCode"] and not intake["huge"] and not intake["garbage"], intake)
     ok("a flood of made-up orders leaves the inbox bounded", intake["flood"][0] <= 200, intake["flood"])
@@ -658,6 +663,23 @@ with sync_playwright() as p:
         out.seenAfterFail = hasSeen("AAA333." + fresh.orderTopic.slice(-24));
         out.seenCheckWorks = (await take("h4b", (await seal("AAA444", { sealed_at: new Date().toISOString() })).envelope)) && hasSeen("AAA444." + inboxOrders()[0].reply.slice(-24));
         out.afterSpace = await take("h5", fresh.envelope);
+        const realSet2 = store.set; store.set = (k, v) => k === "hana.biz.seen" ? false : realSet2.call(store, k, v);
+        const s5 = await seal("AAA555", { sealed_at: new Date().toISOString() });
+        out.keptWhenSeenFails = await take("h6", s5.envelope);
+        store.set = realSet2;
+        out.repeatAfterSeenFails = await take("h7", s5.envelope);
+        out.copiesOf555 = inboxOrders().filter((o) => o.code === "AAA555").length;
+        const full = Array.from({ length: 200 }, (_, i) => ({ id: "acc" + i, time: now, code: "C" + String(i).padStart(5, "0"), text: "", reply: "https://ntfy.sh/hana-o-" + String(i).padStart(24, "0"), status: "accepted", step: "accepted" }));
+        const keepList = inboxOrders(); localStorage.setItem("hana.biz.inbox", JSON.stringify(full));
+        const s6 = await seal("AAA666", { sealed_at: new Date().toISOString() });
+        const realSet3 = store.set; store.set = (k, v) => k === "hana.biz.inbox" ? false : realSet3.call(store, k, v);
+        out.fullAndFailing = await take("h8", s6.envelope);
+        store.set = realSet3;
+        out.fullThenWorks = await take("h9", s6.envelope);
+        out.fullKeepsNew = inboxOrders().some((o) => o.code === "AAA666") && inboxOrders().filter((o) => o.status === "accepted").length === 200;
+        const tops = followTopics("https://ntfy.sh/hana-new0123456789", inboxOrders().concat(Array.from({ length: 10 }, (_, i) => ({ reply: "https://ntfy.sh/hana-o-new" + i, status: "new" }))));
+        out.topics = [tops.length, tops[0], tops.slice(1).every((t) => t.includes("hana-o-0")), tops.includes("https://ntfy.sh/hana-intake0123456789")];
+        localStorage.setItem("hana.biz.inbox", JSON.stringify(keepList));
         const l = inboxOrders(); l.find((o) => o.code === "AAA333").status = "accepted"; saveInbox(l);
         const env = [];
         for (let i = 0; i < 2000; i++) env.push((await seal("B" + String(i).padStart(5, "0"), { sealed_at: new Date().toISOString() })).envelope);
@@ -668,10 +690,17 @@ with sync_playwright() as p:
         out.genuineKept = inboxOrders().some((o) => o.code === "AAA333" && o.status === "accepted");
         out.bytes = (localStorage.getItem("hana.biz.inbox") || "").length + (localStorage.getItem("hana.biz.seen") || "").length;
         out.replayAfterFlood = await take("x-again", env[0]);
+        const real = await seal("AAA777", { sealed_at: new Date().toISOString() });
+        out.genuineAfterFlood = (await take("x-real", real.envelope)) && inboxOrders()[0].code === "AAA777";
+        out.dropped = droppedNew;
         return out; }""")
     ok("after the duplicate record is lost, an old new-format order is still refused; an older app's order comes back (the documented limit)", hard["legacyFirst"] and not hard["oldAfterClear"] and hard["legacyAfterClear"], hard)
     ok("an order that could not be stored is not marked as seen, and is taken in once storage works", not hard["storageFull"] and not hard["seenAfterFail"] and hard["seenCheckWorks"] and hard["afterSpace"], hard)
     ok("2,000 distinct made-up orders: the inbox stays at 200 and an order being prepared is kept", hard["inbox"] <= 200 and hard["genuineKept"] and not hard["replayAfterFlood"], hard)
+    ok("when the duplicate record cannot be stored, the order is still kept, and a copy is still caught", hard["keptWhenSeenFails"] and not hard["repeatAfterSeenFails"] and hard["copiesOf555"] == 1, hard)
+    ok("with the inbox full of orders being prepared and storage failing, the new order is not lost: it is taken in once storage works", not hard["fullAndFailing"] and hard["fullThenWorks"] and hard["fullKeepsNew"], hard)
+    ok("with more than 29 open orders, the new address and the 29 orders being prepared are followed; the old address is not", hard["topics"] == [30, "https://ntfy.sh/hana-new0123456789", True, False], hard["topics"])
+    ok("after a flood, a genuine new order is still taken in at the top, and removed unanswered orders are counted", hard["genuineAfterFlood"] and hard["dropped"] > 0, hard)
     print("      measured: 2,000 orders taken in in %d ms; inbox and duplicate record use %d KB" % (hard["ms"], hard["bytes"] // 1024))
     dp.evaluate("""() => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-down0123456789" })); localStorage.setItem("hana.biz.phone", "+8801729298282"); localStorage.removeItem("hana.biz.inbox"); }""")
     dp.goto(BIZ + "#/confirm")
@@ -831,6 +860,8 @@ with sync_playwright() as p:
     def e2e_ntfy(route):
         req = route.request
         path = req.url.split("https://ntfy.sh/", 1)[1]
+        if req.method == "POST" and path.startswith("hana-o-") and relay.get("cancel") == "lose":
+            return route.abort()
         if req.method == "POST" and path.strip("/") == "hana-e2e0123456789":
             if relay["mode"] == "refuse":
                 return route.fulfill(status=500, body="")
@@ -846,7 +877,30 @@ with sync_playwright() as p:
     ep.on("pageerror", lambda e: errors.append(str(e)))
     ep.goto(BASE + "#/")
     ep.wait_for_selector("#q")
-    ep.evaluate("async ([jwk, topic]) => { await ntfyPost(presenceTopic(topic), await signPresence(jwk, topic, 'online', {})); }", [sk_jwk, E2E])
+    def menu_text():
+        ep.goto(BASE + "#/")
+        ep.wait_for_selector("#q")
+        ep.goto(BASE + "#/r/" + lite["id"])
+        ep.wait_for_selector(".page-title")
+        ep.wait_for_timeout(500)
+        return ep.inner_text("main")
+    post = lambda js: ep.evaluate("async ([jwk, topic, when]) => { await ntfyPost(presenceTopic(topic), " + js + "); }", [sk_jwk, E2E, 0])
+    t_none = menu_text()
+    post("'online'")
+    t_unknown = menu_text()
+    post("await signPresence(jwk, topic, 'offline', null, new Date(Date.now() - 60000))")
+    old_off = box[[k for k in box if k.endswith("-online") and "e2e" in k][0]][-1]["message"]
+    t_off = menu_text()
+    post("await signPresence(jwk, topic, 'online', {})")
+    t_on = menu_text()
+    post(json.dumps(old_off))
+    t_replay = menu_text()
+    ok("customers see: no signal as not confirmed, an unsigned one as could not check, a signed offline as not taking orders",
+       "Not confirmed as taking orders" in t_none and "Not taking orders right now" not in t_none
+       and "Could not check whether it is taking orders" in t_unknown and "Not taking orders right now" not in t_unknown
+       and "Not taking orders right now" in t_off, [t_none[:300], t_unknown[:300], t_off[:300]])
+    ok("a later signed online clears the notices, and replaying the old signed offline does not bring it back",
+       not any(x in t_on + t_replay for x in ("Not taking orders right now", "Not confirmed as taking", "Could not check")), [t_on[:300], t_replay[:300]])
     def checkout(adds):
         ep.evaluate("() => { const o = JSON.parse(localStorage.getItem('hana.orders') || '[]'); o.forEach((x) => { x.status = 'cancelled'; }); localStorage.setItem('hana.orders', JSON.stringify(o)); }")
         ep.goto(BASE + "#/r/" + lite["id"])
@@ -867,58 +921,87 @@ with sync_playwright() as p:
         ep.wait_for_timeout(2100)
         ep.click("button[type=submit]")
     posts = lambda: [m["message"] for m in box.get("hana-e2e0123456789", [])]
+    replies = lambda: [m for t, v in box.items() if t.startswith("hana-o-") for m in v]
+    saved = lambda: ep.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').map((o) => [o.code, o.status, !!o.uncertain])")
+    def open_orders():
+        ep.goto(BASE + "#/orders")
+        ep.wait_for_selector("h2.card-title")
+        ep.wait_for_timeout(300)
+    # 1. The connection drops: the order is kept as "sending not confirmed", visible, and resendable.
     checkout(1)
-    chans = ep.eval_on_selector_all("input[name=channel] + span", "e => e.map(x => x.textContent)")
     relay["mode"] = "lose"
-    send()
-    ep.wait_for_selector("text=may or may not have reached the business", timeout=5000)
-    unsure = ep.inner_text("main")
-    code = re.search(r"Order ([0-9A-HJKMNP-TV-Z]{6}) may or may not", unsure).group(1)
-    ok("when the connection drops during sending, the customer is told the outcome is uncertain, not that it failed", "resends the same order " + code in unsure and len(posts()) == 1 and not ep.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').length"), [chans, unsure[:300]])
-    ep.reload()
-    ep.wait_for_selector("#zone")
-    fill_details()
-    relay["mode"] = "ok"
     send()
     ep.wait_for_url("**#/orders", timeout=5000)
+    ep.wait_for_selector("text=Sending not confirmed", timeout=5000)
+    first = saved()
+    code = first[0][0]
+    ok("when the connection drops, the order is kept and labelled sending not confirmed, never as sent or failed", first == [[code, "awaiting", True]] and len(posts()) == 1 and "Order " + code + " sent" not in ep.inner_text("main") and "Not yet confirmed as sent" in ep.inner_text("main"), [first, ep.inner_text("main")[:300]])
+    ep.reload()
+    ep.wait_for_selector("button[data-role=resend]")
+    ep.click("button[data-role=resend]")
+    ep.wait_for_timeout(800)
+    ok("after a refresh, Send again with the connection still down keeps it not confirmed", saved()[0][2] and len(posts()) == 2 and "still not confirmed" in ep.inner_text("#snackbar"), [saved(), ep.inner_text("#snackbar")])
+    relay["mode"] = "ok"
+    ep.click("button[data-role=resend]")
+    ep.wait_for_timeout(800)
     p1 = posts()
-    saved = ep.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').map((o) => o.code)")
-    ok("after a refresh, Send again resends the identical sealed order with the same code", len(p1) == 2 and p1[0] == p1[1] and saved == [code], [len(p1), saved, code])
+    ok("Send again resends the identical sealed order, and then the order shows as sent", len(p1) == 3 and p1[0] == p1[1] == p1[2] and saved() == [[code, "awaiting", False]] and ep.locator("button[data-role=resend]").count() == 0, [len(p1), saved()])
+    # 2. A second uncertain order blocks a changed basket until it is resolved; a failed
+    #    cancellation keeps it open.
     checkout(1)
     relay["mode"] = "lose"
     send()
-    ep.wait_for_selector("text=may or may not have reached the business", timeout=5000)
-    code2 = re.search(r"Order ([0-9A-HJKMNP-TV-Z]{6}) may or may not", ep.inner_text("main")).group(1)
-    replies_before = sum(1 for v in box.values() for m in v if m["message"].startswith("HANA1R "))
+    ep.wait_for_url("**#/orders", timeout=5000)
+    code2 = saved()[0][0]
+    relay["mode"] = "ok"
     ep.goto(BASE + "#/r/" + lite["id"])
     ep.wait_for_selector(".page-title")
     ep.wait_for_timeout(300)
     ep.click("button[aria-label^='Add Bun']")
+    ep.click("button[aria-label^='Add Bun']")
     ep.goto(BASE + "#/basket")
     ep.wait_for_selector("#zone")
     fill_details()
-    relay["mode"] = "ok"
+    n_before = len(posts())
+    send()
+    ep.wait_for_timeout(800)
+    ok("a changed basket cannot be sent while the earlier order's sending is unconfirmed", "already have an order waiting" in ep.inner_text("main") and len(posts()) == n_before, ep.inner_text("main")[-300:])
+    relay["cancel"] = "lose"
+    open_orders()
+    ep.locator("article:has-text('" + code2 + "') button:has-text('Cancel')").first.click()
+    ep.click("#dialog-ok")
+    ep.wait_for_timeout(800)
+    ok("when its cancellation cannot be sent, the earlier order stays open and the customer is told", ["awaiting"] == [x[1] for x in saved() if x[0] == code2] and "Could not send the cancellation" in ep.inner_text("#snackbar"), [saved(), ep.inner_text("#snackbar")])
+    relay["cancel"] = "ok"
+    ep.locator("article:has-text('" + code2 + "') button:has-text('Cancel')").first.click()
+    ep.click("#dialog-ok")
+    ep.wait_for_timeout(800)
+    ok("a cancellation that was sent is not described as read by the business", ["cancelled"] == [x[1] for x in saved() if x[0] == code2] and "cannot confirm the business has read it" in ep.inner_text("#snackbar"), [saved(), ep.inner_text("#snackbar")])
+    ep.goto(BASE + "#/basket")
+    ep.wait_for_selector("#zone")
+    fill_details()
     send()
     ep.wait_for_url("**#/orders", timeout=5000)
-    p2 = posts()
-    saved2 = ep.evaluate("JSON.parse(localStorage.getItem('hana.orders') || '[]').map((o) => o.code)")
-    ok("a changed basket is a new order: the stale pending order is not sent again", len(p2) == 4 and p2[3] != p2[2] and saved2[0] != code2 and code2 not in saved2, [len(p2), saved2, code2])
-    stale_cancel = sum(1 for v in box.values() for m in v if m["message"].startswith("HANA1R ")) - replies_before
-    ok("the earlier order whose outcome was uncertain is cancelled on its own channel before the new one is sent", stale_cancel == 1, stale_cancel)
+    code3 = saved()[0][0]
+    ok("once the earlier order is cancelled, the changed basket is sent as a new order", code3 not in (code, code2) and saved()[0][1] == "awaiting" and not saved()[0][2], saved())
+    # 3. The relay refuses: nothing was sent, no order record, and Send tries again.
     checkout(1)
     relay["mode"] = "refuse"
     send()
     ep.wait_for_selector("text=was not sent", timeout=5000)
-    ok("when the order service refuses an order, the customer is told it was not sent", "refused it (500)" in ep.inner_text("main") and len(posts()) == 4, ep.inner_text("main")[:300])
+    ok("when the order service refuses an order, the customer is told it was not sent and no record is kept", "refused it (500)" in ep.inner_text("main") and "Nothing reached the business" in ep.inner_text("main") and len(saved()) == 3, ep.inner_text("main")[:300])
+    # 4. The business: copies at the same moment, the earlier uncertain order arriving late, and its cancellation.
     ep.goto(BIZ + "#/")
     ep.wait_for_selector(".page-title")
+    msgs = box.get("hana-e2e0123456789", [])
     took = ep.evaluate("""async ([priv, topic, msgs, extra]) => {
-        localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: topic })); localStorage.removeItem("hana.biz.inbox"); localStorage.removeItem("hana.biz.seen");
+        localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: topic })); localStorage.removeItem("hana.biz.inbox"); localStorage.removeItem("hana.biz.seen"); seenCache = null;
         B.key = { enc: { priv } };
         const r = await Promise.all(msgs.map((m) => takeMessage(m)));
         for (const m of extra) await takeMessage(m);
-        return [r, inboxOrders().map((o) => o.code), inboxOrders().filter((o) => o.status === "cancelled").map((o) => o.code)]; }""", [enc_priv, E2E, box.get("hana-e2e0123456789", []), [dict(m, topic=t) for t, v in box.items() for m in v if m["message"].startswith("HANA1R ")]])
-    ok("the business sees each real order once, even when retries and duplicates arrive at the same moment", took[0] == [True, False, True, True] and len(took[1]) == 3 and code in took[1] and took[2] == [code2], took)
+        return [r.filter(Boolean).length, inboxOrders().map((o) => o.code).sort(), inboxOrders().filter((o) => o.status === "cancelled").map((o) => o.code)]; }""",
+        [enc_priv, E2E, msgs, [dict(m, topic=m["topic"]) for m in replies()]])
+    ok("the business takes in each order once (copies arriving together included) and sees the late order's cancellation", took[0] == 3 and took[1] == sorted([code, code2, code3]) and code2 in took[2], [took, len(msgs)])
     ectx.close()
     # Business sign-in: a recovery phrase and a passkey unlock the key from vault.json.
     vctx = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")

@@ -1038,13 +1038,20 @@ function bizChat(o, redraw) {
 
 /* Orders that reached this device, kept for 24 hours: { id, time, code, text, reply, keyRaw, status }. */
 function inboxOrders() { const cut = Date.now() / 1000 - 86400; return store.get("hana.biz.inbox", []).filter((o) => o.time > cut); }
-/* At most 200 orders. Orders the business has already answered are kept before new ones, so a
-   flood of made-up orders cannot push out orders being prepared. Returns false if storage failed. */
-const INBOX_MAX = 200;
+/* At most 200 orders (220 when answered orders fill it). Orders the business has already
+   answered are kept before new ones, so a flood of made-up orders cannot push out orders being
+   prepared. Returns false if storage failed. */
+const INBOX_MAX = 200, NEW_MIN = 20;
+let droppedNew = 0;
 function saveInbox(list) {
   const acted = list.filter((o) => o.status !== "new"), fresh = list.filter((o) => o.status === "new");
-  const keep = new Set(acted.slice(0, INBOX_MAX).concat(fresh.slice(0, Math.max(0, INBOX_MAX - acted.length))));
-  return store.set("hana.biz.inbox", list.filter((o) => keep.has(o)));
+  /* Room for at least 20 new orders is always kept, so a newly arrived order is never dropped
+     the moment it is stored, even when answered orders fill the inbox. */
+  const keep = new Set(acted.slice(0, INBOX_MAX).concat(fresh.slice(0, Math.max(NEW_MIN, INBOX_MAX - acted.length))));
+  const ok = store.set("hana.biz.inbox", list.filter((o) => keep.has(o)));
+  /* Unanswered orders dropped at the limit are counted and shown, never dropped silently. */
+  if (ok) droppedNew += fresh.filter((o) => !keep.has(o)).length;
+  return ok;
 }
 
 /* A short two-tone alert, made by the browser (no sound file). */
@@ -1110,7 +1117,13 @@ let takeQueue = Promise.resolve();
 function takeMessage(m) { const run = takeQueue.then(() => takeOne(m)); takeQueue = run.catch(() => false); return run; }
 /* New orders taken in recently, for the overload notice. */
 const recentNew = [];
-const POLL_MAX = 300, FLOOD_AT = 30;
+const POLL_MAX = 300, FLOOD_AT = 30, FOLLOW_MAX = 29;
+/* The order address and up to 29 open orders: orders being prepared first (newest first), then
+   the newest new ones. Finished, declined and cancelled orders are left out. */
+function followTopics(address, list) {
+  const open = list.filter((o) => o.reply && o.status !== "cancelled" && o.status !== "answered" && o.status !== "done" && !["delivered", "picked"].includes(o.step));
+  return [address].concat(open.filter((o) => o.status !== "new").concat(open.filter((o) => o.status === "new")).map((o) => o.reply).slice(0, FOLLOW_MAX));
+}
 async function takeOne(m) {
   const list = inboxOrders();
   let newKey = null;
@@ -1150,8 +1163,14 @@ async function takeOne(m) {
     o.status = "cancelled";
   }
   /* An order counts as seen only once it is safely stored, so a storage failure cannot lose it. */
-  if (!saveInbox(list)) { snackbar("This device's storage is full, so a new order could not be kept. Free some space, then reopen Orders."); return false; }
-  if (newKey) { markSeen(newKey); recentNew.push(Date.now()); }
+  if (!saveInbox(list)) { snackbar("This device's storage is full, so a new order could not be kept. It stays on the order service for about 12 hours: free some space, then reopen Orders."); return false; }
+  if (newKey && !inboxOrders().some((o) => o.id === m.id)) return false;
+  if (newKey) {
+    recentNew.push(Date.now());
+    /* The order is stored. If its duplicate record cannot be stored, a copy is still caught
+       while the order is in the inbox (24 hours) and, for current apps, by its age after that. */
+    if (!markSeen(newKey)) snackbar("Order " + list[0].code + " is in your inbox, but this device's storage is full, so repeats of it may not be caught after a day. Free some space.");
+  }
   return true;
 }
 
@@ -1178,8 +1197,8 @@ function viewConfirm() {
       h("nav", null, h("button", { type: "button", class: "border", on: { click: () => listen() } }, h("span", null, "Retry")))) : null;
     /* Many new orders at once may be made up. The tools cannot tell, so they say so plainly. */
     const lately = recentNew.filter((t) => t > Date.now() - 10 * 60000).length;
-    const flood = lately > FLOOD_AT || skipped ? notice("warn", h("p", { class: "bold flush" }, "Unusually many new orders"),
-      h("p", { class: "flush" }, (lately > FLOOD_AT ? lately + " new orders in the last 10 minutes. " : "") + (skipped ? skipped + " older messages were skipped to keep these tools quick. " : "") + "Some may be made up. Check each one by phone before preparing it. If it continues, pause new orders and make a new order address under Connections."),
+    const flood = lately > FLOOD_AT || skipped || droppedNew ? notice("warn", h("p", { class: "bold flush" }, "Unusually many new orders"),
+      h("p", { class: "flush" }, (lately > FLOOD_AT ? lately + " new orders in the last 10 minutes. " : "") + (skipped ? skipped + " older messages were not read, to keep these tools quick; they were not checked and may include real orders. " : "") + (droppedNew ? droppedNew + " unanswered orders were removed because the inbox holds " + INBOX_MAX + ". Orders you have answered are always kept. " : "") + "Some may be made up. Check each one by phone before preparing it. If it continues, pause new orders and make a new order address under Connections."),
       h("nav", null, h("a", { class: "button border", href: "#/connect" }, h("span", null, "Open Connections")))) : null;
     if (!list.length) { inbox.replaceChildren(...[fail, flood, failedAt ? null : h("p", { class: "muted" }, c.paused ? "No orders in the last 24 hours." : "No orders in the last 24 hours. New orders appear here by themselves, with a sound.")].filter(Boolean)); return; }
     inbox.replaceChildren(...[fail, flood].filter(Boolean), ...list.map((o) => {
@@ -1202,10 +1221,7 @@ function viewConfirm() {
   async function listen() {
     stop();
     if (!c.orders) return;
-    /* One connection follows the order address and up to 29 open orders: orders being prepared
-       first, then the newest new ones. Finished, declined and cancelled orders are left out. */
-    const open = inboxOrders().filter((o) => o.reply && o.status !== "cancelled" && o.status !== "answered" && o.status !== "done" && !["delivered", "picked"].includes(o.step));
-    const topics = [c.orders].concat(open.filter((o) => o.status !== "new").concat(open.filter((o) => o.status === "new")).map((o) => o.reply)).slice(0, 30);
+    const topics = followTopics(c.orders, inboxOrders());
     let failed = false;
     skipped = 0;
     for (const t of topics) {
