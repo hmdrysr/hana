@@ -39,6 +39,17 @@ Planned upgrades for Hana. Nothing here is built yet. Each item lists the condit
 - **How:** the business tools already sign every menu with the owner's key. The signed menu is posted to a community ntfy topic; a scheduled GitHub Action in the Hana repository collects it, checks the signature against the owner key named in the claim, runs `tools/check.py` and commits it. The signature proves only that the owner's key signed the menu, not who the business is, so the first claim is still vouched for by two community members, who confirm the business by phone or in person and link its key to the listing. After that, no person needs write access on the owner's behalf.
 - **Waiting for:** a design review of how the owner's key is first linked to the verified business, how duplicate or replayed submissions are rejected (menu versions and hash chains already order them), and how the scheduled workflow handles untrusted submissions without exposing its write credentials; abuse limits on the topic; and a test with two or more real businesses. Existing forge-based claims keep working unchanged.
 
+### Amended orders, agreed by both sides
+
+- **What:** when a business cannot fill an order exactly (an item sold out, a different price), it proposes a change in the app, and the customer accepts or declines it. The order record keeps the original, the proposal and the answer as separate signed events.
+- **How:** a new signed update type (`amend`) on orders sent in Hana, using the existing signing and sealing; older apps show it as an ordinary update and the customer can still reply in chat.
+- **Waiting for:** testing with real businesses to learn how often amendments happen and what they look like, so the screen stays simple.
+
+### Named baskets and recent searches
+
+- **What:** a regular customer saves a basket as "usual breakfast" or "office lunch", and the search box remembers recent searches, both on the phone only with an easy clear button.
+- **Waiting for:** evidence from usability sessions that "Order again" and favourites are not already enough.
+
 ### Others under consideration
 
 - Splitting `list.json` by zone once it nears its size limit.

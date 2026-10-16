@@ -286,8 +286,21 @@ function wordMatches(q, w) {
   return false;
 }
 
+/* Searching in Bangla script: common food and grocery words map to the English words menus use.
+   A Bangla word with no match finds nothing, rather than everything. */
+const BN_WORDS = { "চা": "tea cha", "কফি": "coffee", "বিরিয়ানি": "biryani", "কাচ্চি": "kacchi", "তেহারি": "tehari", "খিচুড়ি": "khichuri", "ভাত": "rice", "চাল": "rice",
+  "ডিম": "eggs", "আলু": "potatoes", "পেঁয়াজ": "onions", "চিনি": "sugar", "তেল": "oil", "ডাল": "lentils", "মুরগি": "chicken", "মুরগির": "chicken", "বার্গার": "burger",
+  "পিৎজা": "pizza", "পিজা": "pizza", "কলা": "banana", "পানি": "water", "বিস্কুট": "biscuits", "সিঙ্গারা": "singara", "টমেটো": "tomatoes", "মরিচ": "chillies",
+  "আটা": "flour atta", "ময়দা": "flour", "দুধ": "milk", "মাছ": "fish", "গরু": "beef", "খাসি": "mutton", "নুডলস": "noodles", "রুটি": "bread", "কেক": "cake",
+  "বন": "bun", "লেবু": "lemon", "আদা": "ginger", "চিকেন": "chicken", "স্যুপ": "soup", "মিষ্টি": "sweet dessert", "জুস": "juice" };
+function fromBangla(q) {
+  if (!/[\u0980-\u09FF]/.test(q)) return q;
+  return String(q).split(/\s+/).map((w) => BN_WORDS[w] || (/[\u0980-\u09FF]/.test(w) ? "\u0000" : w)).join(" ");
+}
 function fuzzyMatches(query, text) {
-  const qs = norm(query).split(" ").filter(Boolean);
+  const bq = fromBangla(query);
+  if (bq.includes("\u0000")) return false;
+  const qs = norm(bq).split(" ").filter(Boolean);
   if (!qs.length) return true;
   const words = norm(text).split(" ").filter(Boolean);
   return qs.every((q) => words.some((w) => wordMatches(q, w)));

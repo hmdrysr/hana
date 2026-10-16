@@ -389,8 +389,12 @@ with sync_playwright() as p:
     ok("check before you pay confirms when everything is there", "Everything is here" in ip.inner_text("main"))
     ok("the customer notes a volunteer listing's confirmation", "not signed" in ip.inner_text("main"), ip.inner_text("main")[:200])
     ok("a map pin is added to the message", "Map pin: https://www.openstreetmap.org/?mlat=22.36012&mlon=91.80981" in plain, plain[-300:])
+    ip.evaluate("() => { const o = JSON.parse(localStorage.getItem('hana.orders')); o[0].items = o[0].items.concat([{ key: 'gone-item', label: 'Gone item', qty: 1, price: 99 }]); localStorage.setItem('hana.orders', JSON.stringify(o)); }")
+    ip.goto(BASE + "#/orders")
+    ip.wait_for_selector("text=Order again")
     ip.click("text=Order again")
     ip.wait_for_selector("#zone")
+    ok("order again spells out what changed since the last order", "Gone item is no longer on the menu" in ip.inner_text("main"), ip.inner_text("main")[:300])
     ok("order again refills the basket", "Dahi Bara" in ip.inner_text("main"))
     ip.fill("#address", "")
     ip.click("button.chip:has-text('Home')")
@@ -577,6 +581,28 @@ with sync_playwright() as p:
             { version: 3, published: "2026-10-20T10:00:00+06:00", changes: [] }] }),
         pricesConfirmedAt({ version: 3, prices_confirmed_at: "2026-10-25T10:00:00+06:00", price_history: [] })]""")
     ok("the price date moves only with a price change or an explicit reconfirmation", pc == ["2026-10-01T10:00:00+06:00", "2026-10-10T10:00:00+06:00", "2026-10-25T10:00:00+06:00"], pc)
+    # Order states without the demo: a confirmed order with no further news, an unsigned
+    # update, and Active before Past even with many past orders.
+    page.goto(BASE + "#/")
+    page.evaluate("""() => {
+        const now = Date.now(), iso = (ms) => new Date(now - ms).toISOString();
+        const base = { restaurant: "Test Kitchen", restaurant_id: "x", items: [{ key: "a", label: "Rice", qty: 1, price: 50 }], subtotal: 50, fee: 0, mode: "delivery", channel: "whatsapp" };
+        const past = Array.from({ length: 14 }, (_, i) => Object.assign({}, base, { code: "PAST" + String(i).padStart(2, "0"), status: "cancelled", created: iso(3600000 + i) }));
+        const quiet = Object.assign({}, base, { code: "QUIET1", status: "confirmed_signed", created: iso(120000), confirmed_at: iso(60000) });
+        const unsigned = Object.assign({}, base, { code: "UNSIG1", status: "confirmed_signed", created: iso(300000), confirmed_at: iso(240000),
+            progress: [{ step: "accepted", at: iso(200000), text: "Accepted, being prepared", verified: false }] });
+        localStorage.setItem("hana.orders", JSON.stringify(past.concat([quiet, unsigned])));
+    }""")
+    page.goto(BASE + "#/orders")
+    page.wait_for_selector("text=Active")
+    quiet = page.locator("article:has-text('QUIET1')").inner_text()
+    ok("a confirmed order with no update says so, and claims no preparation", "Waiting for the business's next update" in quiet and "being prepared" not in quiet, quiet[:200])
+    ok("an unsigned update is labelled as not verified", "Not verified" in page.locator("article:has-text('UNSIG1')").inner_text())
+    order = page.evaluate("[...document.querySelectorAll('main h2, main article')].map((e) => e.tagName === 'ARTICLE' ? (e.innerText.match(/Order ([A-Z0-9]{6})/) || [])[1] : e.innerText)")
+    ok("active orders come first, never pushed to a later page by past ones", order.index("Active") < order.index("QUIET1") < order.index("Past orders") and "UNSIG1" in order and order.index("UNSIG1") < order.index("Past orders"), order[:8])
+    page.evaluate("localStorage.removeItem('hana.orders')")
+    bn = page.evaluate("[fuzzyMatches('চা', 'Tea (cha) Milk tea'), fuzzyMatches('বিরিয়ানি', 'Chicken Biryani'), fuzzyMatches('অজানা', 'Chicken Biryani'), fuzzyMatches('ডিম', 'Farm eggs')]")
+    ok("searching in Bangla script finds the English menu words, and an unknown word finds nothing", bn == [True, True, False, True], bn)
     # A dropped connection on first load: the error explains itself, and Try again recovers.
     rc = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
     rp = rc.new_page()

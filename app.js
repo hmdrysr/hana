@@ -932,6 +932,7 @@ function viewBasket() {
     nodes.push(notice("warn", h("p", { class: "bold flush" }, "Prices have changed"),
       h("p", { class: "flush" }, "You added items from version " + b.version + " of the menu. It is now version " + menu.version + ", and the current prices are shown. " + (menu.announcement ? menu.announcement.summary : ""))));
   }
+  if (state.reorderNotes && state.reorderNotes.length) { nodes.push(notice("warn", h("p", { class: "bold flush" }, "Changed since your last order"), h("ul", null, state.reorderNotes.map((t) => h("li", null, t))))); state.reorderNotes = []; }
   if (menu.demo === true) nodes.push(demoNotice());
   else if (menu.claimed === false) nodes.push(notice("warn", h("p", { class: "bold flush" }, "You are sending an enquiry, not a confirmed order"),
     h("p", { class: "flush" }, "A community volunteer listed this place, so its prices and delivery charge may have changed. Your message asks the business to confirm them and the total. Agree on them in your chat before the order is made, and pay only on delivery.")));
@@ -1401,7 +1402,7 @@ function orderCard(o, orders) {
   }
   const phoneOf = o.demo ? null : o.business_phone || ((restaurantById(o.restaurant_id) || {}).lite || {}).business_phone;
   if (phoneOf && o.status !== "cancelled" && o.status !== "expired") kids.push(h("nav", null, h("a", { href: "tel:" + phoneOf, class: "button border" }, icon("call"), h("span", null, "Call the business"))));
-    if (o.restaurant_id && (o.items || []).length && o.status !== "awaiting") kids.push(h("nav", { "data-role": "again" }, h("a", { class: "button border", href: "#/order?r=" + encodeURIComponent(o.restaurant_id) + "&items=" + o.items.map((i) => encodeURIComponent(i.key) + "*" + i.qty).join(",") + "&mode=" + (o.mode === "pickup" ? "pickup" : "delivery") + (o.mode !== "pickup" && o.zone ? "&zone=" + encodeURIComponent(o.zone) : "") }, icon("shopping_bag"), h("span", null, "Order again"))));
+    if (o.restaurant_id && (o.items || []).length && o.status !== "awaiting") kids.push(h("nav", { "data-role": "again" }, h("a", { class: "button border", href: "#/order?r=" + encodeURIComponent(o.restaurant_id) + "&items=" + o.items.map((i) => encodeURIComponent(i.key) + "*" + i.qty).join(",") + "&mode=" + (o.mode === "pickup" ? "pickup" : "delivery") + (o.mode !== "pickup" && o.zone ? "&zone=" + encodeURIComponent(o.zone) : "") + "&from=" + encodeURIComponent(o.code) }, icon("shopping_bag"), h("span", null, "Order again"))));
   const cancelOpen = !o.informal && (o.status === "awaiting" || (o.status.startsWith("confirmed") && Date.now() < deadline.getTime() && !(o.progress || []).some((p) => p.step === "out" || p.step === "delivered" || p.step === "picked")));
   const cancelButton = cancelOpen ? h("button", { type: "button", class: "border", on: { click: async () => {
     const ch = CHANNELS[o.channel];
@@ -1547,13 +1548,13 @@ function viewOrders() {
   const placed = state.justPlaced;
   const nodes = [pageTitle("Orders"), placed && placed.nodes.length ? h("article", { class: "round border no-elevate" }, ...placed.nodes) : null];
   if (!orders.length) nodes.push(h("p", { class: "muted" }, "No orders yet."));
-  const PER = 10;
-  const pages = Math.max(1, Math.ceil(orders.length / PER));
-  state.ordersPage = Math.min(state.ordersPage || 0, pages - 1);
-  /* Active orders first, with the full status; past orders below, compact. */
-  const pageOrders = orders.slice(state.ordersPage * PER, state.ordersPage * PER + PER);
+  /* Every active order is shown first, never split across pages; only past orders page. */
   const isPast = (o) => ["cancelled", "declined", "expired"].includes(o.status) || (o.progress || []).some((p) => p.step === "delivered" || p.step === "picked");
-  const act = pageOrders.filter((o) => !isPast(o)), past = pageOrders.filter(isPast);
+  const act = orders.filter((o) => !isPast(o)), history = orders.filter(isPast);
+  const PER = 10;
+  const pages = Math.max(1, Math.ceil(history.length / PER));
+  state.ordersPage = Math.min(state.ordersPage || 0, pages - 1);
+  const past = history.slice(state.ordersPage * PER, state.ordersPage * PER + PER);
   if (act.length) nodes.push(sectionTitle("Active"), ...act.map((o) => orderCard(o, orders)));
   if (past.length) nodes.push(sectionTitle("Past orders"), ...past.map((o) => orderCard(o, orders)));
   if (pages > 1) nodes.push(pager(state.ordersPage, pages, (n) => { state.ordersPage = n; viewOrders(); }));
@@ -1990,6 +1991,19 @@ async function openOrderLink(query) {
     !(await ask("Replace your basket?", "Your basket contains items from another business. Replace them with the items in this link?", "Replace"))) { location.replace("#/basket"); return; }
   const zone = p.get("zone") || state.area || "";
   state.basket = { rid: r.id, version: r.menu.version, mode: p.get("mode") === "pickup" ? "pickup" : "delivery", zone: state.areaById.has(zone) ? zone : "", ward: "", lines, note: (p.get("note") || "").slice(0, 200) };
+  /* Order again: the basket is rebuilt from today's menu, and anything that changed since the
+     earlier order is spelled out before checkout. */
+  const prev = p.get("from") ? store.get("hana.orders", []).find((x) => x && x.code === p.get("from")) : null;
+  state.reorderNotes = [];
+  if (prev) {
+    const now = {}; for (const l of priceLines(r.menu)) now[l.key] = l;
+    for (const i of prev.items || []) {
+      const cur = now[i.key];
+      if (!cur) state.reorderNotes.push((i.label || i.key) + " is no longer on the menu, so it was left out.");
+      else if (typeof i.price === "number" && typeof cur.price === "number" && cur.price !== i.price) state.reorderNotes.push(cur.label + " is now " + money(cur.price) + " (it was " + money(i.price) + ").");
+      else if (typeof i.price === "number" && cur.price === null) state.reorderNotes.push(cur.label + " no longer has a listed price; the business will confirm it.");
+    }
+  }
   saveBasket();
   snackbar("Order prepared. Check it, add your details and send it.");
   location.replace("#/basket");
