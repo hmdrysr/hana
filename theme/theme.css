@@ -1403,14 +1403,7 @@ section.order-hero > p.order-head {
 .order-steps > span.done {
   background: var(--primary);
 }
-.order-steps > span.now::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: var(--primary);
-  animation: hana-step 1.6s ease-in-out infinite;
-  transform-origin: left center;
-}
+.order-steps > span.now { background: var(--primary); opacity: 0.5; }
 @keyframes hana-step {
   0% { transform: scaleX(0); opacity: 1; }
   70% { transform: scaleX(1); opacity: 1; }
@@ -1446,4 +1439,51 @@ button.cat-tile {
   overflow-wrap: normal;
   word-break: normal;
   hyphens: manual;
+}
+
+/* Order timeline: real events, latest in bold, the next expected step greyed. */
+ol.order-timeline {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+ol.order-timeline > li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+  position: relative;
+  padding: 0 0 0.75rem 1.25rem;
+}
+ol.order-timeline > li::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0.4rem;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: 50%;
+  background: var(--primary);
+}
+ol.order-timeline > li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0.28rem;
+  inset-block: 1.1rem 0;
+  inline-size: 2px;
+  background: var(--outline-variant);
+}
+ol.order-timeline > li.latest > .max > div:first-child {
+  font-weight: 700;
+}
+ol.order-timeline > li.next::before {
+  background: transparent;
+  border: 2px solid var(--outline);
+}
+@media (prefers-reduced-motion: no-preference) {
+  ol.order-timeline > li.latest { animation: hana-in 0.3s ease-out; }
+}
+@keyframes hana-in { from { opacity: 0; transform: translateY(0.25rem); } to { opacity: 1; transform: none; } }
+ol.order-timeline > li > span {
+  white-space: nowrap;
+  flex: 0 0 auto;
 }

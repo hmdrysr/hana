@@ -318,7 +318,9 @@ function viewList() {
       if (!delivers && !state.showAll) { hidden++; continue; }
       if (state.cat && !(r.cats && r.cats.has(state.cat))) continue;
       if (state.favOnly && !favourites().includes(r.id)) continue;
-      if (state.openOnly && m && openNow(m.hours) !== true) continue; /* known to be open, not merely not known to be closed */
+      /* Open now means open by hours the business itself confirmed (demo places included);
+         community-listed hours are not confirmed, so those places are left out. */
+      if (state.openOnly && m && (openNow(m.hours) !== true || (m.claimed === false && m.demo !== true))) continue;
       if (state.pickupOnly && m && m.pickup === false) continue;
       const nameHit = fuzzyMatches(state.query.replace(/^@/, ""), r.name + " " + (m ? (m.kind || "") + " " + (m.handle || "") : ""));
       const hits = q ? searchItems(r).filter((it) => fuzzyMatches(state.query, it.name + " " + (it.category || "") + " " + (it.section || ""))) : [];
@@ -344,6 +346,7 @@ function viewList() {
       on: { click: () => { state[key] = !state[key]; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } }, h("span", null, text));
     const sortSel = h("select", { id: "sort", "aria-label": "Sort", on: { change: (e) => { state.sort = e.target.value; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } },
       [["name", "Sort: name"], ["fee", "Sort: lowest delivery fee"], ["confirmed", "Sort: prices updated most recently"]].map(([v, t]) => h("option", { value: v, selected: (state.sort || "name") === v }, t)));
+    if (state.openOnly) head.push(h("p", { class: "small-text muted flush" }, "Open now shows places whose business confirmed its hours. Community-listed places are left out."));
     head.push(h("nav", { class: "wrap small-space" }, toggle("openOnly", "Open now"), toggle("pickupOnly", "Pickup"), favourites().length || state.favOnly ? toggle("favOnly", "Favourites") : null),
       q ? null : h("div", { class: "field suffix border round small" }, sortSel, icon("arrow_drop_down")));
     listHead.replaceChildren(...(q && !cards.length ? [] : head).filter(Boolean));
@@ -1227,7 +1230,8 @@ function orderHero(o) {
     : finished ? (o.demo ? "Delivered! Hope you enjoyed your dopamine hit." : pickup ? "Picked up. Enjoy!" : "Delivered. Enjoy your order!")
     : cur === 3 ? (rider ? rider.name + " is on the way" : "Your order is on the way")
     : cur === 2 ? (pickup ? "Ready for pickup" : "Ready, and waiting for the rider")
-    : "Your order is being prepared";
+    : has("accepted") ? "Your order is being prepared"
+    : o.status === "awaiting" ? "" : "Confirmed. Waiting for the business's next update";
   let when = null;
   if (!finished) {
     if (o.demo) {
@@ -1241,15 +1245,24 @@ function orderHero(o) {
       when = h("p", { class: "flush" }, (o.scheduled ? "Scheduled for " + clockAt(new Date(at)) : "Arrives " + clockAt(new Date(at - 5 * 60000)) + " to " + clockAt(new Date(at + 5 * 60000))) + (late ? " (running late)" : ""));
     }
   }
-  const bar = h("div", { class: "order-steps", role: "img", "aria-label": "Step " + (cur + 1) + " of " + labels.length + ": " + labels[cur] },
-    labels.map((l, i) => h("span", { class: i < cur || finished ? "done" : i === cur ? "now" : "" })));
+  /* A timeline of events that actually happened, each with its time, and the next expected
+     step greyed out. Nothing advances on a timer except in the demo. */
+  const at = (iso) => iso ? clockAt(new Date(iso)) : "";
+  const events = [{ text: "Order sent to " + o.restaurant, at: o.created }];
+  if (o.status !== "awaiting") events.push({ text: o.demo ? "Confirmed automatically (demo)" : "Confirmed by " + o.restaurant, at: o.confirmed_at });
+  for (const p of o.progress || []) events.push({ text: p.text || p.step, at: p.at, unverified: p.verified === false });
+  const nextLabel = finished ? null : o.status === "awaiting" ? "Confirmation" : labels[Math.min(cur + (has("accepted") || cur > 1 ? 1 : 0), labels.length - 1)];
+  const bar = h("ol", { class: "order-timeline", "aria-label": "Order updates" },
+    events.map((e, i) => h("li", { class: i === events.length - 1 ? "latest" : "" },
+      h("div", { class: "max" }, h("div", null, e.text), e.unverified ? h("div", { class: "small-text" }, "Not verified: this update was not signed by the business") : null),
+      h("span", { class: "small-text muted" }, at(e.at)))),
+    nextLabel ? h("li", { class: "next" }, h("div", { class: "max muted" }, "Next: " + nextLabel), h("span", { class: "small-text muted" }, "")) : null);
   const riderCard = rider && cur === 3 && !finished ? h("div", { class: "row rider-card" },
     h("div", { class: "rider-initial", "aria-hidden": "true" }, rider.name.slice(0, 1)),
     h("div", { class: "max" }, h("div", { class: "bold" }, rider.name), h("div", { class: "small-text muted" }, "Your rider · " + rider.phone)),
     o.demo ? h("button", { type: "button", class: "circle border", "aria-label": "Call " + rider.name, on: { click: () => snackbar(rider.name + " (" + rider.phone + ") is pretend, but he says thank you for calling.") } }, icon("call"))
       : h("a", { href: "tel:" + rider.phone, class: "button circle border", "aria-label": "Call " + rider.name }, icon("call"))) : null;
-  return h("section", { class: "order-hero" }, h("p", { class: "order-head" }, head), when, bar,
-    h("p", { class: "small-text muted flush" }, labels[cur] + (finished ? "" : " · step " + (cur + 1) + " of " + labels.length)), riderCard);
+  return h("section", { class: "order-hero" }, head ? h("p", { class: "order-head" }, head) : null, when, riderCard, bar);
 }
 const DEMO_LABEL = { accepted: "Accepted", ready: "Ready", out: "Out for delivery", delivered: "Delivered", picked: "Picked up" };
 let ordersTimer = null;
@@ -1350,7 +1363,7 @@ function orderCard(o, orders) {
     window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener");
   };
   /* The full history of updates, folded away: the summary at the top says where things stand. */
-  if (o.progress && o.progress.length) {
+  if (o.progress && o.progress.length && !kids.some((k) => k && k.classList && k.classList.contains("order-hero"))) {
     kids.push(h("details", null, h("summary", { class: "link" }, "All updates (" + o.progress.length + ")"),
       h("ul", { class: "list border" }, o.progress.map((p) => h("li", null, icon("check_circle"),
         h("div", { class: "max" }, h("div", null, p.text || p.step), h("div", { class: "small-text muted" }, dateTime(p.at) + (p.rider ? " · Rider " + p.rider.name + ", " + p.rider.phone : ""))))))));
@@ -1537,7 +1550,12 @@ function viewOrders() {
   const PER = 10;
   const pages = Math.max(1, Math.ceil(orders.length / PER));
   state.ordersPage = Math.min(state.ordersPage || 0, pages - 1);
-  for (const o of orders.slice(state.ordersPage * PER, state.ordersPage * PER + PER)) nodes.push(orderCard(o, orders));
+  /* Active orders first, with the full status; past orders below, compact. */
+  const pageOrders = orders.slice(state.ordersPage * PER, state.ordersPage * PER + PER);
+  const isPast = (o) => ["cancelled", "declined", "expired"].includes(o.status) || (o.progress || []).some((p) => p.step === "delivered" || p.step === "picked");
+  const act = pageOrders.filter((o) => !isPast(o)), past = pageOrders.filter(isPast);
+  if (act.length) nodes.push(sectionTitle("Active"), ...act.map((o) => orderCard(o, orders)));
+  if (past.length) nodes.push(sectionTitle("Past orders"), ...past.map((o) => orderCard(o, orders)));
   if (pages > 1) nodes.push(pager(state.ordersPage, pages, (n) => { state.ordersPage = n; viewOrders(); }));
   nodes.push(h("p", { class: "small-text muted" }, "Orders are stored only on this phone. An order counts once the business confirms it within " + state.rules.confirmation_window_minutes + " minutes; otherwise it is cancelled automatically."));
   const entries = store.get("hana.log", []);
