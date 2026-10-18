@@ -362,6 +362,7 @@ function viewList() {
       on: { click: () => pickCategory(c.key) } }, h("span", { class: "cat-circle" }, foodIcon(c.key, "large")), h("span", null, c.label))));
     yours.replaceChildren(...(q || state.searching ? [] : yourPlaces()));
     zoneLabel.textContent = state.area ? areaName(state.area) : "Choose your zone";
+    zoneHint.hidden = !!state.area;
     modeSeg.replaceChildren(...[["delivery", "Delivery"], ["pickup", "Pickup"]].map(([k, t]) => h("button", { type: "button", "aria-pressed": String(k === "pickup" ? !!state.pickupOnly : !state.pickupOnly),
       on: { click: () => { state.pickupOnly = k === "pickup"; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } }, t)));
 
@@ -463,22 +464,29 @@ function viewList() {
     results.replaceChildren(...kids.filter(Boolean));
   }
 
-  /* The front page follows the order of the large delivery apps (Deliveroo): where and when on
-     one line, Delivery or Pickup, search, your own orders and places, the type of place, the
-     categories in one row, then every place, A to Z. Nothing is promoted or ranked. */
-  const zonePanel = h("div", { class: "stack zone-panel", hidden: !!state.area && !state.zoneOpen },
-    h("div", { class: "zone-row" },
-      zoneSelect("area", state.area, (v) => { state.zoneOpen = false; zonePanel.hidden = !!v; zoneBtn.setAttribute("aria-expanded", String(!zonePanel.hidden)); setZone(v); }, "Choose your zone"),
-      h("button", { type: "button", class: "border", on: { click: () => locateZone((v) => { state.zoneOpen = false; zonePanel.hidden = !!v; zoneBtn.setAttribute("aria-expanded", String(!zonePanel.hidden)); setZone(v); }) } }, icon("location_on"), h("span", null, "Use my location"))),
-    h("p", { class: "small-text muted flush" }, "Choosing a zone shares nothing. Use my location sends your exact position to OpenStreetMap's free lookup service to find your street and zone, and fills in your address and map pin at checkout, where you can edit the address."));
-  const zoneBtn = h("button", { type: "button", class: "zone-line transparent", "aria-expanded": String(!zonePanel.hidden), "aria-controls": "zone-panel",
-    on: { click: () => { zonePanel.hidden = !zonePanel.hidden; state.zoneOpen = !zonePanel.hidden; zoneBtn.setAttribute("aria-expanded", String(!zonePanel.hidden)); } } },
-    icon("location_on"), h("span", { class: "max" }, h("span", { class: "small-text muted" }, "Now · "), zoneLabel), icon("expand_more"));
-  zonePanel.id = "zone-panel";
+  /* The front page follows the order of the large delivery apps (Deliveroo): where you are,
+     Delivery or Pickup, search, your own orders and places, the type of place, the categories in
+     one row, then every place, A to Z. Nothing is promoted or ranked.
+     The zone bar is one control: the pin finds your location (and your address and map pin for
+     checkout); the rest of the bar is the phone's own zone list, laid over the bar invisibly, so
+     it works with screen readers and large text. */
+  const zoneSel = h("select", { id: "area", class: "zone-select", "aria-label": "Your zone (thana)", on: { change: (e) => setZone(e.target.value) } },
+    h("option", { value: "" }, "Choose your zone"),
+    zones().map((a) => h("option", { value: a.id, selected: a.id === state.area }, a.name)));
+  const locateBtn = h("button", { type: "button", class: "zone-locate", "aria-label": "Use my location", title: "Use my location", on: { click: async () => {
+    locateBtn.disabled = true; locateBtn.replaceChildren(h("span", { class: "spinner", "aria-hidden": "true" }));
+    zoneLabel.textContent = "Finding where you are…";
+    await locateZone((v) => setZone(v));
+    locateBtn.disabled = false; locateBtn.replaceChildren(icon("location_on"));
+    zoneLabel.textContent = state.area ? areaName(state.area) : "Choose your zone";
+  } } }, icon("location_on"));
+  const zoneBar = h("div", { class: "zone-bar" }, locateBtn,
+    h("div", { class: "zone-pick" }, h("span", { class: "max" }, zoneLabel), icon("arrow_drop_down"), zoneSel));
+  const zoneHint = h("p", { class: "small-text muted zone-hint", hidden: !!state.area }, "Tap the pin to use your location (looked up by OpenStreetMap), or choose your zone. Choosing shares nothing.");
   show("list", "",
     h("h1", { class: "visually-hidden" }, "Food and groceries in Chittagong"),
-    zoneBtn,
-    zonePanel,
+    zoneBar,
+    zoneHint,
     modeSeg,
     h("div", { class: "field prefix round fill has-clear" }, icon("search"), search, clearButton(search)),
     yours,

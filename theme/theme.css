@@ -857,8 +857,7 @@ nav.cat-strip span.cat-circle {
 }
 /* The page puts 12px between these; Beer's own 1rem top margin is cancelled (":not(#_)" only
    raises the selector's weight above Beer's). */
-main > :is(.yours, nav.kind-tabs, nav.cat-strip, nav.mode-seg, .field, .zone-panel, .stack):not(#_) { margin-block: 0; }
-main > button.zone-line { margin-block-end: -0.25rem; }
+main > :is(.yours, nav.kind-tabs, nav.cat-strip, nav.mode-seg, .field, .stack):not(#_) { margin-block: 0; }
 .yours > .section-title:not(#_) { margin-block: 0.5rem 0; }
 nav.cat-strip:empty {
   display: none;
@@ -927,24 +926,63 @@ nav.cat-strip[hidden] {
   overflow: hidden; clip-path: inset(50%);
   white-space: nowrap;
 }
-/* "Now · Khulshi": where and when, one tap to change. */
-button.zone-line {
+/* The zone bar: the pin finds your location; the rest opens the zone list (a real <select>
+   laid invisibly over the bar, so the phone's own picker and screen readers work). */
+div.zone-bar {
   display: flex;
-  inline-size: 100%;
-  block-size: auto;
-  min-block-size: 3rem;
-  margin: 0;
-  padding: 0.25rem 0;
+  align-items: center;
   gap: 0.5rem;
-  justify-content: flex-start;
-  text-align: start;
-  font-size: 1.0625rem;
-  color: var(--on-surface);
-  background: transparent;
-  box-shadow: none;
-  white-space: normal;
+  min-block-size: 3.25rem;
+  padding: 0.25rem 0.75rem 0.25rem 0.25rem;
+  border: 1px solid var(--outline);
+  border-radius: 2rem;
 }
-.zone-panel { margin-block: 0; }
+button.zone-locate:not(#_) {
+  flex: 0 0 auto;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  min-block-size: 0;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface-container-high);
+  color: var(--on-surface);
+  box-shadow: none;
+}
+div.zone-pick {
+  position: relative;
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  min-block-size: 2.75rem;
+}
+div.zone-pick > span:first-child { flex: 1; min-inline-size: 0; }
+div.zone-pick > select.zone-select {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: 0;
+}
+div.zone-bar:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
+span.spinner {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  border: 2px solid var(--on-surface-variant);
+  border-block-start-color: transparent;
+  border-radius: 50%;
+  animation: hana-spin 0.9s linear infinite;
+}
+@keyframes hana-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { span.spinner { animation-duration: 3s; } }
+main > p.zone-hint:not(#_) { margin: -0.375rem 0.5rem 0; }
+main > div.zone-bar:not(#_) { margin: 0; }
 /* Delivery or Pickup: two halves of one control. */
 nav.mode-seg {
   display: grid;

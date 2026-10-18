@@ -865,7 +865,7 @@ Every hosted copy and every one-file copy carries the whole directory and serves
 ## 27. Front page
 
 - The order follows the large delivery apps (modelled on Deliveroo's home screen), without anything they use to promote or rank places:
-  1. **"Now · <zone> ▾"**: one line; tapping it opens the zone list, "Use my location" and the privacy note. A first visit, with no zone yet, shows them open.
+  1. **Zone bar**: one rounded bar. The pin at its start is "Use my location" (a spinner shows while it works; it also prepares the address and map pin for checkout); the rest of the bar shows the zone and opens the phone's own zone list, a real `<select>` laid invisibly over it. A one-line note ("Tap the pin to use your location (looked up by OpenStreetMap), or choose your zone. Choosing shares nothing.") shows only until a zone is set.
   2. **Delivery | Pickup**: two halves of one control (Pickup shows only places that offer pickup).
   3. **Search** for dishes or places.
   4. **Yours**, only for a returning customer: the order under way (tap for Orders), then "Order again" with favourites and places ordered from, newest first. Kept on the phone; not a recommendation.
