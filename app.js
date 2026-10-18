@@ -250,19 +250,46 @@ function availableCategories() {
   return list.filter((f) => count[f[0]]).map((f) => ({ key: f[0], label: f[1], count: count[f[0]] }));
 }
 
-/* Finds the customer's zone from their position: the browser gives the position, and
-   OpenStreetMap's free Nominatim service (no key, no account) names the area. The position is
-   rounded to about 100 metres before it is sent. Runs only when the customer asks. */
+/* "Use my location": the browser gives the exact position (only when the customer asks), and
+   OpenStreetMap's free Nominatim service (no key, no account) gives the street address and the
+   zone for it. The exact coordinates are kept as the map pin for the rider; the address is filled
+   in as text the customer can correct, which never moves the pin. The last position found is
+   remembered for 30 minutes on this phone, so checkout starts with it. */
+async function locateHere() {
+  if (!navigator.geolocation) return { error: "This browser cannot share your location." };
+  const pos = await new Promise((res) => navigator.geolocation.getCurrentPosition(res, () => res(null), { timeout: 20000, maximumAge: 60000, enableHighAccuracy: true }));
+  if (!pos) return { error: "Your location was not shared." };
+  /* Five decimal places: about one metre, finer than the phone's own accuracy. */
+  const pin = { lat: Number(pos.coords.latitude.toFixed(5)), lon: Number(pos.coords.longitude.toFixed(5)), accuracy: Math.round(pos.coords.accuracy || 0) || null };
+  const found = await addressAt(pin.lat, pin.lon);
+  const here = { pin, address: found ? found.text : "", zone: found && found.zone ? found.zone.id : "", at: Date.now() };
+  state.here = here;
+  return here;
+}
+function recentHere() { return state.here && Date.now() - state.here.at < 30 * 60000 ? state.here : null; }
+/* The street address at an exact position, as plain text, with its zone. Null if the lookup is
+   unavailable. */
+async function addressAt(latitude, longitude) {
+  let j = null;
+  try {
+    const r = await fetch("https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&accept-language=en&lat=" + latitude + "&lon=" + longitude);
+    j = await r.json();
+  } catch (e) { return null; }
+  const a = (j && j.address) || null;
+  if (!a) return null;
+  const street = [a.house_number, a.road || a.pedestrian || a.footway].filter(Boolean).join(" ");
+  const parts = [a.amenity || a.building || a.shop || "", street, a.neighbourhood || a.quarter || a.hamlet || "", a.suburb || a.city_district || "", a.city || a.town || a.village || ""];
+  const seen = new Set();
+  const text = parts.map((x) => String(x || "").trim()).filter((x) => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase())).join(", ");
+  return { text: text || String(j.display_name || "").split(",").slice(0, 4).join(",").trim(), zone: zoneFromAddress(a) };
+}
 async function locateZone(onFound) {
-  if (!navigator.geolocation) { snackbar("This browser cannot share your location. Choose your zone from the list."); return; }
-  snackbar("Finding your zone…");
-  const pos = await new Promise((res) => navigator.geolocation.getCurrentPosition(res, () => res(null), { timeout: 15000, maximumAge: 600000 }));
-  if (!pos) { snackbar("Your location was not shared. Choose your zone from the list."); return; }
-  const zone = await zoneAt(pos.coords.latitude, pos.coords.longitude);
-  if (zone === undefined) { snackbar("Your zone could not be looked up just now. Choose it from the list."); return; }
-  if (!zone) { snackbar("Your location could not be matched to a zone. Choose it from the list."); return; }
-  onFound(zone.id);
-  snackbar("Zone set to " + zone.name + ". You can change it at any time.");
+  snackbar("Finding where you are…");
+  const here = await locateHere();
+  if (here.error) { snackbar(here.error + " Choose your zone from the list."); return; }
+  if (!here.zone) { snackbar(here.address ? "Your location could not be matched to a zone. Choose it from the list." : "Your zone could not be looked up just now. Choose it from the list."); return; }
+  onFound(here.zone);
+  snackbar("Zone set to " + areaName(here.zone) + ". Your address and map pin are ready at checkout.");
 }
 /* The zone at a position: the zone, null (no match) or undefined (lookup unavailable). */
 async function zoneAt(latitude, longitude) {
@@ -273,6 +300,9 @@ async function zoneAt(latitude, longitude) {
     addr = (await r.json()).address || null;
   } catch (e) { /* offline or unavailable */ }
   if (!addr) return undefined;
+  return zoneFromAddress(addr);
+}
+function zoneFromAddress(addr) {
   const words = Object.values(addr).map((v) => norm(String(v)).replace(/\b(thana|police station|ward no|ward)\b/g, "").trim()).filter(Boolean);
   const named = (name) => { const n = norm(name).replace(/\(.*\)/, "").trim(); return words.some((w) => w === n || w.includes(n) || (w.length > 4 && n.includes(w))); };
   let zone = zones().find((z) => named(z.name));
@@ -289,6 +319,9 @@ function viewList() {
   const catHead = sectionTitle("Categories");
   const listHead = h("div", { class: "stack" });
   const tabs = h("nav", { class: "kind-tabs", "aria-label": "Type of business" });
+  const yours = h("div", { class: "stack yours" });
+  const zoneLabel = h("span", { class: "bold" });
+  const modeSeg = h("nav", { class: "mode-seg", "aria-label": "Delivery or pickup" });
   const search = h("input", {
     type: "search", id: "q", placeholder: "Search dishes or places", autocomplete: "off", value: state.query,
     "aria-label": "Search food, groceries or places",
@@ -323,12 +356,14 @@ function viewList() {
       on: { click: () => { state.tab = k; state.cat = ""; state.page = 0; state.moreCats = false; render(); } } }, label)));
     const q = norm(state.query);
     strip.hidden = catHead.hidden = !!(q || state.searching) || !cats.length;
-    const FEW = 7;
-    const visible = state.moreCats || cats.length <= FEW ? cats : cats.slice(0, FEW).concat(cats.filter((c, i) => i >= FEW && c.key === state.cat));
-    strip.replaceChildren(...visible.map((c) => h("button", {
+    /* One row that scrolls sideways, as in the large delivery apps: every category is one swipe away. */
+    strip.replaceChildren(...cats.map((c) => h("button", {
       type: "button", class: "cat-tile", "aria-pressed": state.cat === c.key ? "true" : "false",
-      on: { click: () => pickCategory(c.key) } }, foodIcon(c.key, "large"), h("span", null, c.label))),
-      visible.length < cats.length ? h("button", { type: "button", class: "cat-tile", on: { click: () => { state.moreCats = true; render(); } } }, foodIcon("plate", "large"), h("span", null, "More")) : null);
+      on: { click: () => pickCategory(c.key) } }, h("span", { class: "cat-circle" }, foodIcon(c.key, "large")), h("span", null, c.label))));
+    yours.replaceChildren(...(q || state.searching ? [] : yourPlaces()));
+    zoneLabel.textContent = state.area ? areaName(state.area) : "Choose your zone";
+    modeSeg.replaceChildren(...[["delivery", "Delivery"], ["pickup", "Pickup"]].map(([k, t]) => h("button", { type: "button", "aria-pressed": String(k === "pickup" ? !!state.pickupOnly : !state.pickupOnly),
+      on: { click: () => { state.pickupOnly = k === "pickup"; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } }, t)));
 
     if (!q && state.searching) {
       listHead.replaceChildren();
@@ -365,10 +400,10 @@ function viewList() {
     }
 
     const label = state.tab === "grocery" ? "Grocery stores" : state.tab === "food" ? "Restaurants" : state.tab === "customers" ? "Added by customers" : "All places";
-    const head = q ? [] : [sectionTitle(label + " (" + cards.length + ")")];
+    const head = q ? [] : [sectionTitle(label + " (" + cards.length + ") · A to Z")];
     if (!q && state.tab === "customers") head.push(h("p", { class: "small-text muted flush" }, "Places customers added themselves. Those you added are only on your phone unless you share them; shared ones are checked by volunteers first. None is confirmed by the business."),
       h("nav", null, h("a", { class: "button", href: "#/add" }, icon("add_business"), h("span", null, "Add a place"))));
-    else if (!q) head.push(h("p", { class: "small-text muted flush" }, "Listed alphabetically. No listing is featured or paid for. ", h("a", { class: "link", href: "#/add" }, "Your favourite place is missing? Add it.")));
+    else if (!q) head.push(h("p", { class: "small-text muted flush" }, "No listing is featured or paid for. ", h("a", { class: "link", href: "#/add" }, "Your favourite place is missing? Add it.")));
     if (state.cat) {
       head.push(h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "chip small", "aria-label": "Clear the category filter",
         on: { click: () => pickCategory(state.cat) } }, foodIcon(state.cat), h("span", null, FOOD_BY_KEY[state.cat][1]), icon("close"))));
@@ -382,7 +417,7 @@ function viewList() {
     const sortSel = h("select", { id: "sort", "aria-label": "Sort", on: { change: (e) => { state.sort = e.target.value; store.set("hana.filters", { openOnly: state.openOnly, favOnly: state.favOnly, pickupOnly: state.pickupOnly, sort: state.sort }); state.page = 0; render(); } } },
       [["name", "Sort: name"], ["fee", "Sort: lowest delivery fee"], ["confirmed", "Sort: prices updated most recently"]].map(([v, t]) => h("option", { value: v, selected: (state.sort || "name") === v }, t)));
     if (state.openOnly) head.push(h("p", { class: "small-text muted flush" }, "Open now shows places whose business confirmed its hours. Community-listed places are left out."));
-    head.push(h("nav", { class: "wrap small-space" }, toggle("openOnly", "Open now"), toggle("pickupOnly", "Pickup"), favourites().length || state.favOnly ? toggle("favOnly", "Favourites") : null),
+    head.push(h("nav", { class: "wrap small-space" }, toggle("openOnly", "Open now"), favourites().length || state.favOnly ? toggle("favOnly", "Favourites") : null),
       q ? null : h("div", { class: "field suffix border round small" }, sortSel, icon("arrow_drop_down")));
     listHead.replaceChildren(...(q && !cards.length ? [] : head).filter(Boolean));
 
@@ -428,20 +463,56 @@ function viewList() {
     results.replaceChildren(...kids.filter(Boolean));
   }
 
-  show("list", "",
-    pageTitle("Food and groceries in Chittagong"),
-    installCard(true),
+  /* The front page follows the order of the large delivery apps (Deliveroo): where and when on
+     one line, Delivery or Pickup, search, your own orders and places, the type of place, the
+     categories in one row, then every place, A to Z. Nothing is promoted or ranked. */
+  const zonePanel = h("div", { class: "stack zone-panel", hidden: !!state.area && !state.zoneOpen },
     h("div", { class: "zone-row" },
-      zoneSelect("area", state.area, setZone, "Choose your zone"),
-      h("button", { type: "button", class: "border", on: { click: () => locateZone(setZone) } }, icon("location_on"), h("span", null, "Use my location"))),
-    h("p", { class: "small-text muted flush" }, "Choosing a zone shares nothing. Use my location sends your position, rounded to about 100 metres, to OpenStreetMap's free lookup service to name your area."),
+      zoneSelect("area", state.area, (v) => { state.zoneOpen = false; zonePanel.hidden = !!v; zoneBtn.setAttribute("aria-expanded", String(!zonePanel.hidden)); setZone(v); }, "Choose your zone"),
+      h("button", { type: "button", class: "border", on: { click: () => locateZone((v) => { state.zoneOpen = false; zonePanel.hidden = !!v; zoneBtn.setAttribute("aria-expanded", String(!zonePanel.hidden)); setZone(v); }) } }, icon("location_on"), h("span", null, "Use my location"))),
+    h("p", { class: "small-text muted flush" }, "Choosing a zone shares nothing. Use my location sends your exact position to OpenStreetMap's free lookup service to find your street and zone, and fills in your address and map pin at checkout, where you can edit the address."));
+  const zoneBtn = h("button", { type: "button", class: "zone-line transparent", "aria-expanded": String(!zonePanel.hidden), "aria-controls": "zone-panel",
+    on: { click: () => { zonePanel.hidden = !zonePanel.hidden; state.zoneOpen = !zonePanel.hidden; zoneBtn.setAttribute("aria-expanded", String(!zonePanel.hidden)); } } },
+    icon("location_on"), h("span", { class: "max" }, h("span", { class: "small-text muted" }, "Now · "), zoneLabel), icon("expand_more"));
+  zonePanel.id = "zone-panel";
+  show("list", "",
+    h("h1", { class: "visually-hidden" }, "Food and groceries in Chittagong"),
+    zoneBtn,
+    zonePanel,
+    modeSeg,
     h("div", { class: "field prefix round fill has-clear" }, icon("search"), search, clearButton(search)),
+    yours,
     tabs,
-    catHead,
     strip,
     listHead,
-    results);
+    results,
+    installCard(true));
   render();
+}
+
+/* The top of the front page for a returning customer: an order still under way, then the places
+   they ordered from or marked as favourites, newest first. Kept on this phone only; nothing here
+   is a recommendation. Empty for a first visit. */
+function yourPlaces() {
+  const orders = store.get("hana.orders", []);
+  const done = (o) => (o.progress || []).some((p) => p.step === "delivered" || p.step === "picked");
+  const active = orders.filter((o) => (o.status === "awaiting" || String(o.status).startsWith("confirmed")) && !done(o));
+  const out = [];
+  if (active.length) {
+    const o = active[0];
+    const last = (o.progress || []).filter((p) => p.step !== "late").pop();
+    const say = o.uncertain ? "Sending not confirmed" : o.status === "awaiting" ? "Waiting for it to confirm"
+      : last && last.step === "out" ? "On the way" : last && last.step === "ready" ? (o.mode === "pickup" ? "Ready for pickup" : "Ready") : last ? "Being prepared" : "Confirmed";
+    out.push(h("a", { href: "#/orders", class: "row round no-elevate surface-container-high your-order" }, icon("receipt_long"),
+      h("div", { class: "max" }, h("div", { class: "bold" }, say), h("div", { class: "small-text" }, o.restaurant + " · order " + o.code + (active.length > 1 ? " · " + (active.length - 1) + " more" : ""))),
+      ));
+  }
+  const seen = new Set(), chips = [];
+  const add = (id, mark) => { if (seen.has(id) || chips.length >= 8) return; const r = restaurantById(id); if (!r) return; seen.add(id); chips.push(h("a", { href: "#/r/" + id, class: "chip" }, icon(mark), h("span", null, r.name))); };
+  for (const id of favourites()) add(id, "favorite_fill");
+  for (const o of orders) if (o.restaurant_id && (done(o) || String(o.status).startsWith("confirmed"))) add(o.restaurant_id, "shopping_bag");
+  if (chips.length) out.push(sectionTitle("Order again"), h("nav", { class: "chip-row", "aria-label": "Order again" }, ...chips));
+  return out;
 }
 
 /* Page navigation for long lists: previous, "Page 2 of 5", next. */
@@ -505,12 +576,14 @@ function restaurantCard(r, zone, delivers, dishHits) {
   if (!m) {
     return h("article", { class: "round border no-elevate" }, h("h2", { class: "card-title" }, r.name), h("p", { class: "muted" }, r.problem || "This menu is not available."));
   }
-  const chips = [statusChip(m)];
-  chips.push(confirmChip(m));
+  /* One line of facts, as in the large delivery apps, then only the tags that need attention. */
+  const chips = [confirmChip(m)];
   if (!delivers) chips.push(chip("Does not deliver to " + areaName(state.area), "warn"));
+  const open = openNow(m.hours);
+  const status = open === null ? "Hours not stated" : (open ? "Open now" : "Closed now") + (m.claimed === false && m.demo !== true ? " (not confirmed)" : "");
   const body = [
     h("h2", { class: "card-title" }, h("a", { href: "#/r/" + r.id }, r.name)),
-    h("div", { class: "small-text muted" }, (m.kind || "Restaurant") + " · " + locatedIn(m)),
+    h("div", { class: "small-text muted" }, (m.kind || "Restaurant") + " · " + locatedIn(m) + " · ", h("span", { class: open ? "bold" : "" }, status)),
     h("nav", { class: "wrap small-space" }, chips),
   ];
   if (delivers) body.push(h("p", { class: "small-text muted flush" }, feeSummary(zone || onlyZone(m))));
@@ -1090,22 +1163,53 @@ function viewBasket() {
   let pin = b.pin || null;
   const pinBox = h("div");
   const drawPin = () => pinBox.replaceChildren(pin
-    ? h("div", null, pinMap(pin, (p2) => { pin = p2; b.pin = pin; saveBasket(); zoneFromPin(); }),
+    ? h("div", null, pinMap(pin, (p2) => { pin = p2; b.pin = pin; saveBasket(); zoneFromPin(); addressAt(p2.lat, p2.lon).then((f) => { if (f) fillAddress(f.text); }); }),
       h("nav", { class: "wrap" }, h("a", { href: pinLink(pin), target: "_blank", rel: "noopener", class: "button border" }, icon("open_in_new"), h("span", null, "Open in a map app")),
         h("button", { type: "button", class: "border", on: { click: () => { pin = null; b.pin = null; saveBasket(); drawPin(); } } }, icon("close"), h("span", null, "Remove the pin"))))
-    : h("nav", null, h("button", { type: "button", class: "border", on: { click: () => {
-        if (!navigator.geolocation) { snackbar("This browser cannot share your location."); return; }
-        navigator.geolocation.getCurrentPosition((p) => {
-          pin = { lat: Number(p.coords.latitude.toFixed(5)), lon: Number(p.coords.longitude.toFixed(5)) };
-          b.pin = pin; saveBasket(); drawPin(); zoneFromPin();
-        }, () => snackbar("Your location could not be read. Type your address instead."), { timeout: 15000, maximumAge: 60000, enableHighAccuracy: true });
-      } } }, icon("location_on"), h("span", null, "Add a map pin for the rider"))));
+    : h("div", { class: "stack" }, h("nav", null, h("button", { type: "button", class: "border", on: { click: async (e) => {
+        const btn = e.currentTarget; btn.disabled = true;
+        snackbar("Finding where you are…");
+        const here = await locateHere();
+        btn.disabled = false;
+        if (here.error) { snackbar(here.error + " Type your address instead."); return; }
+        useHere(here);
+        snackbar(here.address ? "Address and map pin filled in. Correct the address if you like; the pin stays where you are." : "Map pin added. The street address could not be looked up, so type it.");
+      } } }, icon("location_on"), h("span", null, "Use my location"))),
+      h("p", { class: "small-text muted flush" }, "Fills in your address and adds a map pin for the rider. Your exact position stays on the pin and is sent to OpenStreetMap's free lookup service to find the street address. You can then edit the address; the pin does not move.")));
+  /* The address box is filled from the position only while the customer has not typed their
+     own; otherwise the address found is offered, never forced. */
+  let autoAddress = "";
+  const offer = h("div");
+  const fillAddress = (text) => {
+    offer.replaceChildren();
+    if (!text) return;
+    const typed = address.value.trim();
+    if (!typed || typed === autoAddress) { address.value = text; autoAddress = text; return; }
+    if (typed === text) return;
+    offer.replaceChildren(notice("info", h("p", { class: "flush" }, "Address at your pin: " + text),
+      h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { address.value = text; autoAddress = text; offer.replaceChildren(); } } }, h("span", null, "Use this address")))));
+  };
+  const useHere = (here) => {
+    pin = { lat: here.pin.lat, lon: here.pin.lon };
+    b.pin = pin;
+    if (here.zone && here.zone !== b.zone) { b.zone = here.zone; b.ward = ""; state.area = here.zone; store.set("hana.area", here.zone); renderDelivery(); refresh(); }
+    saveBasket(); drawPin(); fillAddress(here.address);
+  };
   /* The zone follows the pin, so the customer does not have to pick it as well. */
   const zoneFromPin = async () => {
     if (!pin) return;
     const z = await zoneAt(pin.lat, pin.lon);
     if (z && z.id !== b.zone) { b.zone = z.id; b.ward = ""; state.area = z.id; store.set("hana.area", z.id); saveBasket(); renderDelivery(); refresh(); snackbar("Zone set to " + z.name + " from your pin."); }
   };
+  /* A position found with "Use my location" on the front page in the last 30 minutes starts
+     checkout with its map pin, address and zone. */
+  const rh = recentHere();
+  if (!pin && rh && b.mode !== "pickup") {
+    pin = { lat: rh.pin.lat, lon: rh.pin.lon }; b.pin = pin;
+    if (!address.value.trim() && rh.address) { address.value = rh.address; autoAddress = rh.address; }
+    if (rh.zone && !b.zone) b.zone = rh.zone;
+    saveBasket();
+  }
   drawPin();
   const useSaved = (a) => { address.value = a.address; b.zone = a.zone; b.ward = a.ward || ""; pin = a.pin || null; b.pin = pin; label.value = a.label; saveBasket(); renderDelivery(); refresh(); };
 
@@ -1123,6 +1227,7 @@ function viewBasket() {
       b.zone && !z ? notice("warn", h("p", { class: "flush" }, menu.name + " does not deliver to " + areaName(b.zone) + ". Choose pickup, or order from another restaurant.")) : "",
       savedAddresses().length ? h("nav", { class: "wrap" }, savedAddresses().map((a) => h("button", { type: "button", class: "chip border", on: { click: () => useSaved(a) } }, h("span", null, a.label)))) : null,
       textField("address", "Address or landmark", address),
+      offer,
       pinBox,
       textField("addr-label", "Save this address as, for example Home (optional)", label));
     drawPin();

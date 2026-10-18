@@ -63,21 +63,25 @@ CLIPPED_TEXT = r"""(() => {
   while ((n = walker.nextNode())) {
     if (!n.nodeValue.trim()) continue;
     const el = n.parentElement;
-    if (!el || el.closest("dialog:not([open]), .snackbar:not(.active), script, style, option, select, textarea") || (el.closest("details:not([open])") && !el.closest("summary"))) continue;
+    if (!el || el.closest("dialog:not([open]), .snackbar:not(.active), script, style, option, select, textarea, .visually-hidden") || (el.closest("details:not([open])") && !el.closest("summary"))) continue;
     const st = getComputedStyle(el);
     if (st.visibility === "hidden" || st.display === "none" || el.getClientRects().length === 0) continue;
     const r = document.createRange();
     r.selectNodeContents(n);
     const rects = Array.from(r.getClientRects());
     if (!rects.length) continue;
-    let a = el;
+    let a = el, swipe = false;
     while (a && a !== document.documentElement) {
       const s = getComputedStyle(a);
+      /* A row that scrolls sideways is reachable by swiping, so only its top and bottom count,
+         there and in every container around it. */
+      if ((s.overflowX === "auto" || s.overflowX === "scroll") && a.scrollWidth > a.clientWidth) swipe = true;
+      const sideways = swipe;
       if (s.overflowX !== "visible" || s.overflowY !== "visible") {
         const b = a.getBoundingClientRect();
         for (const t of rects) {
           if (t.width === 0) continue;
-          if (t.right > b.right + 1 || t.left < b.left - 1 || (s.overflowY !== "visible" && a !== document.body && (t.bottom > b.bottom + 1 || t.top < b.top - 1))) {
+          if ((!sideways && (t.right > b.right + 1 || t.left < b.left - 1)) || (s.overflowY !== "visible" && a !== document.body && (t.bottom > b.bottom + 1 || t.top < b.top - 1))) {
             out.push(el.tagName + "." + el.className + " in " + a.tagName + "." + a.className + ": " + n.nodeValue.trim().slice(0, 40));
             break;
           }
@@ -141,6 +145,8 @@ with sync_playwright() as p:
     ok("customers choose a zone, not the whole city or a ward", "ccc" not in opts and not any(o.startswith("ward-") for o in opts), opts)
     page.select_option("#area", "bakalia")
     ok("another zone hides the Khulshi-only restaurant", "Tava Restaurant" not in names(), names())
+    ok("after choosing, the zone folds into the 'Now · Bakalia' line at the top", page.locator("#zone-panel").is_hidden() and "Bakalia" in page.inner_text("button.zone-line"), page.inner_text("button.zone-line"))
+    page.click("button.zone-line")
     page.select_option("#area", "khulshi")
     ok("Khulshi shows the Khulshi-only restaurant", "Tava Restaurant" in names(), names())
     before = page.evaluate("document.body.className")
@@ -195,7 +201,7 @@ with sync_playwright() as p:
         page.wait_for_timeout(500)
         page.evaluate("document.documentElement.style.fontSize = '200%'")
         page.wait_for_timeout(100)
-        if page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 || [...document.querySelectorAll('main *')].some((e) => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1 && getComputedStyle(e).position !== 'fixed')"):
+        if page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 || [...document.querySelectorAll('main *')].some((e) => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1 && getComputedStyle(e).position !== 'fixed' && !e.closest('nav.kind-tabs, nav.chip-row, nav.cat-strip'))"):
             wide.append(route)
         page.evaluate("document.documentElement.style.fontSize = ''")
     ok("nothing runs off the screen at 360px with text at 200%", not wide, wide)
@@ -359,10 +365,11 @@ with sync_playwright() as p:
     ip.select_option("#swap", "call")
     ip.fill("#name", "Test")
     ip.fill("#address", "House 1, Road 2")
-    pgap = ip.evaluate("(() => { const t = document.querySelector('#address').closest('.field').getBoundingClientRect(); const m = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Add a map pin')).getBoundingClientRect(); return m.top - t.bottom; })()")
+    pgap = ip.evaluate("(() => { const t = document.querySelector('#address').closest('.field').getBoundingClientRect(); const m = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Use my location')).getBoundingClientRect(); return m.top - t.bottom; })()")
     ok("the map pin button keeps its distance from the address box", pgap >= 8, pgap)
-    ip.click("text=Add a map pin for the rider")
+    ip.click("button:has-text('Use my location')")
     ip.wait_for_selector("canvas.map-pin")
+    ok("Use my location never replaces an address the customer typed", ip.input_value("#address") == "House 1, Road 2", ip.input_value("#address"))
     gap = ip.evaluate("(() => { const t = document.querySelector('#address').closest('.field').getBoundingClientRect(); const m = document.querySelector('canvas.map-pin').getBoundingClientRect(); return m.top - t.bottom; })()")
     mw = ip.evaluate("(() => { const c = document.querySelector('canvas.map-pin').getBoundingClientRect(); const f = document.querySelector('#address').closest('.field').getBoundingClientRect(); return [Math.round(c.width), Math.round(f.width), Math.round(c.height)]; })()")
     ok("the map fits its box: as wide as the address box, half as tall", mw[0] == mw[1] and abs(mw[2] - mw[0] / 2) <= 2, mw)
@@ -419,13 +426,42 @@ with sync_playwright() as p:
     ok("the visual menu editor produces the menu", "Starters | Samosa | 40" in page.input_value(".menu-editor textarea"), page.input_value(".menu-editor textarea"))
     ctx = browser.new_context(geolocation={"latitude": 22.3601, "longitude": 91.8098}, permissions=["geolocation"], viewport={"width": 360, "height": 800})
     gp = ctx.new_page()
-    gp.route("https://nominatim.openstreetmap.org/**", lambda r: r.fulfill(status=200, content_type="application/json",
-             body=json.dumps({"address": {"suburb": "Khulshi", "city": "Chittagong", "country": "Bangladesh"}})))
+    looked = []
+    def nomi(r):
+        looked.append(r.request.url)
+        r.fulfill(status=200, content_type="application/json", body=json.dumps({"display_name": "12, Road 3, Khulshi, Chittagong", "address": {"house_number": "12", "road": "Road 3", "neighbourhood": "South Khulshi", "suburb": "Khulshi", "city": "Chittagong", "country": "Bangladesh"}}))
+    gp.route("https://nominatim.openstreetmap.org/**", nomi)
     gp.goto(BASE + "#/")
     gp.wait_for_selector("text=Use my location")
     gp.click("text=Use my location")
     gp.wait_for_timeout(800)
     ok("Use my location sets the zone", gp.eval_on_selector("#area", "e => e.value") == "khulshi", gp.eval_on_selector("#area", "e => e.value"))
+    ok("the address is looked up at the exact position", looked and "lat=22.3601" in looked[-1] and "lon=91.8098" in looked[-1] and "zoom=18" in looked[-1], looked[-1:] if looked else None)
+    TONG_ID = next(x["id"] for x in json.loads(urllib.request.urlopen(ROOT_URL + "/list.json").read())["listings"] if x.get("handle") == "tong")
+    gp.goto(BASE + "#/r/" + TONG_ID)
+    gp.wait_for_selector(".page-title")
+    gp.click("button[aria-label^='Add Bun']")
+    gp.goto(BASE + "#/basket")
+    gp.wait_for_selector("#address")
+    ok("checkout starts with the address and exact map pin found on the front page", gp.input_value("#address") == "12 Road 3, South Khulshi, Khulshi, Chittagong" and gp.locator("canvas.map-pin").count() == 1 and gp.input_value("#zone") == "khulshi", [gp.input_value("#address"), gp.input_value("#zone")])
+    gp.fill("#address", "12 Road 3, South Khulshi, blue gate beside the pharmacy, 3rd floor")
+    gp.wait_for_timeout(100)
+    pin_now = gp.evaluate("JSON.parse(localStorage.getItem('hana.basket')).pin")
+    ok("editing the address keeps the exact coordinates", pin_now == {"lat": 22.3601, "lon": 91.8098}, pin_now)
+    gp.click("button:has-text('Remove the pin')")
+    gp.click("button:has-text('Use my location')")
+    gp.wait_for_selector("canvas.map-pin")
+    gp.wait_for_timeout(300)
+    ok("using the location again offers the found address but keeps the customer's own words", gp.input_value("#address").endswith("3rd floor") and "Address at your pin: 12 Road 3" in gp.inner_text("main"), gp.inner_text("main")[-600:])
+    gp.click("button:has-text('Use this address')")
+    ok("the found address can be taken with one tap", gp.input_value("#address") == "12 Road 3, South Khulshi, Khulshi, Chittagong")
+    gp.fill("#name", "Test")
+    gp.fill("#phone", "01712345678")
+    gp.wait_for_timeout(2100)
+    gp.click("button[type=submit]")
+    gp.wait_for_url("**#/orders", timeout=5000)
+    msg = gp.evaluate("JSON.parse(localStorage.getItem('hana.orders'))[0].message")
+    ok("the order carries the edited address and the exact map pin", "12 Road 3, South Khulshi, Khulshi, Chittagong" in msg and "mlat=22.3601&mlon=91.8098" in msg, msg[-300:])
     ctx.close()
     page.goto(BASE + "#/settings")
     page.wait_for_selector("text=Install the app")
@@ -1161,7 +1197,7 @@ with sync_playwright() as p:
             mp.evaluate("(f) => { document.documentElement.style.fontSize = f; }", fs)
             mp.wait_for_timeout(100)
             sz = mp.evaluate("() => [...document.querySelectorAll('nav.kind-tabs > button')].map((b) => { const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), b.scrollWidth <= b.clientWidth + 1]; })")
-            ok("the type tabs are equal cells with nothing cut off, %dpx, text %s" % (tw, fs), len(set(x[0] for x in sz)) == 1 and len(set(x[1] for x in sz)) == 1 and all(x[2] for x in sz), sz)
+            ok("the type chips share one height in one row, with nothing cut off, %dpx, text %s" % (tw, fs), len(set(x[1] for x in sz)) == 1 and all(x[2] for x in sz), sz)
     mp.evaluate("() => { document.documentElement.style.fontSize = ''; }")
     mp.set_viewport_size({"width": 360, "height": 800})
 

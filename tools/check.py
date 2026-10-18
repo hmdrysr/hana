@@ -1005,7 +1005,7 @@ def check_text_files(root):
 
 # ---------------------------------------------------------------- interface uniformity (theme/UNIFORMITY.md)
 
-UI_CLASSES = set("""qr order-timeline latest next order-hero order-head order-steps done now rider-card rider-initial item-note countdowns map-pin field-wrap clear-search has-clear dish-hit active badge bold border bottom brand brand-mark brand-name button card-title center-align checkbox
+UI_CLASSES = set("""qr cat-circle visually-hidden zone-line zone-panel mode-seg yours your-order chip-row order-timeline latest next order-hero order-head order-steps done now rider-card rider-initial item-note countdowns map-pin field-wrap clear-search has-clear dish-hit active badge bold border bottom brand brand-mark brand-name button card-title center-align checkbox
 chip circle dark field fill flush gap-top group-title l label left left-align link list m max medium muted no-border
 no-elevate no-space overline-label page-title prefix price primary-container radio responsive right-align round row s
 section-title small small-space small-text snackbar space suffix surface-container-high surface-container-highest switch
