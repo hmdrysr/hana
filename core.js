@@ -837,13 +837,15 @@ function foodIcon(key, cls) {
   svg.append(use);
   return svg;
 }
-function coverFor(m) {
+/* width: 500 for cards (about a quarter of the bytes), 960 for a listing's own page. Both are
+   standard Wikimedia thumbnail widths, which load fastest. */
+function coverFor(m, width) {
   if (m.cover && safeImageUrl(m.cover.src)) return { src: safeImageUrl(m.cover.src), credit: m.cover.credit ? String(m.cover.credit).slice(0, 120) : "Photo supplied by the business" };
   const k = cuisineKey(m);
   const c = COVERS[COVER_OF[k] || k];
   if (!c) return null;
   const f = encodeURIComponent(c.file), base = "https://upload.wikimedia.org/wikipedia/commons/";
-  return { src: base + "thumb/" + c.path + "/" + f + "/960px-" + f, fallback: base + c.path + "/" + f,
+  return { src: base + "thumb/" + c.path + "/" + f + "/" + (width === 500 ? 500 : 960) + "px-" + f, fallback: base + c.path + "/" + f,
     credit: "Stock photo: " + c.credit + ", Wikimedia Commons", page: "https://commons.wikimedia.org/wiki/File:" + f };
 }
 

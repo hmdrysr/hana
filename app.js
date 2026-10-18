@@ -51,6 +51,14 @@ async function loadAll() {
 
 function restaurantById(id) { return state.restaurants.find((r) => r.id === id); }
 
+/* The directory record of one listing, fetched past every saved copy. */
+async function freshListing(id) {
+  try {
+    const r = await fetch(dataUrl("list.json") + "?fresh=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return null;
+    return ((await r.json()).listings || []).find((L) => L.id === id) || null;
+  } catch (e) { return null; }
+}
 /* Loads one listing's full menu, checks it against the directory's hash and refuses a
    version older than one this phone has already seen. Returns the menu, or null. */
 async function ensureMenu(r) {
@@ -60,7 +68,13 @@ async function ensureMenu(r) {
     try {
       const bytes = await fetchBytes(r.lite.location);
       const hash = await sha256Hex(bytes);
-      if (hash !== r.lite.menu_hash) { r.problem = "The menu file does not match the directory record, so it is not trusted."; return null; }
+      if (hash !== r.lite.menu_hash) {
+        /* The directory may be the saved copy from an earlier visit: fetch it afresh once and
+           check again before refusing the menu. */
+        const fresh = await freshListing(r.id);
+        if (!fresh || fresh.menu_hash !== hash) { r.problem = "The menu file does not match the directory record, so it is not trusted."; return null; }
+        r.lite = fresh; r.hash = fresh.menu_hash;
+      }
       const text = new TextDecoder("utf-8").decode(bytes);
       const menu = JSON.parse(text);
       const seen = store.get("hana.seen", {});
@@ -326,7 +340,8 @@ function viewList() {
     type: "search", id: "q", placeholder: "Search dishes or places", autocomplete: "off", value: state.query,
     "aria-label": "Search food, groceries or places",
     on: {
-      input: (e) => { state.query = e.target.value; state.page = 0; state.allDishes = false; render(); },
+      /* The list is redrawn once typing pauses (120 ms), not on every key. */
+      input: (e) => { state.query = e.target.value; state.page = 0; state.allDishes = false; clearTimeout(state.typing); state.typing = setTimeout(render, 120); },
       focus: () => { state.searching = true; render(); },
       blur: () => setTimeout(() => { state.searching = false; render(); }, 200),
       keydown: (e) => { if (e.key === "Escape") { search.value = state.query = ""; search.blur(); } },
@@ -601,7 +616,7 @@ function restaurantCard(r, zone, delivers, dishHits) {
     if (dishHits.length > 5) body.push(h("p", { class: "small-text muted flush" }, (dishHits.length - 5) + " more on the restaurant page"));
   }
   return h("article", { class: "round border no-elevate rcard" },
-    h("a", { href: "#/r/" + r.id, tabindex: "-1", "aria-hidden": "true" }, picture(coverFor(m), "cover", "", cuisineKey(m))),
+    h("a", { href: "#/r/" + r.id, tabindex: "-1", "aria-hidden": "true" }, picture(coverFor(m, 500), "cover", "", cuisineKey(m))),
     h("div", { class: "rcard-body" }, body));
 }
 

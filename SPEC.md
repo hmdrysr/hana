@@ -772,7 +772,15 @@ Every hosted copy and every one-file copy carries the whole directory and serves
 - The home page loads `list.json`, one small summary per listing (name, handle, zone, kind, categories, hours, delivery fees, contact), built by `tools/build.py`. Full menus load only when someone opens a listing, and each is checked against its hash as before. Dish search loads `search.json` the first time someone searches or picks a category.
 - Cards are built only for the page on screen (12 per page).
 - `tools/check.py` enforces size limits: `list.json` (warning at 250 KB, error at 500 KB, when it must be split by zone), `search.json` (1 MB and 2 MB), each menu (100 KB and 400 items), and the app's code and styles. Generated files that are out of date are errors.
-- The service worker serves saved copies when the network is slow, mirrors take over when the main copy is down, and every copy works offline.
+- **The service worker** is built for slow mobile connections (`sw.js`):
+  - App files (code, styles, icons) are served at once from the phone, with no round trip. `tools/build.py` stamps `VERSION` in `sw.js` from a hash of those files, and `tools/check.py` refuses a stale stamp, so a release installs as a whole in the background and is used from the next visit.
+  - The directory files (`list.json`, `areas.json`, `rules.json`, `site.json`) are served from the saved copy at once and refreshed in the background. If a menu then does not match the saved directory's hash, the app fetches the directory past every saved copy (`?fresh=`) and checks again before refusing the menu, so a saved directory can never make it trust a wrong menu.
+  - Menus and other data come from the network, with the saved copy after 2.5 seconds or offline.
+  - Customers download only the customer app at install; the business tools are saved the first time they are opened.
+- **Pictures:** cards use 500-pixel Wikimedia thumbnails; a listing's own page uses 960 pixels. Both are standard Wikimedia widths.
+- **Search** redraws the list once typing pauses for 120 ms, not on every key.
+- **Measured** (October 2026, desktop Chromium with the CPU slowed four times and 300 ms added to every request, no compression): cards appear about 3.7 seconds into a first visit, and 0.3 to 0.4 seconds into a return visit (1.2 to 1.3 seconds before this change). Real phones and GitHub Pages, which compresses files, will differ.
+- Mirrors take over when the main copy is down, and every copy works offline.
 
 ## 21. Orders sent in Hana
 

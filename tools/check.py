@@ -944,6 +944,15 @@ def check_list(root):
             pass
 
 
+def check_sw(root):
+    """sw.js carries the version of the app files it serves from the phone; a stale version would
+    keep phones on the old release."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import build_sw
+    if (root / "sw.js").is_file() and (root / "sw.js").read_text(encoding="utf-8") != build_sw.build(root):
+        err("sw.js", "VERSION is out of date; run python3 tools/build.py")
+
+
 def check_feed(root):
     """feed.xml must match the listings, so Fediverse followers see every change."""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1055,6 +1064,7 @@ def main():
     check_vouches(root)
     check_feed(root)
     check_list(root)
+    check_sw(root)
     check_pages(root)
     check_text_files(root)
     check_ui(root)
