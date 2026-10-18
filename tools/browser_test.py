@@ -496,6 +496,9 @@ with sync_playwright() as p:
     sp.goto(BASE + "#/")
     sp.wait_for_selector(".cat-tile")
     sp.wait_for_timeout(500)
+    sp.click("nav.kind-tabs button:has-text('Added by customers')")
+    sp.wait_for_timeout(200)
+    ok("an empty Added by customers tab explains itself instead of saying nothing matches", "No places here yet" in sp.inner_text("#results") and "Nothing matches" not in sp.inner_text("#results"), sp.inner_text("#results")[:200])
     ok("the home page loads no full menus and no search data", not any("/menus/" in u or "search.json" in u for u in seen_urls), [u for u in seen_urls if "menus/" in u])
     sp.close()
     # Orders sent in Hana, through a stand-in for ntfy that keeps messages in memory.
@@ -1151,6 +1154,17 @@ with sync_playwright() as p:
     mp.wait_for_selector("#q")
     mp.wait_for_timeout(300)
     ok("the home page does not load the add-a-place form", not any("myplaces.js" in u for u in mreqs))
+    for tw in (320, 360, 412, 800):
+        mp.set_viewport_size({"width": tw, "height": 800})
+        mp.wait_for_timeout(150)
+        for fs in ("100%", "200%"):
+            mp.evaluate("(f) => { document.documentElement.style.fontSize = f; }", fs)
+            mp.wait_for_timeout(100)
+            sz = mp.evaluate("() => [...document.querySelectorAll('nav.kind-tabs > button')].map((b) => { const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), b.scrollWidth <= b.clientWidth + 1]; })")
+            ok("the type tabs are equal cells with nothing cut off, %dpx, text %s" % (tw, fs), len(set(x[0] for x in sz)) == 1 and len(set(x[1] for x in sz)) == 1 and all(x[2] for x in sz), sz)
+    mp.evaluate("() => { document.documentElement.style.fontSize = ''; }")
+    mp.set_viewport_size({"width": 360, "height": 800})
+
     mp.evaluate("() => localStorage.setItem('hana.me', JSON.stringify({ name: 'Secret Customer', address: 'My House', phone: '+8801999999999' }))")
     mp.click("a:has-text('Your favourite place is missing? Add it.')")
     mp.wait_for_selector("#mp-name")

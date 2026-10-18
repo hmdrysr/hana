@@ -418,7 +418,9 @@ function viewList() {
       restaurantCard(r, zone, delivers, !q && state.cat ? searchItems(r).filter((it) => itemCat(it, r.lite) === state.cat) : [])));
     if (pages > 1) kids.push(pager(state.page, pages, (n) => { state.page = n; render(); listHead.scrollIntoView({ block: "start" }); }));
     if (!cards.length && !dishes.length) {
-      kids.push(h("p", { class: "muted" }, state.tab === "grocery" && !state.restaurants.some((r) => isGrocery(r.lite))
+      kids.push(h("p", { class: "muted" }, state.tab === "customers" && !q && !state.restaurants.some((r) => isCustomerAdded(r.lite))
+        ? "No places here yet. Add one you order from with Add a place above."
+        : state.tab === "grocery" && !state.restaurants.some((r) => isGrocery(r.lite))
         ? "No grocery stores are listed yet. A store can be added from About, under For businesses."
         : "Nothing matches. Try a different spelling, a shorter search, another category or another zone."),
         state.openOnly || state.favOnly || state.pickupOnly || state.cat ? h("nav", null, h("button", { type: "button", class: "border", on: { click: () => { state.openOnly = state.favOnly = state.pickupOnly = false; state.cat = ""; store.set("hana.filters", { sort: state.sort }); render(); } } }, icon("close"), h("span", null, "Clear the filters"))) : null);
