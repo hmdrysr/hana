@@ -88,6 +88,10 @@ No. Hana runs in your phone's browser and can be added to your home screen like 
 
 Every order is confirmed by the business within 15 minutes, or it is cancelled automatically, and you owe nothing. Confirmations and updates from claimed businesses are signed, so they cannot be faked by either side. If there is a dispute, the app prepares a summary you can take to the consumer rights authority. Because you pay only on delivery, you never have to chase a refund.
 
+### My favourite restaurant is not on Hana. Can I still use it?
+
+Yes. Add it yourself: tap "Your favourite place is missing? Add it.", enter its name and its WhatsApp or text-message number, and, if you like, its menu. It is kept on your phone only, under the "Added by customers" tab, and you can order from it here: Hana writes the order out and opens WhatsApp or your messaging app. You can also choose to share it for everyone. Volunteers then check it with the business before it is listed, and it is always tagged as added by a customer, never as confirmed by the business.
+
 ### Can I try it without ordering anything real?
 
 Yes. TONG and DUWAN are demo places. You can order from them, watch the order get confirmed, follow the pretend rider and see it "delivered" in about a minute. Nothing is sent and nobody comes to your door.

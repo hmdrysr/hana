@@ -243,6 +243,10 @@ check_case("claimed listing without a signature", True, "signature",
            edit_v1(lambda m: m.update(claimed=True)))
 check_case("unclaimed listing carrying a signature", True, "signature",
            edit_v1(lambda m: m.update(signature="abc")))
+check_case("a listing a customer suggested and volunteers checked is accepted", False, "0 error(s)",
+           edit_v1(lambda m: m.update(added_by="customer")))
+check_case("added_by with any other value", True, 'added_by may only be "customer"',
+           edit_v1(lambda m: m.update(added_by="owner")))
 check_case("unclaimed listing without a note", True, "listing_note",
            edit_v1(lambda m: m.pop("listing_note")))
 

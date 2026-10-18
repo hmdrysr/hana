@@ -442,12 +442,20 @@ async function viewReports() {
       if (!cfg) throw new Error("This copy of Hana has no reports address in site.json.");
       const rows = [];
       for (const m of await ntfyPoll(cfg.topic, "72h")) { try { const o = await openOrder(k.priv || k, m.message); if (o) rows.push({ at: m.time, r: o.order }); } catch (e) { /* not a report */ } }
-      out.replaceChildren(rows.length ? h("ul", { class: "list border" }, rows.reverse().map((x) => h("li", null, h("div", { class: "max" },
+      /* Reports about listings, and places customers suggest (t: "suggest"): a suggestion shows the
+         place and a button to copy it, to check with the business before listing it with
+         "added_by": "customer". */
+      out.replaceChildren(rows.length ? h("ul", { class: "list border" }, rows.reverse().map((x) => h("li", null, x.r.t === "suggest" && x.r.place ? h("div", { class: "max" },
+        h("div", { class: "bold" }, "Suggested place: " + String(x.r.place.name || "").slice(0, 80)),
+        h("div", null, [x.r.place.kind, x.r.place.neighbourhood, x.r.place.address].filter(Boolean).map(String).join(" · ").slice(0, 200)),
+        h("div", { class: "small-text" }, (x.r.place.contact || []).map((c) => c.app + ": " + c.id).join(", ").slice(0, 200) + " · " + ((x.r.place.items || []).length) + " items"),
+        h("div", { class: "small-text muted" }, new Date(x.at * 1000).toLocaleString("en-CA")),
+        h("nav", null, h("button", { type: "button", class: "border", on: { click: () => copy(JSON.stringify(x.r.place, null, 1)) } }, icon("content_copy"), h("span", null, "Copy the suggestion")))) : h("div", { class: "max" },
         h("div", { class: "bold" }, x.r.listing_name || x.r.listing || "Listing"), h("div", null, String(x.r.text || "").slice(0, 600)), h("div", { class: "small-text muted" }, new Date(x.at * 1000).toLocaleString("en-CA")))))) : h("p", null, "No reports in the last three days."));
     } catch (e) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, e.message))); }
   } } });
   show("more", "Community reports", pageHeader("Community reports", "#/more"),
-    h("p", { class: "muted" }, "For volunteers. Reports about listings arrive encrypted; open them with the volunteers' report key."),
+    h("p", { class: "muted" }, "For volunteers. Reports about listings and places suggested by customers arrive encrypted; open them with the volunteers' report key."),
     file,
     h("nav", { class: "wrap" },
       h("button", { type: "button", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Open reports with our key")),

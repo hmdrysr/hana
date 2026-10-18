@@ -41,6 +41,7 @@ async function loadAll() {
     if (state.area && (!a || a.kind !== "zone")) { state.area = ""; store.set("hana.area", ""); }
     /* One small summary file for the whole directory. Full menus load only when needed. */
     state.restaurants = (list.listings || []).map((L) => ({ id: L.id, name: L.name, lite: L, cats: new Set(L.cats || []), hash: L.menu_hash, menu: null, raw: null, problem: "" }));
+    mergeMyPlaces();
     state.restaurants.sort((a, b) => norm(a.name).localeCompare(norm(b.name), "en"));
     state.loaded = true;
   } catch (e) {
@@ -81,7 +82,31 @@ async function ensureSearch() {
   if (!state.searchLoading) state.searchLoading = fetchJson("search.json").then((d) => (state.search = d.items || {})).catch(() => (state.search = {}));
   return state.searchLoading;
 }
+/* ---------------------------------------------------------------- places added by the customer
+
+   A customer can add a place that is not in the directory: its name, how to reach it (WhatsApp,
+   text message, phone and others) and, if they like, its menu. It is kept on this phone only
+   ("hana.myplaces"), shown under "Added by customers" with the tag "Only on your phone", and
+   ordered from like a community listing: the message asks the business to confirm prices and
+   the total. Sharing one for everyone sends it to the volunteers to check (myplaces.js); once
+   added to the directory it carries "added_by": "customer" and shows in the same tab, tagged
+   "Added by a customer". See SPEC.md, section 26. */
+function myPlaces() { const l = store.get("hana.myplaces", []); return Array.isArray(l) ? l.filter((m) => m && /^[0-9a-f]{64}$/.test(m.id) && m.name) : []; }
+function myLite(m) {
+  return { id: m.id, name: m.name, kind: m.kind || "Restaurant", neighbourhood: m.neighbourhood || null, claimed: false, added_by: "customer", local: true,
+    hours: null, delivery: m.delivery || { zones: [] }, pickup: m.pickup === true, contact: m.contact || [], address: m.address || null,
+    business_phone: m.business_phone || null, item_count: (m.items || []).length, cats: [] };
+}
+function mergeMyPlaces() {
+  state.restaurants = state.restaurants.filter((r) => !r.local);
+  for (const m of myPlaces()) {
+    if (state.restaurants.some((r) => r.id === m.id)) continue;
+    state.restaurants.push({ id: m.id, name: m.name, lite: myLite(m), cats: new Set(), hash: "local", menu: m, raw: JSON.stringify(m), problem: "", local: true });
+  }
+}
+function isCustomerAdded(m) { return !!m && m.added_by === "customer"; }
 function searchItems(r) {
+  if (r.local) return (r.menu.items || []).map((it) => ({ name: it.name, section: it.section, category: it.category, price: it.price }));
   return ((state.search || {})[r.id] || []).map(([name, section, category, price, options]) => ({ name, section, category, price: options ? undefined : price, options: options ? [{ price }] : undefined }));
 }
 
@@ -205,8 +230,14 @@ function locatedIn(m) {
 /* ---------------------------------------------------------------- views */
 
 /* Which listings a tab shows. */
-const KIND_TABS = [["all", "All"], ["food", "Restaurants"], ["grocery", "Groceries"]];
-function inTab(m) { return state.tab === "all" || !m || (state.tab === "grocery") === isGrocery(m); }
+const KIND_TABS = [["all", "All"], ["food", "Restaurants"], ["grocery", "Groceries"], ["customers", "Added by customers"]];
+/* Places added by customers (kept on a phone, or shared and checked) have a tab of their own and
+   do not mix with the directory's listings. */
+function inTab(m) {
+  if (state.tab === "customers") return isCustomerAdded(m);
+  if (isCustomerAdded(m)) return false;
+  return state.tab === "all" || !m || (state.tab === "grocery") === isGrocery(m);
+}
 
 /* Categories that at least one listing in the current tab offers, with how many listings offer each. */
 function availableCategories() {
@@ -333,9 +364,11 @@ function viewList() {
       for (const it of hits) dishes.push({ r, it });
     }
 
-    const label = state.tab === "grocery" ? "Grocery stores" : state.tab === "food" ? "Restaurants" : "All places";
+    const label = state.tab === "grocery" ? "Grocery stores" : state.tab === "food" ? "Restaurants" : state.tab === "customers" ? "Added by customers" : "All places";
     const head = q ? [] : [sectionTitle(label + " (" + cards.length + ")")];
-    if (!q) head.push(h("p", { class: "small-text muted flush" }, "Listed alphabetically. No listing is featured or paid for."));
+    if (!q && state.tab === "customers") head.push(h("p", { class: "small-text muted flush" }, "Places customers added themselves. Those you added are only on your phone unless you share them; shared ones are checked by volunteers first. None is confirmed by the business."),
+      h("nav", null, h("a", { class: "button", href: "#/add" }, icon("add_business"), h("span", null, "Add a place"))));
+    else if (!q) head.push(h("p", { class: "small-text muted flush" }, "Listed alphabetically. No listing is featured or paid for. ", h("a", { class: "link", href: "#/add" }, "Your favourite place is missing? Add it.")));
     if (state.cat) {
       head.push(h("nav", { class: "wrap small-space" }, h("button", { type: "button", class: "chip small", "aria-label": "Clear the category filter",
         on: { click: () => pickCategory(state.cat) } }, foodIcon(state.cat), h("span", null, FOOD_BY_KEY[state.cat][1]), icon("close"))));
@@ -457,6 +490,8 @@ function fromPrice(it) {
    listed, or confirmation overdue (not reconfirmed for 90 days; not necessarily wrong). */
 function confirmChip(m) {
   if (m.demo === true) return chip("Demo, just for fun: not a real place", "warn");
+  if (m.local) return chip("Added by you · only on your phone", "warn");
+  if (isCustomerAdded(m)) return chip("Added by a customer · not confirmed by the business", "warn");
   if (m.claimed === false) return chip("Community listed: confirm prices with the business", "warn");
   const at = m.prices_confirmed || pricesConfirmedAt(m);
   const t = at ? new Date(at).getTime() : NaN;
@@ -590,6 +625,8 @@ function viewRestaurant(id) {
   const chips = [os.closed && os.next ? chip("Closed · opens " + whenText(os.next) + (m.claimed === false ? " (hours not confirmed)" : "")) : statusChip(m)];
   const when = pricesConfirmedAt(m) ? longDate(pricesConfirmedAt(m)) : "";
   if (m.demo === true) chips.push(chip("Demo, just for fun: not a real place", "warn"));
+  else if (m.local) chips.push(chip("Added by you · only on your phone", "warn"));
+  else if (isCustomerAdded(m)) chips.push(chip("Added by a customer · not confirmed by the business", "warn"));
   else if (m.claimed === false) chips.push(chip("Not confirmed by the business" + (when ? " · entered " + when : ""), "warn"));
   else if (when) chips.push(chip("Prices confirmed " + when));
   if (state.area && !zoneFor(m, state.area)) chips.push(chip("Does not list delivery to " + areaName(state.area), "warn"));
@@ -606,6 +643,7 @@ function viewRestaurant(id) {
       " Pay on delivery or at pickup, never in advance." + (os.closed && os.canOrder ? " You can schedule an order for when it opens." : "")),
   ];
   if (m.demo === true) nodes.push(demoNotice());
+  if (m.local) nodes.push(myPlaceNotice(m));
   nodes.push(restaurantInfo(m));
 
   const sections = new Map();
@@ -760,9 +798,16 @@ function updateBasketBar() {
 }
 
 /* Everything a customer may want to check but should not have to scroll past. */
+/* The notice at the top of a place the customer added on this phone. */
+function myPlaceNotice(m) {
+  return notice("warn", h("p", { class: "bold flush" }, "Added by you, only on your phone"),
+    h("p", { class: "flush" }, "You added this place yourself, so Hana has not checked it and the business has not confirmed it. Your orders go to it by the contact details you entered, and it confirms prices and the total in your chat." + (m.shared_at ? " You shared it with the volunteers on " + longDate(m.shared_at.slice(0, 10)) + "." : "")),
+    h("nav", { class: "wrap" }, h("a", { class: "button border", href: "#/add/" + m.id }, icon("edit_note"), h("span", null, "Edit, share or delete"))));
+}
 function restaurantInfo(m) {
   const kids = [];
-  if (m.claimed === false) kids.push(notice("warn", h("p", { class: "bold flush" }, "Not yet confirmed by the business"), h("p", { class: "flush" }, m.listing_note || "")));
+  if (isCustomerAdded(m) && !m.local) kids.push(notice("warn", h("p", { class: "bold flush" }, "Added by a customer"), h("p", { class: "flush" }, (m.listing_note || "A customer suggested this place and volunteers checked it, but the business has not confirmed it.") + " Confirm prices with the business before ordering.")));
+  else if (m.claimed === false) kids.push(notice("warn", h("p", { class: "bold flush" }, "Not yet confirmed by the business"), h("p", { class: "flush" }, m.listing_note || "")));
   const zones = (m.delivery && m.delivery.zones) || [];
   kids.push(h("h3", { class: "overline-label" }, "Delivery"),
     h("ul", { class: "list border" }, zones.map((z) => h("li", null, icon("location_on"),
@@ -964,7 +1009,7 @@ function viewBasket() {
   if (state.reorderNotes && state.reorderNotes.length) { nodes.push(notice("warn", h("p", { class: "bold flush" }, "Changed since your last order"), h("ul", null, state.reorderNotes.map((t) => h("li", null, t))))); state.reorderNotes = []; }
   if (menu.demo === true) nodes.push(demoNotice());
   else if (menu.claimed === false) nodes.push(notice("warn", h("p", { class: "bold flush" }, "You are sending an enquiry, not a confirmed order"),
-    h("p", { class: "flush" }, "A community volunteer listed this place, so its prices and delivery charge may have changed. Your message asks the business to confirm them and the total. Agree on them in your chat before the order is made, and pay only on delivery.")));
+    h("p", { class: "flush" }, (menu.local ? "You added this place yourself, so its prices and delivery charge are not confirmed." : isCustomerAdded(menu) ? "A customer added this place, so its prices and delivery charge may have changed." : "A community volunteer listed this place, so its prices and delivery charge may have changed.") + " Your message asks the business to confirm them and the total. Agree on them in your chat before the order is made, and pay only on delivery.")));
 
   const list = h("ul", { class: "list border" });
   const totals = h("article", { class: "round no-elevate surface-container-high stack" });
@@ -1687,6 +1732,9 @@ function importData(fileInput) {
       const have = new Set(orders.map((o) => o.code));
       const added = (data.orders || []).filter((o) => o && o.code && !have.has(o.code));
       store.set("hana.orders", orders.concat(added));
+      const mine = myPlaces(), haveIds = new Set(mine.map((m) => m.id));
+      const places = (Array.isArray(data.my_places) ? data.my_places : []).filter((m) => m && /^[0-9a-f]{64}$/.test(m.id) && m.name && !haveIds.has(m.id));
+      if (places.length) { store.set("hana.myplaces", mine.concat(places)); mergeMyPlaces(); }
       const entries = store.get("hana.log", []);
       const seen = new Set(entries.map((e) => e.at + e.text));
       store.set("hana.log", entries.concat((data.record || []).filter((e) => e && !seen.has(e.at + e.text))).sort((x, y) => (x.at < y.at ? 1 : -1)).slice(0, 500));
@@ -1699,7 +1747,7 @@ function importData(fileInput) {
 }
 
 function exportData() {
-  const data = { exported: new Date().toISOString(), orders: store.get("hana.orders", []), record: store.get("hana.log", []), saved_details: store.get("hana.me", {}), area: state.area };
+  const data = { exported: new Date().toISOString(), orders: store.get("hana.orders", []), record: store.get("hana.log", []), saved_details: store.get("hana.me", {}), area: state.area, my_places: myPlaces() };
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
   const a = h("a", { href: url, download: "hana-my-data.json" });
   document.body.append(a); a.click(); a.remove();
@@ -1855,9 +1903,9 @@ function viewSettings() {
       h("button", { type: "button", class: "border", on: { click: () => document.getElementById("restore-file").click() } }, icon("upload"), h("span", null, "Restore from a download")),
       h("input", { type: "file", id: "restore-file", accept: ".json,application/json", hidden: true, "aria-label": "Restore from a download", on: { change: (e) => importData(e.target) } }),
       h("button", { type: "button", class: "border", on: { click: async () => {
-        if (await ask("Delete everything on this phone?", "This removes your orders, profile, record, area, basket and settings. It cannot be undone. Download your data first if you want a copy.", "Delete")) {
-          for (const k of ["hana.orders", "hana.me", "hana.addresses", "hana.favourites", "hana.filters", "hana.basket", "hana.area", "hana.log", "hana.settings", "hana.theme"]) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
-          state.basket = null; state.area = ""; applyTheme(); updateBasketBadge(); viewSettings(); snackbar("Deleted.");
+        if (await ask("Delete everything on this phone?", "This removes your orders, profile, record, area, basket, settings and the places you added. It cannot be undone. Download your data first if you want a copy.", "Delete")) {
+          for (const k of ["hana.orders", "hana.me", "hana.addresses", "hana.favourites", "hana.filters", "hana.basket", "hana.area", "hana.log", "hana.settings", "hana.theme", "hana.myplaces"]) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
+          state.basket = null; state.area = ""; mergeMyPlaces(); applyTheme(); updateBasketBadge(); viewSettings(); snackbar("Deleted.");
         }
       } } }, icon("delete"), h("span", null, "Delete everything"))),
     sectionTitle("Download the directory"),
@@ -2056,6 +2104,15 @@ function downloadText(name, text, type) {
 
 /* ---------------------------------------------------------------- routing and start-up */
 
+/* The add-a-place form loads only when it is opened. */
+function openAddPlace(id) {
+  if (typeof viewAddPlace === "function") return viewAddPlace(id);
+  show("list", "Add a place", pageHeader("Add a place", "#/"), h("p", { class: "muted" }, "Loading…"));
+  const sc = h("script", { src: "myplaces.js" });
+  sc.onload = () => viewAddPlace(id);
+  sc.onerror = () => show("list", "Add a place", pageHeader("Add a place", "#/"), notice("warn", h("p", { class: "flush" }, "The form could not be loaded. Check your connection and try again.")));
+  document.head.append(sc);
+}
 function route() {
   trackPage();
   if (!state.loaded) {
@@ -2076,6 +2133,8 @@ function route() {
   if (hash === "#/about") return viewAbout();
   if (hash === "#/terms") return viewTerms();
   if (hash === "#/settings") return viewSettings();
+  const add = hash.match(/^#\/add(?:\/([0-9a-f]{64}))?$/);
+  if (add) return openAddPlace(add[1] || "");
   if (state.site.mode === "business" && state.site.listing_id) return viewRestaurant(state.site.listing_id);
   return viewList();
 }

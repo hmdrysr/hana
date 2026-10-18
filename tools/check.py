@@ -532,6 +532,10 @@ def check_menu(menu_path, root, area_ids):
         if not (isinstance(data.get("name"), str) and isinstance(phone, str)
                 and data.get("id") == temp_id(data["name"], phone)):
             err(rel, "an unclaimed listing's id must be SHA-256 of lowercase 'name|business_phone'")
+        if "added_by" in data and data.get("added_by") != "customer":
+            err(rel, 'added_by may only be "customer" (a place a customer suggested and volunteers checked)')
+        if data.get("added_by") == "customer" and data.get("claimed") is not False:
+            err(rel, 'added_by "customer" is only for unclaimed listings; a business that claims it removes the field')
         if not isinstance(data.get("listing_note"), str) or not data["listing_note"].strip():
             err(rel, "unclaimed listings need a listing_note saying who entered it, from what, and that the "
                      "restaurant has not confirmed it")
