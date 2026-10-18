@@ -1037,20 +1037,30 @@ function bizChat(o, redraw) {
 }
 
 /* Orders that reached this device, kept for 24 hours: { id, time, code, text, reply, keyRaw, status }. */
-function inboxOrders() { const cut = Date.now() / 1000 - 86400; return store.get("hana.biz.inbox", []).filter((o) => o.time > cut); }
-/* At most 200 orders (220 when answered orders fill it). Orders the business has already
-   answered are kept before new ones, so a flood of made-up orders cannot push out orders being
-   prepared. Returns false if storage failed. */
+/* The live inbox: the last 24 hours, and up to 7 days for orders still open (being prepared,
+   or a scheduled order). Everything is also kept in the order records (pos.js). */
+function orderOpen(o) { return o.status === "accepted" && !["delivered", "picked"].includes(o.step); }
+function inboxOrders() {
+  const day = Date.now() / 1000 - 86400, week = Date.now() / 1000 - 7 * 86400;
+  return store.get("hana.biz.inbox", []).filter((o) => o.time > day || (o.time > week && orderOpen(o)));
+}
+/* At most 200 orders in the live inbox (220 when answered orders fill it). Orders the business
+   has already answered are kept before new ones, and open ones before finished ones, so a flood
+   of made-up orders cannot push out orders being prepared. Returns false if storage failed. */
 const INBOX_MAX = 200, NEW_MIN = 20;
 let droppedNew = 0;
 function saveInbox(list) {
-  const acted = list.filter((o) => o.status !== "new"), fresh = list.filter((o) => o.status === "new");
+  /* Open orders come first among answered ones, so a finished order leaves the live inbox
+     before an open one does (it stays in the order records). */
+  const acted = list.filter((o) => o.status !== "new" && orderOpen(o)).concat(list.filter((o) => o.status !== "new" && !orderOpen(o))), fresh = list.filter((o) => o.status === "new");
   /* Room for at least 20 new orders is always kept, so a newly arrived order is never dropped
      the moment it is stored, even when answered orders fill the inbox. */
   const keep = new Set(acted.slice(0, INBOX_MAX).concat(fresh.slice(0, Math.max(NEW_MIN, INBOX_MAX - acted.length))));
   const ok = store.set("hana.biz.inbox", list.filter((o) => keep.has(o)));
   /* Unanswered orders dropped at the limit are counted and shown, never dropped silently. */
   if (ok) droppedNew += fresh.filter((o) => !keep.has(o)).length;
+  /* Every order and change goes to the order records, including any that left the live inbox. */
+  if (ok && typeof archiveOrders === "function") archiveOrders(list);
   return ok;
 }
 
@@ -1117,7 +1127,7 @@ let takeQueue = Promise.resolve();
 function takeMessage(m) { const run = takeQueue.then(() => takeOne(m)); takeQueue = run.catch(() => false); return run; }
 /* New orders taken in recently, for the overload notice. */
 const recentNew = [];
-const POLL_MAX = 300, FLOOD_AT = 30, FOLLOW_MAX = 29;
+const POLL_ROUNDS = 4, FLOOD_AT = 30, FOLLOW_MAX = 29;
 /* The order address and up to 29 open orders: orders being prepared first (newest first), then
    the newest new ones. Finished, declined and cancelled orders are left out. */
 function followTopics(address, list) {
@@ -1150,17 +1160,25 @@ async function takeOne(m) {
        is ignored, so the customer's messages cannot be made up later either. */
     const verified = await checkUpdate(o.cpub, o.code, msg);
     if (o.cpub && verified === false) return false;
-    if (msg.t === "cancel") { if (o.status === "cancelled") return false; o.status = "cancelled"; }
+    if (msg.t === "cancel") {
+      if (o.status === "cancelled") return false;
+      o.status = "cancelled";
+      /* A signed acknowledgement tells the customer's app the cancellation was seen. */
+      if (B.key && B.key.jwk) postUpdate(o, { t: "cancel_ack", code: o.code }).catch(() => {});
+    }
     else if (msg.t === "chat") {
       /* The same signed message posted again is shown once. */
       if ((o.chat || []).some((x) => x.from === "c" && x.at === msg.at && x.text === String(msg.text || "").slice(0, 500))) return false;
       o.chat = (o.chat || []).concat({ from: "c", text: String(msg.text || "").slice(0, 500), at: msg.at, verified, signed: verified ? msg : null }); }
     else return false;
   } else {
+    /* A plain "CANCEL <code>" is not authenticated: anyone who knows the code could send it.
+       It never changes an order sent in Hana (those are cancelled only by the customer's sealed,
+       signed message), and for a plain order it is shown as a request to check. */
     const cancel = CANCEL_LINE.exec(text);
     const o = cancel && list.find((x) => x.code === cancel[1]);
-    if (!o) return false;
-    o.status = "cancelled";
+    if (!o || o.reply || o.status === "cancelled" || o.cancel_request || o.cancel_dismissed) return false;
+    o.cancel_request = { at: m.time };
   }
   /* An order counts as seen only once it is safely stored, so a storage failure cannot lose it. */
   if (!saveInbox(list)) { snackbar("This device's storage is full, so a new order could not be kept. It stays on the order service for about 12 hours: free some space, then reopen Orders."); return false; }
@@ -1185,7 +1203,7 @@ function viewConfirm() {
     if (!found.error) { try { localStorage.setItem("hana.biz.phone", val("listing-phone")); } catch (e) { /* ignore */ } }
     return found;
   };
-  let found = null, stop = () => {}, failedAt = null, checkedAt = null, skipped = 0;
+  let found = null, stop = () => {}, failedAt = null, checkedAt = null, behind = false;
   async function draw() {
     if (!document.body.contains(inbox)) { stop(); return; }
     if (!found || found.error) found = await listing();
@@ -1197,11 +1215,12 @@ function viewConfirm() {
       h("nav", null, h("button", { type: "button", class: "border", on: { click: () => listen() } }, h("span", null, "Retry")))) : null;
     /* Many new orders at once may be made up. The tools cannot tell, so they say so plainly. */
     const lately = recentNew.filter((t) => t > Date.now() - 10 * 60000).length;
-    const flood = lately > FLOOD_AT || skipped || droppedNew ? notice("warn", h("p", { class: "bold flush" }, "Unusually many new orders"),
-      h("p", { class: "flush" }, (lately > FLOOD_AT ? lately + " new orders in the last 10 minutes. " : "") + (skipped ? skipped + " older messages were not read, to keep these tools quick; they were not checked and may include real orders. " : "") + (droppedNew ? droppedNew + " unanswered orders were removed because the inbox holds " + INBOX_MAX + ". Orders you have answered are always kept. " : "") + "Some may be made up. Check each one by phone before preparing it. If it continues, pause new orders and make a new order address under Connections."),
+    const flood = lately > FLOOD_AT || behind || droppedNew ? notice("warn", h("p", { class: "bold flush" }, "Unusually many new orders"),
+      h("p", { class: "flush" }, (lately > FLOOD_AT ? lately + " new orders in the last 10 minutes. " : "") + (behind ? "More messages are still waiting to be read; these tools read them in order, a batch every 30 seconds, and may include real orders. " : "") + (droppedNew ? droppedNew + " unanswered orders left the live inbox because it holds " + INBOX_MAX + "; they are kept in the order records under Backup. " : "") + "Some may be made up. Check each one by phone before preparing it. If it continues, pause new orders and make a new order address under Connections."),
       h("nav", null, h("a", { class: "button border", href: "#/connect" }, h("span", null, "Open Connections")))) : null;
     if (!list.length) { inbox.replaceChildren(...[fail, flood, failedAt ? null : h("p", { class: "muted" }, c.paused ? "No orders in the last 24 hours." : "No orders in the last 24 hours. New orders appear here by themselves, with a sound.")].filter(Boolean)); return; }
-    inbox.replaceChildren(...[fail, flood].filter(Boolean), ...list.map((o) => {
+    const recFail = typeof archiveFailed !== "undefined" && archiveFailed ? notice("warn", h("p", { class: "flush" }, "Some orders could not be copied to the order records on this device. Download a backup under Backup now, and free some space.")) : null;
+    inbox.replaceChildren(...[fail, flood, recFail].filter(Boolean), ...list.map((o) => {
       const body = h("div");
       const label = o.status === "cancelled" ? "cancelled by the customer" : o.status === "answered" ? "answered" : o.status === "accepted" ? STEP_TEXT[o.step || "accepted"].toLowerCase() : o.status === "done" ? "completed" : "new";
       const det = h("details", { class: "info-list", open: o.status === "new" },
@@ -1209,6 +1228,11 @@ function viewConfirm() {
           h("span", { class: "max" }, "Order " + o.code + ", " + clock(new Date(o.time * 1000).toTimeString().slice(0, 5)) + " (" + label + ")"), icon("expand_more")),
         body);
       if (o.status === "cancelled") body.replaceChildren(notice("warn", h("p", { class: "flush" }, "The customer cancelled this order. Do not prepare it.")));
+      else if (o.cancel_request) body.replaceChildren(notice("warn", h("p", { class: "bold flush" }, "A message asks to cancel this order"),
+        h("p", { class: "flush" }, "It is not verified: anyone who knows the order code could have sent it. Call the customer to check before you stop preparing it."),
+        h("nav", { class: "wrap" },
+          h("button", { type: "button", class: "border", on: { click: () => { const l = inboxOrders(); const x = l.find((y) => y.id === o.id); if (x) { x.status = "cancelled"; saveInbox(l); } draw(); } } }, h("span", null, "The customer confirmed: cancel it")),
+          h("button", { type: "button", class: "border", on: { click: () => { const l = inboxOrders(); const x = l.find((y) => y.id === o.id); if (x) { delete x.cancel_request; x.cancel_dismissed = true; saveInbox(l); } draw(); } } }, h("span", null, "Not from the customer: keep it")))));
       else if (o.reply && (o.status === "accepted" || o.status === "done")) body.replaceChildren(progressPanel(o, draw), bizChat(o, draw));
       else orderPanel(o.text, found, (label, eta) => {
         const l = inboxOrders(); const x = l.find((y) => y.id === o.id);
@@ -1223,15 +1247,24 @@ function viewConfirm() {
     if (!c.orders) return;
     const topics = followTopics(c.orders, inboxOrders());
     let failed = false;
-    skipped = 0;
+    behind = false;
     for (const t of topics) {
       try {
-        /* At most the newest 300 messages per address in one pass, so a flood cannot stall the tools. */
-        const msgs = await ntfyPoll(t, "12h");
-        skipped += Math.max(0, msgs.length - POLL_MAX);
-        for (const m of msgs.slice(-POLL_MAX)) await takeMessage(Object.assign({ topic: t.split("/").pop() }, m));
+        /* Each address is read from where the last pass stopped, at most 1 MB at a time and 4
+           times per pass, oldest first. Nothing is skipped: if more is waiting, the next pass
+           (in 30 seconds) carries on, and the notice says so. */
+        const since = store.get("hana.biz.since", {});
+        let from = since[t] || "12h";
+        for (let round = 0; round < POLL_ROUNDS; round++) {
+          const msgs = await ntfyPoll(t, from);
+          for (const m of msgs) await takeMessage(Object.assign({ topic: t.split("/").pop() }, m));
+          if (msgs.lastId) { from = msgs.lastId; const s2 = store.get("hana.biz.since", {}); s2[t] = from; store.set("hana.biz.since", s2); }
+          if (!msgs.truncated) break;
+          if (round === POLL_ROUNDS - 1) behind = true;
+        }
       } catch (e) { failed = true; }
     }
+    if (behind) setTimeout(() => { if (document.body.contains(inbox)) listen(); }, 30000);
     if (failed) failedAt = new Date(); else { failedAt = null; checkedAt = new Date(); }
     draw();
     stop = ntfyListen(topics, async (m) => {
@@ -1714,6 +1747,7 @@ function route() {
 
 applyIcon();
 startPresence();
+if (typeof pruneArchive === "function") pruneArchive();
 if (conn().push) enablePush(true);
 for (const i of document.querySelectorAll("i[data-icon]")) i.replaceWith(icon(i.getAttribute("data-icon")));
 window.addEventListener("hashchange", route);

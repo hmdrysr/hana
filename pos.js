@@ -6,11 +6,14 @@
 
 /* ---------------------------------------------------------------- local database */
 
+const POS_STORES = ["sales", "riders", "meta", "orders"];
 const POSDB = {
   open() {
     if (!this.p) this.p = new Promise((res, rej) => {
-      const r = indexedDB.open("hana-pos", 1);
-      r.onupgradeneeded = () => { for (const s of ["sales", "riders", "meta"]) r.result.createObjectStore(s, { keyPath: "id" }); };
+      /* Version 2 adds "orders" (the order record archive). Upgrading only adds missing stores,
+         so data kept by version 1 is untouched. */
+      const r = indexedDB.open("hana-pos", 2);
+      r.onupgradeneeded = () => { for (const s of POS_STORES) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s, { keyPath: "id" }); };
       r.onsuccess = () => res(r.result);
       r.onerror = () => rej(r.error);
     });
@@ -31,6 +34,50 @@ const POSDB = {
   raw(store, rec) { return this.tx(store, "readwrite", (s) => s.put(rec)); },
   del(store, id) { return this.tx(store, "readwrite", (s) => s.delete(id)); },
 };
+
+/* ---------------------------------------------------------------- order records
+
+   Every order the inbox takes in, and every change to it (confirmed, steps, chat, cancelled),
+   is copied here and kept for 12 months, the longest period in TERMS.md, section 5. The live
+   inbox shows the last day (a week for orders still open); this archive is the record. It is in
+   the backup file and can be downloaded on its own. The order's private key is not kept. */
+const ARCHIVE_MONTHS = 12;
+const archived = new Map();
+function archiveCopy(o) {
+  const c = Object.assign({}, o);
+  delete c.keyRaw;
+  return c;
+}
+/* One copy runs at a time; saves made meanwhile are merged into the next run, so a flood of
+   saves costs one run per batch, not one per save. */
+let archiveNext = null, archiveRun = null;
+function archiveOrders(list) {
+  archiveNext = new Map([...(archiveNext || new Map()), ...list.filter((o) => o && o.id).map((o) => [o.id, o])]);
+  if (!archiveRun) archiveRun = (async () => {
+    while (archiveNext) { const batch = [...archiveNext.values()]; archiveNext = null; await archiveBatch(batch); }
+    archiveRun = null;
+  })();
+  return archiveRun;
+}
+async function archiveBatch(list) {
+  if (!("indexedDB" in window)) return 0;
+  let n = 0;
+  for (const o of list) {
+    if (!o || !o.id) continue;
+    const c = archiveCopy(o), j = JSON.stringify(c);
+    if (archived.get(o.id) === j) continue;
+    try { await POSDB.put("orders", Object.assign(c, { received_at: c.received_at || new Date((o.time || 0) * 1000).toISOString() })); archived.set(o.id, j); n++; }
+    catch (e) { archiveFailed = true; }
+  }
+  return n;
+}
+let archiveFailed = false;
+async function pruneArchive() {
+  try {
+    const cut = new Date(); cut.setMonth(cut.getMonth() - ARCHIVE_MONTHS);
+    for (const r of await POSDB.all("orders")) if (r.received_at && new Date(r.received_at) < cut) await POSDB.del("orders", r.id);
+  } catch (e) { /* no database in this browser */ }
+}
 
 async function posProfile() {
   return Object.assign({ id: "profile", name: "", address: "", phone: "", bin: "", footer: "Thank you!", next: 1, auto_backup: false }, (await POSDB.get("meta", "profile")) || {});
@@ -344,7 +391,7 @@ function backupCfg() { return store.get("hana.biz.backup", { kind: "", url: "", 
 
 async function allRecords() {
   const out = [];
-  for (const st of ["sales", "riders", "meta"]) for (const r of await POSDB.all(st)) out.push({ id: st + ":" + r.id, store: st, updated: r.updated || "", data: r });
+  for (const st of POS_STORES) for (const r of await POSDB.all(st)) out.push({ id: st + ":" + r.id, store: st, updated: r.updated || "", data: r });
   return out;
 }
 async function mergeRecords(recs) {
@@ -450,7 +497,9 @@ async function viewBackup() {
     file,
     h("nav", { class: "wrap" },
       h("button", { type: "button", on: { click: async () => download("hana-pos-backup-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ format: "hana-pos-backup-1", exported: new Date().toISOString(), records: await allRecords() }, null, 1), "application/json") } }, icon("download"), h("span", null, "Download a backup")),
-      h("button", { type: "button", class: "border", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Restore from a file"))),
+      h("button", { type: "button", class: "border", on: { click: () => file.click() } }, icon("upload"), h("span", null, "Restore from a file")),
+      h("button", { type: "button", class: "border", on: { click: async () => { const rows = (await POSDB.all("orders")).sort((a, b) => String(b.received_at).localeCompare(String(a.received_at))); download("hana-order-records-" + new Date().toISOString().slice(0, 10) + ".json", JSON.stringify({ format: "hana-order-records-1", exported: new Date().toISOString(), orders: rows }, null, 1), "application/json"); } } }, icon("download"), h("span", null, "Download order records"))),
+    h("p", { class: "small-text muted" }, "Order records: every order received in Hana, with its confirmation, steps, messages and cancellation, is kept on this device for 12 months (the longest period in the terms) and is included in the backup file."),
     sectionTitle("Online backup (optional)"),
     h("p", { class: "small-text muted" }, "Use a service you control. For Supabase, create a table with: create table hana_backup (id text primary key, updated_at timestamptz, data jsonb); then enable row level security with a policy for your key. For CouchDB, create a database and allow this site in its CORS settings."),
     selectField("b-kind", "Service", kind),

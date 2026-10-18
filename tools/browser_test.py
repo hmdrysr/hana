@@ -512,7 +512,12 @@ with sync_playwright() as p:
             route.fulfill(status=200, content_type="application/json", body=json.dumps(msg))
         elif "/json" in path:
             topic = path.split("/json")[0]
-            route.fulfill(status=200, content_type="application/x-ndjson", body="".join(json.dumps(m) + "\n" for m in box.get(topic, [])))
+            msgs = box.get(topic, [])
+            since = re.search(r"since=([^&]+)", path)
+            ids = [m["id"] for m in msgs]
+            if since and since.group(1) in ids:
+                msgs = msgs[ids.index(since.group(1)) + 1:]
+            route.fulfill(status=200, content_type="application/x-ndjson", body="".join(json.dumps(m) + "\n" for m in msgs))
         else:
             route.fulfill(status=404, body="")
     dctx = browser.new_context(viewport={"width": 360, "height": 800})
@@ -617,6 +622,8 @@ with sync_playwright() as p:
         out.chat2 = await takeMessage({ id: "c2", time: now, message: chat, topic });
         out.chats = inboxOrders().find((x) => x.code === "RPA235").chat.length;
         const cancel = "HANA1R " + await dSeal(await aesFromRaw(o.keyRaw), { from: "c", t: "cancel", at: new Date().toISOString() });
+        out.plainCancel = await takeMessage({ id: "k0", time: now, message: "CANCEL RPA235", topic: "hana-intake0123456789" });
+        out.afterPlain = inboxOrders().find((x) => x.code === "RPA235").status;
         out.cancel1 = await takeMessage({ id: "k1", time: now, message: cancel, topic });
         out.cancel2 = await takeMessage({ id: "k2", time: now, message: cancel, topic });
         const t0 = performance.now();
@@ -631,6 +638,13 @@ with sync_playwright() as p:
     ok("a made-up order that names a reply address elsewhere is rejected", not intake["evilReply"], intake)
     ok("malformed, oversized and nested payloads are dropped without breaking the inbox", not intake["noCheck"] and not intake["badCode"] and not intake["huge"] and not intake["garbage"], intake)
     ok("a flood of made-up orders leaves the inbox bounded", intake["flood"][0] <= 200, intake["flood"])
+    ok("a plain CANCEL with a known code cannot change an order sent in Hana", not intake["plainCancel"] and intake["afterPlain"] == "new", intake)
+    plain = dp.evaluate("""async () => { const now = Math.floor(Date.now() / 1000);
+        const order = "Order PNB234 please\\nCHECK hana1 H=000000000000 Z=pickup I=x*1 S=0 F=0 C=00000000";
+        const a = await takeMessage({ id: "p1", time: now, message: order, topic: "hana-intake0123456789" });
+        const b = await takeMessage({ id: "p2", time: now, message: "CANCEL PNB234", topic: "hana-intake0123456789" });
+        const o = inboxOrders().find((x) => x.code === "PNB234"); return [a, b, o.status, !!o.cancel_request]; }""")
+    ok("for a plain order, a plain CANCEL is shown as an unverified request, not applied", plain == [True, True, "new", True], plain)
     ok("a customer message or cancellation posted again has no second effect", intake["chat1"] and not intake["chat2"] and intake["chats"] == 1 and intake["cancel1"] and not intake["cancel2"], intake)
     edges = dp.evaluate("""() => { const now = Date.now(), r = Math.floor(now / 1000), iso = (ms) => new Date(ms).toISOString();
         return { legacy: orderAgeOk(undefined, r), legacyNoRelay: orderAgeOk(undefined, 0), noRelay: orderAgeOk(iso(now), undefined), zeroRelay: orderAgeOk(iso(now), 0),
@@ -701,7 +715,48 @@ with sync_playwright() as p:
     ok("with the inbox full of orders being prepared and storage failing, the new order is not lost: it is taken in once storage works", not hard["fullAndFailing"] and hard["fullThenWorks"] and hard["fullKeepsNew"], hard)
     ok("with more than 29 open orders, the new address and the 29 orders being prepared are followed; the old address is not", hard["topics"] == [30, "https://ntfy.sh/hana-new0123456789", True, False], hard["topics"])
     ok("after a flood, a genuine new order is still taken in at the top, and removed unanswered orders are counted", hard["genuineAfterFlood"] and hard["dropped"] > 0, hard)
+    keep = dp.evaluate("""async () => {
+        const now = Math.floor(Date.now() / 1000);
+        const mk = (i, t, step) => ({ id: "k" + i, time: t, code: "K" + String(i).padStart(5, "0"), text: "", reply: "", status: "accepted", step });
+        const list = [mk(0, now - 30 * 3600, "accepted"), mk(1, now - 30 * 3600, "delivered")].concat(Array.from({ length: 205 }, (_, i) => mk(i + 2, now - 60, "delivered")));
+        list.sort((a, b) => b.time - a.time);
+        localStorage.setItem("hana.biz.inbox", "[]"); saveInbox(list);
+        const live = inboxOrders();
+        while (archiveRun) await archiveRun;
+        const recs = await POSDB.all("orders");
+        return { openKept: live.some((o) => o.code === "K00000"), oldFinishedGone: !live.some((o) => o.code === "K00001"), finishedTrimmed: live.length,
+          archivedAll: ["K00000", "K00001", "K00206"].every((c) => recs.some((r) => r.code === c)), floodArchived: recs.filter((r) => /^B\\d{5}$/.test(r.code)).length,
+          noKeys: recs.every((r) => !("keyRaw" in r)), inBackup: (await allRecords()).some((r) => r.store === "orders") }; }""")
+    ok("an open order older than 24 hours stays in the live inbox, ahead of 205 finished ones; finished orders older than a day leave it", keep["openKept"] and keep["oldFinishedGone"] and keep["finishedTrimmed"] <= 220, keep)
+    ok("every order, including those trimmed from the live inbox and the 2,000 flood orders, is in the order records, without private keys, and in the backup", keep["archivedAll"] and keep["floodArchived"] == 2000 and keep["noKeys"] and keep["inBackup"], keep)
+    other = dctx.new_page()
+    other.goto(BIZ + "#/")
+    other.wait_for_selector(".page-title")
+    after = other.evaluate("async () => (await POSDB.all('orders')).some((r) => r.code === 'K00000')")
+    other.close()
+    ok("the order records are there when the business tools are opened again", after)
     print("      measured: 2,000 orders taken in in %d ms; inbox and duplicate record use %d KB" % (hard["ms"], hard["bytes"] // 1024))
+    pflood = "hana-pflood0123456789-online"
+    box[pflood] = [{"id": "pf%04d" % i, "time": int(datetime.now().timestamp()), "event": "message", "topic": pflood, "message": "x" * 1000} for i in range(400)]
+    pf = dp.evaluate("async () => (await presence({ topic: 'https://ntfy.sh/hana-pflood0123456789' }, [B.key.publicB64])).state")
+    ok("a presence address flooded beyond what is read is shown as could not check, not as offline", pf == "unknown", pf)
+    # A very large relay answer: 5,000 messages (about 8 MB) on one address.
+    big = "hana-big0123456789"
+    filler = "x" * 1500
+    box[big] = [{"id": "g%05d" % i, "time": int(datetime.now().timestamp()), "event": "message", "topic": big, "message": filler} for i in range(5000)]
+    bigres = dp.evaluate("""async (t) => { const t0 = performance.now(); let from = "12h", total = 0, rounds = 0, maxOne = 0; const ids = new Set();
+        for (;;) { const m = await ntfyPoll("https://ntfy.sh/" + t, from); rounds++; total += m.length; maxOne = Math.max(maxOne, m.length); m.forEach((x) => ids.add(x.id)); if (m.lastId) from = m.lastId; if (!m.truncated) break; if (rounds > 50) break; }
+        return { total, unique: ids.size, rounds, maxOne, ms: Math.round(performance.now() - t0), heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null }; }""", big)
+    ok("a very large relay answer is read at most 1 MB at a time, in order, continuing from the last message: nothing lost or repeated", bigres["total"] == 5000 and bigres["unique"] == 5000 and bigres["maxOne"] < 700 and bigres["rounds"] > 5, bigres)
+    print("      measured: 5,000 messages (about 8 MB) read in %d passes of at most %d messages, %d ms in all, JS heap %s MB" % (bigres["rounds"], bigres["maxOne"], bigres["ms"], bigres["heap"]))
+    dp.evaluate("""(t) => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/" + t })); localStorage.setItem("hana.biz.phone", "+8801729298282"); localStorage.removeItem("hana.biz.since"); }""", big)
+    dp.goto(BIZ + "#/")
+    dp.goto(BIZ + "#/confirm")
+    dp.wait_for_selector("text=More messages are still waiting", timeout=20000)
+    since_now = dp.evaluate("JSON.parse(localStorage.getItem('hana.biz.since'))['https://ntfy.sh/hana-big0123456789']")
+    ok("when a flood is bigger than one pass, the inbox says more messages are waiting and remembers where it stopped", since_now and since_now.startswith("g") and int(since_now[1:]) > 1000, since_now)
+    dp.goto(BIZ + "#/")
+    dp.wait_for_selector(".page-title")
     dp.evaluate("""() => { localStorage.setItem("hana.biz.connections", JSON.stringify({ orders: "https://ntfy.sh/hana-down0123456789" })); localStorage.setItem("hana.biz.phone", "+8801729298282"); localStorage.removeItem("hana.biz.inbox"); }""")
     dp.goto(BIZ + "#/confirm")
     dp.wait_for_timeout(1500)
@@ -864,9 +919,11 @@ with sync_playwright() as p:
             return route.abort()
         if req.method == "POST" and path.strip("/") == "hana-e2e0123456789":
             if relay["mode"] == "refuse":
-                return route.fulfill(status=500, body="")
+                return route.fulfill(status=429, body="")
             msg = {"id": "e" + str(sum(len(v) for v in box.values()) + 1), "time": int(datetime.now().timestamp()), "event": "message", "topic": "hana-e2e0123456789", "message": req.post_data}
             box.setdefault("hana-e2e0123456789", []).append(msg)
+            if relay["mode"] == "store500":
+                return route.fulfill(status=500, body="")
             return route.abort() if relay["mode"] == "lose" else route.fulfill(status=200, content_type="application/json", body=json.dumps(msg))
         fake_ntfy(route)
     ectx = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")
@@ -976,7 +1033,25 @@ with sync_playwright() as p:
     ep.locator("article:has-text('" + code2 + "') button:has-text('Cancel')").first.click()
     ep.click("#dialog-ok")
     ep.wait_for_timeout(800)
-    ok("a cancellation that was sent is not described as read by the business", ["cancelled"] == [x[1] for x in saved() if x[0] == code2] and "cannot confirm the business has read it" in ep.inner_text("#snackbar"), [saved(), ep.inner_text("#snackbar")])
+    ok("a cancellation that was sent is shown as not yet acknowledged, not as read by the business", ["cancelled"] == [x[1] for x in saved() if x[0] == code2] and "not yet acknowledged" in ep.inner_text("#snackbar"), [saved(), ep.inner_text("#snackbar")])
+    ep.goto(BASE + "#/basket")
+    ep.wait_for_selector("#zone")
+    fill_details()
+    n_before = len(posts())
+    send()
+    ep.wait_for_timeout(800)
+    ok("until the business acknowledges the cancellation, a new order to it waits", "has not been acknowledged by the business yet" in ep.inner_text("main") and len(posts()) == n_before, ep.inner_text("main")[-300:])
+    rec2 = ep.evaluate("(c) => JSON.parse(localStorage.getItem('hana.orders')).find((o) => o.code === c)", code2)
+    forged = ep.evaluate("""async ([rec]) => { await postSealed(rec.order_topic, rec.order_key, { from: "b", t: "cancel_ack", code: rec.code, at: new Date().toISOString() }); }""", [rec2])
+    ep.goto(BASE + "#/orders")
+    ep.wait_for_timeout(16500)
+    ok("an unsigned acknowledgement is ignored", ep.evaluate("(c) => !!JSON.parse(localStorage.getItem('hana.orders')).find((o) => o.code === c).cancel_unacked", code2))
+    ep.evaluate("""async ([jwk, rec]) => { await postSealed(rec.order_topic, rec.order_key, await signUpdate(jwk, rec.code, { from: "b", t: "cancel_ack", code: rec.code, at: new Date().toISOString() })); }""", [sk_jwk, rec2])
+    for _ in range(40):
+        ep.wait_for_timeout(500)
+        if not ep.evaluate("(c) => !!JSON.parse(localStorage.getItem('hana.orders')).find((o) => o.code === c).cancel_unacked", code2):
+            break
+    ok("a signed acknowledgement from the business clears it", "acknowledged the cancellation" in ep.inner_text("main"), ep.inner_text("main")[:300])
     ep.goto(BASE + "#/basket")
     ep.wait_for_selector("#zone")
     fill_details()
@@ -989,7 +1064,56 @@ with sync_playwright() as p:
     relay["mode"] = "refuse"
     send()
     ep.wait_for_selector("text=was not sent", timeout=5000)
-    ok("when the order service refuses an order, the customer is told it was not sent and no record is kept", "refused it (500)" in ep.inner_text("main") and "Nothing reached the business" in ep.inner_text("main") and len(saved()) == 3, ep.inner_text("main")[:300])
+    ok("when the order service refuses an order (429), the customer is told it was not sent and no record is kept", "refused it (429)" in ep.inner_text("main") and "Nothing reached the business" in ep.inner_text("main") and len(saved()) == 3, ep.inner_text("main")[:300])
+    # 3b. A server error after the relay stored the order is uncertain, not "not sent".
+    checkout(1)
+    relay["mode"] = "store500"
+    n0 = len(posts())
+    send()
+    ep.wait_for_url("**#/orders", timeout=5000)
+    ep.wait_for_selector("text=Sending not confirmed", timeout=5000)
+    ok("a server error (500) after the relay kept the order is reported as not confirmed, never as nothing reached the business", len(posts()) == n0 + 1 and saved()[0][2] and "Nothing reached the business" not in ep.inner_text("main"), saved()[:2])
+    # 3c. A slow relay: repeated taps during a 5-second send make one order.
+    checkout(1)
+    relay["mode"] = "ok"
+    n0 = len(posts())
+    ep.evaluate("""() => { const f = window.fetch; window.fetch = (u, o) => (o && o.method === "POST" && String(u).includes("hana-e2e")) ? new Promise((r) => setTimeout(r, 5000)).then(() => f(u, o)) : f(u, o); }""")
+    ep.wait_for_timeout(2100)
+    ep.click("button[type=submit]")
+    for _ in range(6):
+        ep.wait_for_timeout(600)
+        ep.evaluate("() => { const f = document.querySelector('form'); if (f) f.requestSubmit(); }")
+    disabled = ep.evaluate("() => { const b = document.querySelector('button[type=submit]'); return b ? b.disabled : null; }")
+    ep.wait_for_url("**#/orders", timeout=10000)
+    ep.wait_for_timeout(500)
+    ok("during a 5-second send, the Send button is disabled and repeated taps make exactly one order", disabled is True and len(posts()) == n0 + 1 and len([x for x in saved() if x[1] == "awaiting"]) >= 1, [disabled, len(posts()) - n0])
+    # 3d. Storage fails after the relay took the order: the record saved before sending survives.
+    ep.reload()
+    checkout(1)
+    ep.evaluate("""() => { const real = Storage.prototype.setItem; let n = 0; Storage.prototype.setItem = function (k, v) { if (k === "hana.orders" && ++n === 2) throw new Error("QuotaExceededError"); return real.call(this, k, v); }; }""")
+    n0 = len(posts())
+    send()
+    ep.wait_for_url("**#/orders", timeout=5000)
+    ep.reload()
+    ep.wait_for_selector("h2.card-title")
+    rec4 = ep.evaluate("JSON.parse(localStorage.getItem('hana.orders'))[0]")
+    ok("when storage fails after the relay took the order, the order is still on the phone after a reload, with its reply channel", len(posts()) == n0 + 1 and rec4["uncertain"] and rec4["envelope"] == posts()[-1] and rec4["order_topic"] and rec4["order_key"], {k: rec4.get(k) for k in ("code", "status", "uncertain")})
+    ep.evaluate("""async ([jwk, rec]) => { const m = await signUpdate(jwk, rec.code, { from: "b", t: "chat", text: "We have your order.", at: new Date().toISOString() }); await postSealed(rec.order_topic, rec.order_key, m); }""", [sk_jwk, rec4])
+    ep.goto(BASE + "#/")
+    ep.goto(BASE + "#/orders")
+    for _ in range(40):
+        ep.wait_for_timeout(500)
+        rec4b = ep.evaluate("JSON.parse(localStorage.getItem('hana.orders'))[0]")
+        if rec4b.get("chat"):
+            break
+    ok("that recovered order still receives the business's signed reply, which also clears sending not confirmed", not rec4b.get("uncertain") and any("We have your order." in (c.get("text") or "") for c in rec4b.get("chat") or []), {k: rec4b.get(k) for k in ("uncertain", "chat")})
+    checkout(1)
+    ep.evaluate("""() => { const real = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === "hana.orders") throw new Error("QuotaExceededError"); return real.call(this, k, v); }; }""")
+    n0 = len(posts())
+    send()
+    ep.wait_for_selector("text=could not be saved here, and it was not sent", timeout=5000)
+    ok("when the order cannot be saved on the phone first, nothing is sent", len(posts()) == n0, len(posts()) - n0)
+    ep.reload()
     # 4. The business: copies at the same moment, the earlier uncertain order arriving late, and its cancellation.
     ep.goto(BIZ + "#/")
     ep.wait_for_selector(".page-title")
@@ -1001,7 +1125,8 @@ with sync_playwright() as p:
         for (const m of extra) await takeMessage(m);
         return [r.filter(Boolean).length, inboxOrders().map((o) => o.code).sort(), inboxOrders().filter((o) => o.status === "cancelled").map((o) => o.code)]; }""",
         [enc_priv, E2E, msgs, [dict(m, topic=m["topic"]) for m in replies()]])
-    ok("the business takes in each order once (copies arriving together included) and sees the late order's cancellation", took[0] == 3 and took[1] == sorted([code, code2, code3]) and code2 in took[2], [took, len(msgs)])
+    distinct = len(set(m["message"] for m in msgs))
+    ok("the business takes in each order once (copies arriving together included) and sees the late order's cancellation", took[0] == distinct and len(took[1]) == distinct and all(x in took[1] for x in (code, code2, code3)) and code2 in took[2], [took, distinct, len(msgs)])
     ectx.close()
     # Business sign-in: a recovery phrase and a passkey unlock the key from vault.json.
     vctx = browser.new_context(viewport={"width": 360, "height": 800}, service_workers="block")

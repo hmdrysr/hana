@@ -1092,13 +1092,10 @@ function viewBasket() {
     h("input", { type: "radio", name: "channel", value: String(i), checked: c.preferred || (i === 0 && !anyPreferred) }),
     h("span", null, CHANNELS[c.app].label + (c.app === "hana" || c.app === "demo" ? "" : c.app === "endpoint" ? " (" + contactText(c.app, c.id) + ")" : " · " + contactText(c.app, c.id)))));
 
+  /* One order per tap: the lock and the disabled Send button last until the whole send has
+     finished, however slow the connection, so a second tap cannot make a second order. */
   let sending = false;
-  const form = h("form", { novalidate: true, on: { submit: async (e) => {
-    e.preventDefault();
-    /* One order per tap: repeated taps while it is being prepared are ignored. */
-    if (sending) return;
-    sending = true;
-    setTimeout(() => { sending = false; }, 2000);
+  const submitOrder = async () => {
     const errors = [];
     const z = deliveryZone();
     if (b.mode === "delivery" && liveOf(r.id).pickup_only) errors.push("This business is taking pickup orders only right now.");
@@ -1116,6 +1113,10 @@ function viewBasket() {
     if (os.closed && os.canOrder && !when.value) errors.push("Choose a time for your scheduled order.");
     const waiting = store.get("hana.orders", []).filter((x) => x.status === "awaiting" && !x.informal && !x.demo);
     if (waiting.some((x) => x.restaurant_id === r.id)) errors.push("You already have an order waiting for this business's reply. Wait for it, or cancel it on the Orders page.");
+    /* A cancellation the business has not acknowledged may not have been seen: until it is, or
+       until the earlier order would have expired anyway, a new order to the same business waits. */
+    const unacked = store.get("hana.orders", []).find((x) => x.restaurant_id === r.id && x.status === "cancelled" && x.cancel_unacked && Date.now() < cancelHold(x));
+    if (unacked) errors.push("Your cancellation of order " + unacked.code + " has not been acknowledged by the business yet. To avoid two orders, wait until " + clockAt(new Date(cancelHold(unacked))) + ", or call the business to check first.");
     else if (waiting.length >= 3) errors.push("You have three orders waiting for replies. Wait for them, or cancel one, before placing another.");
     if (errors.length) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, errors.join(" ")))); return; }
     store.set("hana.me", remember.checked ? { name: name.value.trim(), address: address.value.trim(), phone: phone.value.trim() } : { name: "", address: "", phone: "" });
@@ -1127,6 +1128,21 @@ function viewBasket() {
     let sentDirect = false, directError = "", uncertain = false;
     let sealedInfo = null;
     let orderKey = null;
+    /* The order record, as kept on this phone. For an order sent in Hana it is saved before
+       anything is sent (marked "sending not confirmed", with the exact sealed order), so if the
+       page closes or storage fails after the relay took it, the order can still be tracked and
+       sent again. */
+    const created = new Date().toISOString();
+    const windowStart = os.closed && os.next ? os.next.toISOString() : created;
+    const record = () => ({ code: o.code, status: "awaiting", created, restaurant_id: r.id, restaurant: menu.name,
+      claimed: menu.claimed === true && !!(menu.owner && menu.owner.public_key), public_key: menu.owner && menu.owner.public_key ? menu.owner.public_key : null, staff_keys: ((menu.owner && menu.owner.staff) || []).map((x) => x.public_key).filter(Boolean),
+      menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
+      items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price, note: (b.notes && b.notes[k]) || undefined })), subtotal: o.sub, fee: o.fee,
+      message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
+      window_start: windowStart, scheduled, business_phone: menu.demo === true ? null : menu.business_phone, informal: menu.claimed !== true && menu.demo !== true, demo: menu.demo === true || undefined,
+      order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, sign_key: sealedInfo && orderKey ? orderKey.jwk : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
+      arrive_at: b.mode === "pickup" || menu.demo === true ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
+      feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
     if (c.app === "hana") {
       /* A retry of the same order resends the same sealed message with the same code, so if the
          first attempt did reach the business, it still sees one order. */
@@ -1141,10 +1157,17 @@ function viewBasket() {
       else { state.pendingSend = null; store.set("hana.pending", null); orderKey = await makeOrderKey(); }
       try {
         if (!sealedInfo) sealedInfo = await sealOrder(menu.direct, { message: o.message, code: o.code, cpub: orderKey ? orderKey.pub : null, sealed_at: new Date().toISOString() });
-        state.pendingSend = { fp, o, orderKey, sealedInfo, at: again ? again.at : Date.now() };
-        store.set("hana.pending", state.pendingSend);
-        await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true;
-      } catch (err) { directError = err; }
+      } catch (err) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be prepared in this browser, so nothing was sent. " + err.message))); return; }
+      state.pendingSend = { fp, o, orderKey, sealedInfo, at: again ? again.at : Date.now() };
+      store.set("hana.pending", state.pendingSend);
+      /* The record goes onto the phone first. If it cannot be saved, nothing is sent: an order
+         the customer could not track is worse than no order. */
+      const draft = Object.assign(record(), { uncertain: true, envelope: sealedInfo.envelope });
+      if (!store.set("hana.orders", [draft].concat(store.get("hana.orders", []).filter((x) => x.code !== o.code)).slice(0, 50))) {
+        out.replaceChildren(notice("warn", h("p", { class: "bold flush" }, "Order " + o.code + " was not sent"), h("p", { class: "flush" }, "This phone's browser storage is full or blocked, so the order could not be saved here, and it was not sent. Free some space (Settings, Download your data, then clear old orders) and try again.")));
+        return;
+      }
+      try { await ntfyPost(c.id, sealedInfo.envelope); sentDirect = true; } catch (err) { directError = err; }
       /* Three outcomes, said precisely: sent; not sent (the relay refused it, so the customer
          may send again or another way); uncertain (the connection dropped, so it may have
          arrived). An uncertain order is kept as an order record, marked "sending not
@@ -1152,6 +1175,7 @@ function viewBasket() {
          made for this business until it is resent, confirmed or cancelled. */
       uncertain = !sentDirect && (!directError || directError.uncertain === true);
       if (!sentDirect && !uncertain) {
+        store.set("hana.orders", store.get("hana.orders", []).filter((x) => x.code !== o.code));
         out.replaceChildren(notice("warn", h("p", { class: "bold flush" }, "Order " + o.code + " was not sent"), h("p", { class: "flush" }, (directError.message || "") + " Nothing reached the business. Tap Send to try again, or choose another way to send it.")));
         return;
       }
@@ -1163,19 +1187,11 @@ function viewBasket() {
       if (!sentDirect) { out.replaceChildren(notice("warn", h("p", { class: "flush" }, "The order could not be sent directly. " + directError + " Choose another way to send it."))); return; }
     }
     const link = ch.direct ? null : ch.link(c.id, o.message, o.code);
-    const created = new Date().toISOString();
-    const windowStart = os.closed && os.next ? os.next.toISOString() : created;
     const orders = store.get("hana.orders", []);
-    orders.unshift({ code: o.code, status: "awaiting", created, restaurant_id: r.id, restaurant: menu.name,
-      claimed: menu.claimed === true && !!(menu.owner && menu.owner.public_key), public_key: menu.owner && menu.owner.public_key ? menu.owner.public_key : null, staff_keys: ((menu.owner && menu.owner.staff) || []).map((x) => x.public_key).filter(Boolean),
-      menu_hash: r.hash, menu_version: menu.version, mode: b.mode, zone: b.zone, ward: b.ward,
-      items: o.keys.map((k) => ({ key: k, label: prices[k].label, qty: b.lines[k], price: prices[k].price, note: (b.notes && b.notes[k]) || undefined })), subtotal: o.sub, fee: o.fee,
-      message: o.message, check_line: o.check, channel: c.app, channel_id: c.id, menu_file: r.raw,
-      window_start: windowStart, scheduled, business_phone: menu.demo === true ? null : menu.business_phone, informal: menu.claimed !== true && menu.demo !== true, demo: menu.demo === true || undefined,
-      uncertain: uncertain || undefined, envelope: uncertain ? sealedInfo.envelope : undefined,
-      order_topic: sealedInfo ? sealedInfo.orderTopic : null, order_key: sealedInfo ? sealedInfo.key : null, sign_key: sealedInfo && orderKey ? orderKey.jwk : null, eta_min: z && z.eta_min !== undefined ? z.eta_min : null,
-      arrive_at: b.mode === "pickup" || menu.demo === true ? null : scheduled ? new Date(scheduled).toISOString() : arrivalMinutes(z) ? new Date(new Date(windowStart).getTime() + arrivalMinutes(z) * 60000).toISOString() : null,
-      feed: menu.claimed === true && menu.confirmation_feed ? menu.confirmation_feed : null });
+    let rec = null;
+    if (c.app === "hana") rec = orders.find((x) => x.code === o.code) || null;
+    if (!rec) { rec = record(); orders.unshift(rec); }
+    if (uncertain) Object.assign(rec, { uncertain: true, envelope: sealedInfo.envelope }); else { delete rec.uncertain; delete rec.envelope; }
     const savedOk = store.set("hana.orders", orders.slice(0, 50));
     log("Prepared order " + o.code + " for " + menu.name + (sentDirect ? "; sent directly to the business." : "."));
     state.basket = null; saveBasket();
@@ -1186,7 +1202,7 @@ function viewBasket() {
     state.justPlaced = menu.demo === true ? { code: o.code, nodes: [] } : { code: o.code, nodes: [
       h("h2", { class: "section-title" }, uncertain ? "Order " + o.code + ": sending not confirmed" : sentDirect ? "Order " + o.code + " sent" : "Order " + o.code + ": send it now"),
       uncertain ? notice("warn", h("p", { class: "flush" }, "The connection dropped before the order service answered, so the order may or may not have reached " + menu.name + ". Use Send again below: it is the same order " + o.code + ", so it cannot arrive twice. If you would rather not wait, cancel it before ordering again.")) : null,
-      savedOk ? null : notice("warn", h("p", { class: "flush" }, "This phone could not save a copy of the order. Copy the message below to keep a record.")),
+      savedOk ? null : c.app === "hana" ? notice("warn", h("p", { class: "flush" }, "This phone could not update its record of the order, so it may still show as sending not confirmed. Sending it again is safe: it is the same order.")) : notice("warn", h("p", { class: "flush" }, "This phone could not save a copy of the order. Copy the message below to keep a record.")),
       uncertain ? null : h("p", null, sentDirect ? "Your order went straight to " + menu.name + "." : (ch.prefill ? "Your app opens with the message ready. Press send there." : "Copy the message, open " + ch.label + " and send it to " + contactText(c.app, c.id) + ".")),
       h("p", null, menu.name + " has " + win + " minutes to confirm" + (windowStart !== created ? " once it opens (" + whenText(new Date(windowStart)) + ")" : "") + ". If it does not, the order is cancelled automatically."),
       h("pre", null, o.message),
@@ -1195,6 +1211,15 @@ function viewBasket() {
         h("button", { type: "button", class: "border", on: { click: () => copy(o.message) } }, icon("content_copy"), h("span", null, "Copy message")))].filter(Boolean) };
     form.remove();
     location.hash = "#/orders";
+  };
+  const form = h("form", { novalidate: true, on: { submit: async (e) => {
+    e.preventDefault();
+    if (sending) return;
+    sending = true;
+    const sb = form.querySelector("button[type=submit]");
+    if (sb) sb.disabled = true;
+    try { await submitOrder(); }
+    finally { sending = false; if (sb) sb.disabled = false; }
   } } },
     sectionTitle("Checkout"),
     whenBox,
@@ -1400,6 +1425,12 @@ function complaintText(o) {
     "", "Description of the problem:", "", "Amount in dispute (BDT):", ""].join("\n");
 }
 
+/* Until when an unacknowledged cancellation holds back a new order to the same business: the
+   later of the earlier order's confirmation deadline and 15 minutes after cancelling. */
+function cancelHold(o) {
+  const win = (Number(state.rules.confirmation_window_minutes) || 15) * 60000;
+  return Math.max(new Date(o.window_start || o.created).getTime() + win, new Date(o.closed_at || o.created).getTime() + win);
+}
 function orderCard(o, orders) {
   const st = STATUS_TEXT[o.status] || [o.status, "info"];
   const out = h("div", { "aria-live": "polite" });
@@ -1414,6 +1445,9 @@ function orderCard(o, orders) {
   const win = Number(state.rules.confirmation_window_minutes) || 15;
   /* Sending was not confirmed: the order may or may not have reached the business. Send again
      reposts the identical sealed order, so it cannot arrive twice. */
+  if (o.status === "cancelled" && o.cancel_unacked) kids.splice(1, 0, notice("warn", h("p", { class: "bold flush" }, "Cancellation sent, not yet acknowledged"),
+    h("p", { class: "flush" }, "Hana cannot confirm the business has seen it. " + (Date.now() < cancelHold(o) ? "A new order to this business waits until " + clockAt(new Date(cancelHold(o))) + " or until the business acknowledges it. " : "") + "If it matters, call the business.")));
+  if (o.status === "cancelled" && o.cancel_acked_at) kids.splice(1, 0, notice("ok", h("p", { class: "flush" }, "The business acknowledged the cancellation.")));
   if (o.uncertain && o.envelope && o.status === "awaiting") kids.splice(1, 0, notice("warn", h("p", { class: "bold flush" }, "Sending not confirmed"),
     h("p", { class: "flush" }, "The connection dropped while this order was being sent, so it may or may not have reached the business. Send again: it is the same order, so it cannot arrive twice. Or cancel it."),
     h("nav", null, h("button", { type: "button", "data-role": "resend", on: { click: async (e) => {
@@ -1477,7 +1511,7 @@ function orderCard(o, orders) {
     const how = ch && ch.direct ? "The cancellation is sent to the business automatically." : "Your messaging app opens with the cancellation filled in; send it in the same chat as the order.";
     if (!(await ask("Cancel order " + o.code + "?", "You can cancel within " + win + " minutes of ordering. " + how, "Cancel order"))) return;
     const text = "Hello, I'd like to cancel order " + o.code + ", please. Sorry for the trouble, and thank you.\nCANCEL " + o.code;
-    if (o.channel === "hana" && o.order_topic) { try { await postSealed(o.order_topic, o.order_key, await customerUpdate(o, { t: "cancel", code: o.code })); snackbar("Cancellation sent. Hana cannot confirm the business has read it; if it calls, say the order is cancelled."); } catch (e) { snackbar("Could not send the cancellation. Check your connection and try again."); return; } }
+    if (o.channel === "hana" && o.order_topic) { try { await postSealed(o.order_topic, o.order_key, await customerUpdate(o, { t: "cancel", code: o.code })); o.cancel_unacked = true; snackbar("Cancellation sent. It is not yet acknowledged by the business."); } catch (e) { snackbar("Could not send the cancellation. Check your connection and try again."); return; } }
     else if (ch && ch.direct) { try { await sendDirect(o.channel_id, text); snackbar("Cancellation sent to the business."); } catch (e) { copy(text); snackbar("Could not send it directly. The cancellation was copied; send it to the business."); } }
     else if (ch && o.channel_id) { if (!ch.prefill) copy(text); window.open(ch.link(o.channel_id, text, o.code), "_blank", "noopener"); }
     else copy(text);
@@ -1575,7 +1609,7 @@ async function pollFeeds() {
   }
   /* Orders sent in Hana: replies arrive sealed on the order's own topic. */
   let note = "";
-  for (const o of orders.filter((x) => x.order_topic && x.order_key && (x.status === "awaiting" || x.status.startsWith("confirmed")))) {
+  for (const o of orders.filter((x) => x.order_topic && x.order_key && (x.status === "awaiting" || x.status.startsWith("confirmed") || (x.status === "cancelled" && x.cancel_unacked)))) {
     try {
       for (const m of await readSealed(o.order_topic, o.order_key, "24h")) {
         if (m.from !== "b" || (o.seen_msgs || []).includes(m.id)) continue;
@@ -1595,6 +1629,10 @@ async function pollFeeds() {
           Object.assign(o, { status: "declined", closed_at: new Date().toISOString() }); note = "The business declined your order.";
         } else if (m.t === "status") {
           o.progress = (o.progress || []).concat({ step: m.step, at: m.at, text: m.text || "", rider: m.rider || null, verified, signed }); note = "Order update: " + (m.text || m.step) + ".";
+        } else if (m.t === "cancel_ack") {
+          /* Only a signed acknowledgement counts. */
+          if (verified !== true || !o.cancel_unacked) continue;
+          delete o.cancel_unacked; o.cancel_acked_at = m.at || new Date().toISOString();
         } else if (m.t === "chat") {
           o.chat = (o.chat || []).concat({ from: "b", text: String(m.text || "").slice(0, 500), at: m.at, verified, signed }); note = "New message from the business.";
         } else continue;

@@ -82,13 +82,49 @@ async function ntfyPost(topic, text) {
   let r;
   try { r = await fetch(topic, { method: "POST", body: text, cache: "no-store" }); }
   catch (e) { const err = new Error("The connection dropped."); err.uncertain = true; throw err; }
-  if (!r.ok) throw new Error("The order service refused it (" + r.status + ").");
+  /* Only answers that mean the message was not stored count as refused: a malformed request,
+     too large, or too many messages (ntfy's 4xx answers). A server error (5xx) or a timeout
+     (408) may come after the message was stored, so it is uncertain. */
+  if (!r.ok) {
+    const err = new Error(r.status >= 500 || r.status === 408 ? "The order service had an error (" + r.status + ") and may or may not have kept it." : "The order service refused it (" + r.status + ").");
+    if (r.status >= 500 || r.status === 408) err.uncertain = true;
+    throw err;
+  }
 }
-async function ntfyPoll(topic, since) {
+/* Reads cached messages, oldest first, but never more than maxBytes of the answer (1 MB by
+   default): the stream is read piece by piece and closed at the limit, so a flooded topic
+   cannot make a phone download or parse everything. The result is an array of messages with
+   .truncated (stopped at the limit) and .lastId (the last message read, to continue from with
+   since=<id>). ntfy has no count limit of its own. */
+const POLL_BYTES = 1048576;
+async function ntfyPoll(topic, since, maxBytes) {
+  const cap = maxBytes || POLL_BYTES;
   const r = await fetch(topic.replace(/\/$/, "") + "/json?poll=1&since=" + encodeURIComponent(since || "12h"), { cache: "no-store" });
   if (!r.ok) throw new Error("The order service answered " + r.status + ".");
-  return (await r.text()).split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
-    .filter((m) => m && m.event === "message");
+  const out = [];
+  let truncated = false, bytes = 0, rest = "";
+  const take = (line) => { if (!line) return; try { const m = JSON.parse(line); if (m && m.event === "message") out.push(m); } catch (e) { /* a broken line */ } };
+  if (r.body && r.body.getReader) {
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    /* The limit is counted line by line, so one large network chunk cannot carry past it. */
+    reading: for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const lines = (rest + dec.decode(value, { stream: true })).split("\n");
+      rest = lines.pop();
+      for (const line of lines) {
+        if (bytes + line.length > cap) { truncated = true; try { await reader.cancel(); } catch (e) { /* ignore */ } break reading; }
+        bytes += line.length + 1;
+        take(line);
+      }
+    }
+    if (!truncated && rest) { if (bytes + rest.length > cap) truncated = true; else take(rest); }
+  } else {
+    for (const line of (await r.text()).split("\n")) { if (bytes + line.length > cap) { truncated = true; break; } bytes += line.length + 1; take(line); }
+  }
+  out.truncated = truncated;
+  out.lastId = out.length ? out[out.length - 1].id : null;
+  return out;
 }
 /* A live connection to one or more topics on the same server (Server-Sent Events, which
    reconnect by themselves). Returns a function that closes it. */
@@ -134,7 +170,10 @@ const NO_LIVE = { sold: [], busy: 0, pickup_only: false };
 /* Customer: keys are the base64url public keys from the signed menu (owner, then staff). */
 async function presence(direct, keys) {
   let msgs;
-  try { msgs = await ntfyPoll(presenceTopic(direct.topic), "12m"); } catch (e) { return Object.assign({ state: "unknown", online: false, reason: "unreachable" }, NO_LIVE); }
+  try { msgs = await ntfyPoll(presenceTopic(direct.topic), "12m", 262144); } catch (e) { return Object.assign({ state: "unknown", online: false, reason: "unreachable" }, NO_LIVE); }
+  /* Too many messages to read them all (a flooded topic): the newest may be among those not
+     read, so nothing is concluded. */
+  if (msgs.truncated) return Object.assign({ state: "unknown", online: false, reason: "unreachable" }, NO_LIVE);
   const ks = (keys || []).filter((k) => typeof k === "string" && k);
   let best = null, unverified = false;
   for (const m of msgs) {
